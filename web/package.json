@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "lightweight-charts": "^4.2.0",
     "next": "^15.5.9",
     "react": "^19.1.2",
     "react-dom": "^19.1.2",

@@ -52,14 +52,18 @@ func (s *Shared) now() time.Time {
 	return time.Now()
 }
 
+// ttlFor: grafik intraday disegarkan cepat (data nyata ±1 menit) tanpa melampaui kuota,
+// karena satu hasil dibagi semua pengunjung.
 func (s *Shared) ttlFor(interval string) time.Duration {
 	switch interval {
-	case "1day", "1week", "1month":
-		return s.CandleTTL
+	case "1min", "5min":
+		return time.Minute
+	case "15min", "30min":
+		return 2 * time.Minute
 	case "1h", "4h":
-		return s.QuoteTTL * 2
+		return 5 * time.Minute
 	default:
-		return s.QuoteTTL
+		return s.CandleTTL
 	}
 }
 

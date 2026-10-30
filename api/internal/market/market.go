@@ -49,7 +49,7 @@ type Provider interface {
 }
 
 // Intervals yang diizinkan (format Twelve Data).
-var Intervals = map[string]bool{"1min": true, "5min": true, "15min": true, "1h": true, "4h": true, "1day": true, "1week": true, "1month": true}
+var Intervals = map[string]bool{"1min": true, "5min": true, "15min": true, "30min": true, "1h": true, "4h": true, "1day": true, "1week": true, "1month": true}
 
 // ---------------------------------------------------------------- Twelve Data
 
@@ -147,7 +147,7 @@ func (t *TwelveData) Quote(ctx context.Context, ps string) (Quote, error) {
 
 func (t *TwelveData) Candles(ctx context.Context, ps, interval string, n int) ([]Candle, error) {
 	sym, ex := splitSymbol(ps)
-	q := url.Values{"symbol": {sym}, "interval": {interval}, "outputsize": {strconv.Itoa(n)}, "order": {"ASC"}}
+	q := url.Values{"symbol": {sym}, "interval": {interval}, "outputsize": {strconv.Itoa(n)}, "order": {"ASC"}, "timezone": {"UTC"}}
 	if ex != "" {
 		q.Set("exchange", ex)
 	}
@@ -202,7 +202,7 @@ func (s Sample) Candles(ctx context.Context, ps, interval string, n int) ([]Cand
 	if err != nil {
 		return nil, err
 	}
-	step := map[string]time.Duration{"1min": time.Minute, "5min": 5 * time.Minute, "15min": 15 * time.Minute, "1h": time.Hour, "4h": 4 * time.Hour, "1day": 24 * time.Hour, "1week": 7 * 24 * time.Hour, "1month": 30 * 24 * time.Hour}[interval]
+	step := map[string]time.Duration{"1min": time.Minute, "5min": 5 * time.Minute, "15min": 15 * time.Minute, "30min": 30 * time.Minute, "1h": time.Hour, "4h": 4 * time.Hour, "1day": 24 * time.Hour, "1week": 7 * 24 * time.Hour, "1month": 30 * 24 * time.Hour}[interval]
 	out := make([]Candle, n)
 	price := q.Price * 0.9
 	end := time.Now().UTC().Truncate(step)
