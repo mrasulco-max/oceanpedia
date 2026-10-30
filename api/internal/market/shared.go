@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -24,7 +25,21 @@ type Shared struct {
 	QuoteTTL  time.Duration // default 10 menit
 	CandleTTL time.Duration // untuk interval harian; interval lebih pendek memakai QuoteTTL
 	ErrTTL    time.Duration // berapa lama simbol yang tidak tersedia tidak dicoba lagi
-	Now       func() time.Time
+	// Skip: simbol yang pasti tidak termasuk paket (mis. bursa IDX di paket Basic) — tidak pernah diminta.
+	Skip func(providerSymbol string) bool
+	Now  func() time.Time
+}
+
+// Setelah kuota per menit habis (HTTP 429), penyedia tidak dihubungi selama jeda ini.
+const cooldownKey = "cooldown:provider"
+const cooldown = 65 * time.Second
+
+// ErrBusy: kuota per menit sedang habis dan belum ada data tersimpan.
+var ErrBusy = errors.New("kuota data pasar per menit sedang habis")
+
+func rateLimited(err error) bool {
+	var e *APIError
+	return errors.As(err, &e) && e.Code == 429
 }
 
 // ErrUnavailable dikembalikan untuk simbol yang tidak tersedia di paket penyedia.
@@ -69,6 +84,13 @@ func load[T any](ctx context.Context, s *Shared, key string, ttl time.Duration, 
 			stale = &v
 		}
 	}
+	// Jeda global setelah kuota habis: jangan membakar kredit dengan permintaan yang pasti ditolak.
+	if _, _, cAt, cFound, cErr := s.KV.MarketCacheGet(ctx, cooldownKey); cErr == nil && cFound && s.now().Sub(cAt) < cooldown {
+		if stale != nil {
+			return *stale, nil
+		}
+		return zero, ErrBusy
+	}
 	v, ferr := fetch()
 	if ferr == nil {
 		if b, err := json.Marshal(v); err == nil {
@@ -80,17 +102,49 @@ func load[T any](ctx context.Context, s *Shared, key string, ttl time.Duration, 
 		_ = s.KV.MarketCachePut(ctx, key, nil, ferr.Error())
 		return zero, ErrUnavailable
 	}
+	if rateLimited(ferr) {
+		_ = s.KV.MarketCachePut(ctx, cooldownKey, nil, "429")
+	}
 	if stale != nil {
 		return *stale, nil // kuota habis / gangguan: sajikan data terakhir
+	}
+	if rateLimited(ferr) {
+		return zero, ErrBusy
 	}
 	return zero, ferr
 }
 
 func (s *Shared) Quote(ctx context.Context, ps string) (Quote, error) {
+	if s.Skip != nil && s.Skip(ps) {
+		return Quote{}, ErrUnavailable
+	}
 	return load(ctx, s, "q:"+ps, s.QuoteTTL, func() (Quote, error) { return s.P.Quote(ctx, ps) })
 }
 
 func (s *Shared) Candles(ctx context.Context, ps, interval string, n int) ([]Candle, error) {
+	if s.Skip != nil && s.Skip(ps) {
+		return nil, ErrUnavailable
+	}
 	key := fmt.Sprintf("c:%s:%s:%d", ps, interval, n)
 	return load(ctx, s, key, s.ttlFor(interval), func() ([]Candle, error) { return s.P.Candles(ctx, ps, interval, n) })
+}
+
+// SkipList membuat fungsi Skip dari daftar dipisah koma: akhiran bursa (mis. "IDX" untuk "BBCA:IDX")
+// atau simbol penyedia persis (mis. "JKSE").
+func SkipList(list []string) func(string) bool {
+	set := map[string]bool{}
+	for _, x := range list {
+		if x = strings.TrimSpace(x); x != "" {
+			set[x] = true
+		}
+	}
+	return func(ps string) bool {
+		if set[ps] {
+			return true
+		}
+		if i := strings.LastIndex(ps, ":"); i > 0 && set[ps[i+1:]] {
+			return true
+		}
+		return false
+	}
 }

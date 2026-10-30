@@ -73,6 +73,7 @@ func TestSharedCache(t *testing.T) {
 		t.Fatalf("stale saat kuota habis: %v %v", q4, err)
 	}
 	// Simbol butuh paket Pro → dicatat, tidak dicoba lagi selama ErrTTL.
+	now = now.Add(70 * time.Second) // lewati jeda kuota
 	p.err = &APIError{Code: 404, Message: "Pro plan"}
 	if _, err := s.Quote(ctx, "BBCA:IDX"); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("mau ErrUnavailable: %v", err)
@@ -80,5 +81,31 @@ func TestSharedCache(t *testing.T) {
 	before := p.calls
 	if _, err := s.Quote(ctx, "BBCA:IDX"); !errors.Is(err, ErrUnavailable) || p.calls != before {
 		t.Fatalf("negative cache: %v calls %d→%d", err, before, p.calls)
+	}
+
+	// Kuota per menit habis → jeda global, penyedia tidak dihubungi lagi selama 65 detik.
+	now = now.Add(25 * time.Hour)
+	p.err = &APIError{Code: 429, Message: "limit"}
+	if _, err := s.Quote(ctx, "ETH/USD"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("mau ErrBusy: %v", err)
+	}
+	before = p.calls
+	_, _ = s.Quote(ctx, "XRP/USD")
+	if p.calls != before {
+		t.Fatal("selama jeda, penyedia tidak boleh dipanggil")
+	}
+	now = now.Add(70 * time.Second)
+	p.err = nil
+	if _, err := s.Quote(ctx, "XRP/USD"); err != nil || p.calls != before+1 {
+		t.Fatalf("setelah jeda harus normal: %v", err)
+	}
+	// Daftar lewati: simbol IDX tidak pernah diminta.
+	s.Skip = SkipList([]string{"IDX", "JKSE"})
+	before = p.calls
+	if _, err := s.Quote(ctx, "BBRI:IDX"); !errors.Is(err, ErrUnavailable) || p.calls != before {
+		t.Fatalf("skip IDX: %v", err)
+	}
+	if _, err := s.Candles(ctx, "JKSE", "1day", 10); !errors.Is(err, ErrUnavailable) || p.calls != before {
+		t.Fatalf("skip JKSE: %v", err)
 	}
 }

@@ -25,6 +25,7 @@ type Config struct {
 	MarketCacheTTL  time.Duration
 	QuoteTTL        time.Duration
 	CandleTTL       time.Duration
+	MarketSkip      []string
 	TaxRate         float64 // PPN, mis. 0.11
 }
 
@@ -44,7 +45,9 @@ func Load() (Config, error) {
 		MarketCacheTTL:  dur("TWELVEDATA_CACHE_TTL", time.Minute),
 		QuoteTTL:        dur("TWELVEDATA_QUOTE_TTL", 10*time.Minute),
 		CandleTTL:       dur("TWELVEDATA_CANDLE_TTL", time.Hour),
-		TaxRate:         float("API_TAX_RATE", 0.11),
+		// Paket Basic Twelve Data tidak mencakup bursa IDX; kosongkan setelah upgrade ke Pro.
+		MarketSkip: splitList(env("TWELVEDATA_SKIP", "IDX,JKSE,JKLQ45")),
+		TaxRate:    float("API_TAX_RATE", 0.11),
 	}
 	var errs []error
 	if c.DatabaseURL == "" {

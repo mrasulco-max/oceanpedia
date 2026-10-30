@@ -65,7 +65,7 @@ func run(log *slog.Logger) error {
 
 	var provider market.Provider = market.Sample{}
 	if cfg.TwelveDataKey != "" {
-		provider = &market.Shared{P: market.NewTwelveData(cfg.TwelveDataKey), KV: &store.PG{DB: db}, QuoteTTL: cfg.QuoteTTL, CandleTTL: cfg.CandleTTL, ErrTTL: 24 * time.Hour}
+		provider = &market.Shared{P: market.NewTwelveData(cfg.TwelveDataKey), KV: &store.PG{DB: db}, QuoteTTL: cfg.QuoteTTL, CandleTTL: cfg.CandleTTL, ErrTTL: 24 * time.Hour, Skip: market.SkipList(cfg.MarketSkip)}
 	} else {
 		log.Warn("TWELVEDATA_API_KEY kosong: memakai data pasar contoh")
 	}
