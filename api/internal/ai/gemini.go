@@ -15,15 +15,18 @@ import (
 
 // Gemini memanggil generateContent; bila model utama sibuk/tidak tersedia, model berikutnya dicoba.
 type Gemini struct {
-	Key     string
-	Models  []string
+	Key    string
+	Models []string
+	// Attempt: batas waktu per model sebelum pindah ke model berikutnya (default 15 detik).
+	Attempt time.Duration
 	BaseURL string
 	HTTP    *http.Client
 }
 
 func NewGemini(key string, models []string) *Gemini {
 	if len(models) == 0 {
-		models = []string{"gemini-3.8-flash", "gemini-flash-latest", "gemini-flash-lite-latest"}
+		// Urutan: cepat & stabil dulu (analisis harus segera tampil), lalu model cadangan.
+		models = []string{"gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-flash-latest"}
 	}
 	return &Gemini{Key: key, Models: models, BaseURL: "https://generativelanguage.googleapis.com/v1beta", HTTP: &http.Client{Timeout: 40 * time.Second}}
 }
@@ -42,7 +45,7 @@ func retryable(err error) bool {
 	if errors.As(err, &e) {
 		return e.Code == 404 || e.Code == 429 || e.Code >= 500
 	}
-	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+	return !errors.Is(err, context.Canceled) // termasuk batas waktu per model → coba model berikutnya
 }
 
 // JSON meminta keluaran JSON sesuai schema dan mengurainya ke out. Mengembalikan nama model yang menjawab.
@@ -77,8 +80,17 @@ func (g *Gemini) generate(ctx context.Context, system, prompt string, cfg map[st
 	}
 	b, _ := json.Marshal(body)
 	var last error
+	attempt := g.Attempt
+	if attempt == 0 {
+		attempt = 15 * time.Second
+	}
 	for _, m := range g.Models {
-		text, err := g.call(ctx, m, b)
+		if ctx.Err() != nil {
+			break
+		}
+		cctx, cancel := context.WithTimeout(ctx, attempt)
+		text, err := g.call(cctx, m, b)
+		cancel()
 		if err == nil {
 			if err = parse(text); err == nil {
 				return m, nil

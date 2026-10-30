@@ -109,9 +109,9 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       if (e instanceof ApiError && e.status === 404) notFound();
       throw e;
     }
-    html = bindArticleDetail(html, a);
     const [related, ai] = await Promise.all([safe(api.related(a.slug), { data: [] }), api.articleAI(a.slug)]);
     html = bindArticleAI(html, a, ai);
+    html = bindArticleDetail(html, a);
     if (!ai) enhance.push("ai");
     html = bindArticleCards(html, dedupe([...related.data, ...all]).filter((x) => x.slug !== a.slug));
     title = a.title;
@@ -175,8 +175,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       if (a) {
         const ai = await api.articleAI(a.slug);
         if (path === "/plus/baca") {
-          html = bindArticleDetail(html, a);
           html = bindPlusReadAI(html, a, ai);
+          html = bindArticleDetail(html, a);
         } else {
           html = bindAnalysisPage(html, ai, { kind: "article", title: a.title, href: `/berita/${a.slug}`, image: a.cover_url, slug: a.slug });
         }
