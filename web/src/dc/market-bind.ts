@@ -298,15 +298,15 @@ export function bindMarketDetail(html: string, kind: "web" | "app", inst: Instru
   }
 
   if (kind === "app") {
-    h = h.replace(/(<span style="font-family: 'Roboto Mono', monospace; font-size: 34px[^"]*">)[\d.,]+(<\/span>)/, `$1${f.format(q.price)}$2`);
-    h = h.replace(/<span style="([^"]*)">▲ \+112 · \+1,12%<\/span>/, (_m, st: string) => `<span style="${recolor(st, up)}">${pctTxt}</span>`);
+    h = h.replace(/<span (style="font-family: 'Roboto Mono', monospace; font-size: 34px[^"]*">)[\d.,]+(<\/span>)/, `<span data-live="price" $1${f.format(q.price)}$2`);
+    h = h.replace(/<span style="([^"]*)">▲ \+112 · \+1,12%<\/span>/, (_m, st: string) => `<span data-live-chg="arrow" data-live-up="${up ? 1 : 0}" style="${recolor(st, up)}">${pctTxt}</span>`);
     h = h.replace(/(<span style="width: 7px; height: 7px; border-radius: 999px; background: )#9AA6B8("><\/span>)Pasar tutup/, `$1#16A34A$2${inst.asset_class === "crypto" ? "Pasar 24 jam" : "Live"}`);
     h = h.replace(/>28 Okt · 16:00 WIB</, `>${esc(asOfText(inst).split(" · ").slice(1).join(" · "))}<`);
     h = h.replace(/(<strong style="color: #0B0B0F; font-weight: 700">)[^<]* · 1D · IDX(<\/strong>)/, `$1${esc(inst.symbol)} · 1D · ${esc(inst.exchange)}$2`);
     h = h.split("Bank Central Asia · IDX").join(`${esc(inst.name)} · ${esc(inst.exchange)}`);
   } else {
-    h = h.replace(/(<span[^>]*>)10\.125(<\/span><span[^>]*>) IDR(<\/span>)/, `$1${f.format(q.price)}$2 ${esc(inst.currency)}$3`);
-    h = h.replace(/(<div[^>]*>)\+112 · \+1,12%(<span[^>]*>)Pasar tutup · 28 Okt 16:00 WIB/, (_m, d: string, s: string) => `${recolor(d, up)}${pctTxt.replace(/^[▲▼] /, "")}${s}${esc(asOfText(inst))}`);
+    h = h.replace(/(<span[^>]*>)10\.125(<\/span><span[^>]*>) IDR(<\/span>)/, (_m, a: string, b: string, c: string) => `${a.replace("<span", '<span data-live="price"')}${f.format(q.price)}${b} ${esc(inst.currency)}${c}`);
+    h = h.replace(/(<div[^>]*>)\+112 · \+1,12%(<span[^>]*>)Pasar tutup · 28 Okt 16:00 WIB/, (_m, d: string, s: string) => `${recolor(d, up).replace("<div", `<div data-live-chg="" data-live-up="${up ? 1 : 0}"`)}${pctTxt.replace(/^[▲▼] /, "")}${s}${esc(asOfText(inst))}`);
     h = h.replace(/(Bank Central Asia Tbk|[^<>]+) · \{\{ tfLbl \}\} · IDX/, `${esc(inst.name)} · {{ tfLbl }} · ${esc(inst.exchange)}`);
     // Ringkasan samping: rentang hari ini & volume (crypto/forex dari penyedia tidak punya volume).
     h = h.replace(/>9\.990 – 10\.150</, `>${f.format(q.low)} – ${f.format(q.high)}<`);
@@ -341,5 +341,41 @@ export function bindTradingView(html: string, kind: "web" | "app", tvSymbol: str
   } else {
     h = h.replace('<div style="padding: 12px 12px 0">', '<div data-tv-overlay style="padding: 12px 12px 0">');
   }
+  return h;
+}
+
+/** Pasangan Binance untuk kripto (data real-time per transaksi); instrumen lain memakai API OceanPedia. */
+export const BINANCE_PAIR: Record<string, string> = { BTCUSD: "BTCUSDT", ETHUSD: "ETHUSDT" };
+/** Instrumen yang grafiknya digambar dengan Lightweight Charts (data nyata tersedia). */
+export const LIVE_CHART = new Set(["BTCUSD", "ETHUSD", "XAUUSD", "USDIDR"]);
+
+/**
+ * Area grafik Detail Market menjadi wadah Lightweight Charts (enhancer "lwchart").
+ * Grafik SVG (data harian nyata) tetap tampil sampai grafik interaktif siap; legenda desain
+ * (O/H/L/C, MA, Vol, RSI) diberi penanda agar nilainya diperbarui langsung.
+ */
+export function bindLiveChart(html: string, kind: "web" | "app", inst: Instrument, q: Quote | null): string {
+  let h = html;
+  const svgRe = kind === "app" ? /<svg viewBox="0 0 350 302"[\s\S]*?<\/svg>/ : /<svg viewBox="0 0 1020 448"[\s\S]*?<\/svg>/;
+  const style = kind === "app" ? "position: relative; height: 302px" : "position: absolute; inset: 0";
+  const price = q?.price ?? 0;
+  const dec = price === 0 ? 2 : price < 10 ? 4 : price < 1000 ? 2 : 0;
+  const attrs = [
+    `data-lw="${esc(inst.symbol)}"`,
+    BINANCE_PAIR[inst.symbol] ? `data-lw-binance="${BINANCE_PAIR[inst.symbol]}"` : "",
+    kind === "app" ? 'data-lw-lite="1"' : "",
+    `data-lw-dec="${dec}"`,
+    q?.previous_close ? `data-lw-prev="${q.previous_close}"` : "",
+    `data-lw-exch="${esc(inst.exchange)}"`,
+  ].filter(Boolean).join(" ");
+  h = h.replace(svgRe, (svg) => `<div ${attrs} data-dc-keep style="${style}">${svg}</div>`);
+  // Penanda legenda.
+  h = h.replace(/<span>([OHLC])<span style="/g, '<span>$1<span data-lg="$1" style="');
+  h = h.replace(/<span style="([^"]*)">MA (\d+) · /g, '<span data-lg="ma$2" style="$1">MA $2 · ');
+  h = h.replace(/<span>Vol <span style="/, '<span>Vol <span data-lg="v" style="');
+  h = h.replace(/<span style="color: #5F6B7D">Vol [^<]*<\/span>/, (m) => m.replace("<span ", '<span data-lg="vol" '));
+  h = h.replace(/RSI 14 close <span style="/, 'RSI 14 close <span data-lg="rsi" style="');
+  h = h.replace(/<span style="(color: #(?:15803D|DC2626|E5484D); font-weight: 500)">([+−-][^<]*\([^<]*%\))<\/span>/, '<span data-lg="chg" style="$1">$2</span>');
+  if (kind === "app") h = h.replace(/<strong style="color: #0B0B0F; font-weight: 700">([^<]* · 1D · [^<]*)<\/strong>/, '<strong data-lg="title" style="color: #0B0B0F; font-weight: 700">$1</strong>');
   return h;
 }

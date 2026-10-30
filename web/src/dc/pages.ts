@@ -7,7 +7,7 @@ import type { Article, ArticleCard, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
-import { bindMarketDetail, bindQuotes, bindTradingView, TV_SYMBOL } from "./market-bind";
+import { bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import type { Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
@@ -138,9 +138,13 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const candles = info.quote ? (await safe(api.candles(sym, "1day", 260), { symbol: sym, interval: "1day", data: [] })).data : [];
     if (info.quote) html = bindMarketDetail(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote, candles);
     html = bindDetail(html, board.kind === "app" ? "app" : "web", { inst: info.instrument, quote: info.quote, candles, short });
-    // Grafik real-time & timeframe lengkap dari widget TradingView.
+    // Grafik interaktif tanpa logo (Lightweight Charts) dengan data nyata: kripto real-time dari Binance,
+    // emas & valas dari Twelve Data. Saham IDX memakai widget TradingView sampai ada sumber data IDX.
     const tv = TV_SYMBOL[sym];
-    if (tv) {
+    if (LIVE_CHART.has(sym)) {
+      html = bindLiveChart(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote);
+      enhance.push("lwchart");
+    } else if (tv) {
       html = bindTradingView(html, board.kind === "app" ? "app" : "web", tv);
       enhance.push("tvchart");
     }
