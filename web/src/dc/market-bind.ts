@@ -332,7 +332,9 @@ export function bindTradingView(html: string, kind: "web" | "app", tvSymbol: str
   let h = html;
   const svgRe = kind === "app" ? /<svg viewBox="0 0 350 302"[\s\S]*?<\/svg>/ : /<svg viewBox="0 0 1020 448"[\s\S]*?<\/svg>/;
   const style = kind === "app" ? "position: relative; height: 302px" : "position: absolute; inset: 0";
-  h = h.replace(svgRe, (svg) => `<div data-tv="${esc(tvSymbol)}" data-tv-interval="D" data-dc-keep style="${style}">${svg}</div>`);
+  // Di ponsel grafik dibuat bersih: tanpa indikator (RSI, MA) dan tanpa volume.
+  const lite = kind === "app" ? ' data-tv-lite="1"' : "";
+  h = h.replace(svgRe, (svg) => `<div data-tv="${esc(tvSymbol)}" data-tv-interval="D"${lite} data-dc-keep style="${style}">${svg}</div>`);
   if (kind === "web") {
     h = h.replace('<div style="position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column;', '<div data-tv-overlay style="position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column;');
     h = h.replace('<div style="position: absolute; left: 12px; top: 352px;', '<div data-tv-overlay style="position: absolute; left: 12px; top: 352px;');

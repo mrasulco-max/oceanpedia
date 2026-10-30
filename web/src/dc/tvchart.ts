@@ -12,6 +12,7 @@ export function tvchart(host: HTMLElement, _env: Env): Cleanup {
   const box = host.querySelector<HTMLElement>("[data-tv]");
   if (!box) return;
   const symbol = box.dataset.tv!;
+  const lite = box.dataset.tvLite === "1";
   let interval = box.dataset.tvInterval || "D";
   let range: string | undefined;
   let observer: MutationObserver | null = null;
@@ -50,7 +51,9 @@ export function tvchart(host: HTMLElement, _env: Env): Cleanup {
       save_image: false,
       calendar: false,
       withdateranges: false,
-      studies: ["Volume@tv-basicstudies", "MASimple@tv-basicstudies", "RSI@tv-basicstudies"],
+      // Ponsel: grafik bersih tanpa indikator & volume; desktop: volume, MA, RSI.
+      studies: lite ? [] : ["Volume@tv-basicstudies", "MASimple@tv-basicstudies", "RSI@tv-basicstudies"],
+      ...(lite ? { hide_volume: true, hide_legend: true } : {}),
       support_host: "https://www.tradingview.com",
     });
     wrap.appendChild(s);
