@@ -21,6 +21,9 @@ func limitParam(r *http.Request, def, max int) int {
 
 func cacheFor(w http.ResponseWriter, d time.Duration) {
 	w.Header().Set("Cache-Control", "public, max-age="+strconv.Itoa(int(d.Seconds()))+", stale-while-revalidate=60")
+	// CDN Vercel tidak menyimpan respons API: cache dipegang Next.js (data cache bertag "api")
+	// yang dibersihkan saat redaksi menerbitkan, sehingga berita baru langsung tampil.
+	w.Header().Set("Vercel-CDN-Cache-Control", "no-store")
 }
 
 func (s *Server) categories(w http.ResponseWriter, r *http.Request) error {
