@@ -43,7 +43,7 @@ func Load() (Config, error) {
 		RunMigrations:   env("API_RUN_MIGRATIONS", "true") == "true",
 		TwelveDataKey:   os.Getenv("TWELVEDATA_API_KEY"),
 		MarketCacheTTL:  dur("TWELVEDATA_CACHE_TTL", time.Minute),
-		QuoteTTL:        dur("TWELVEDATA_QUOTE_TTL", 10*time.Minute),
+		QuoteTTL:        dur("TWELVEDATA_QUOTE_TTL", 15*time.Minute),
 		CandleTTL:       dur("TWELVEDATA_CANDLE_TTL", time.Hour),
 		// Paket Basic Twelve Data tidak mencakup bursa IDX; kosongkan setelah upgrade ke Pro.
 		MarketSkip: splitList(env("TWELVEDATA_SKIP", "IDX,JKSE,JKLQ45")),

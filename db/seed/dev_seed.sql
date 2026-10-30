@@ -29,7 +29,13 @@ INSERT INTO instruments (symbol, name, exchange, asset_class, currency, provider
  ('BTCUSD', 'Bitcoin / Dolar AS',         'Crypto', 'crypto',    'USD', 'BTC/USD',   NULL),
  ('ETHUSD', 'Ethereum / Dolar AS',        'Crypto', 'crypto',    'USD', 'ETH/USD',   NULL),
  ('XAUUSD', 'Emas / Dolar AS',            'Spot',   'commodity', 'USD', 'XAU/USD',   NULL),
- ('USDIDR', 'Dolar AS / Rupiah',          'Forex',  'forex',     'IDR', 'USD/IDR',   NULL)
+ ('USDIDR', 'Dolar AS / Rupiah',          'Forex',  'forex',     'IDR', 'USD/IDR',   NULL),
+ ('SOLUSD', 'Solana / Dolar AS',          'Crypto', 'crypto',    'USD', 'SOL/USD',   NULL),
+ ('BNBUSD', 'BNB / Dolar AS',             'Crypto', 'crypto',    'USD', 'BNB/USD',   NULL),
+ ('XRPUSD', 'XRP / Dolar AS',             'Crypto', 'crypto',    'USD', 'XRP/USD',   NULL),
+ ('DOGEUSD','Dogecoin / Dolar AS',        'Crypto', 'crypto',    'USD', 'DOGE/USD',  NULL),
+ ('EURIDR', 'Euro / Rupiah',              'Forex',  'forex',     'IDR', 'EUR/IDR',   NULL),
+ ('SGDIDR', 'Dolar Singapura / Rupiah',   'Forex',  'forex',     'IDR', 'SGD/IDR',   NULL)
 ON CONFLICT (symbol) DO NOTHING;
 
 WITH c AS (SELECT slug, id FROM categories), a AS (SELECT slug, id FROM authors),

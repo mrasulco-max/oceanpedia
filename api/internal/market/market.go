@@ -184,6 +184,7 @@ var sampleBase = map[string][2]float64{ // harga, perubahan %
 	"BBCA:IDX": {10125, 1.12}, "BBRI:IDX": {4920, 2.15}, "BMRI:IDX": {6150, 0.82}, "TLKM:IDX": {2880, 0.70},
 	"ASII:IDX": {5050, -0.49}, "GOTO:IDX": {64, -3.03}, "JKSE": {7284.16, 0.84}, "JKLQ45": {912.40, 0.66},
 	"BTC/USD": {68420, 2.31}, "ETH/USD": {3512, 1.48}, "XAU/USD": {2384.1, -0.42}, "USD/IDR": {15612, -0.18},
+	"SOL/USD": {168.4, -0.84}, "BNB/USD": {598.2, 0.35}, "XRP/USD": {0.52, 1.1}, "DOGE/USD": {0.16, -1.2}, "EUR/IDR": {16904, 0.12}, "SGD/IDR": {11588, -0.05},
 }
 
 func (Sample) Quote(_ context.Context, ps string) (Quote, error) {

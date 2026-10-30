@@ -9,6 +9,9 @@ import { esc } from "./bind";
 
 // Label yang dipakai desain → simbol internal.
 const LABELS: Record<string, string> = {
+  SOL: "SOLUSD", Solana: "SOLUSD", "SOL/USD": "SOLUSD", SOLUSD: "SOLUSD",
+  BNB: "BNBUSD", BNBUSD: "BNBUSD", XRP: "XRPUSD", XRPUSD: "XRPUSD", DOGE: "DOGEUSD", Dogecoin: "DOGEUSD", DOGEUSD: "DOGEUSD",
+  "EUR/IDR": "EURIDR", EURIDR: "EURIDR", "SGD/IDR": "SGDIDR", SGDIDR: "SGDIDR",
   BTC: "BTCUSD", Bitcoin: "BTCUSD", "BTC/USD": "BTCUSD", BTCUSD: "BTCUSD",
   ETH: "ETHUSD", Ethereum: "ETHUSD", "ETH/USD": "ETHUSD", ETHUSD: "ETHUSD",
   Emas: "XAUUSD", "XAU/USD": "XAUUSD", XAUUSD: "XAUUSD", XAU: "XAUUSD",
@@ -322,6 +325,7 @@ export const TV_SYMBOL: Record<string, string> = {
   BBCA: "IDX:BBCA", BBRI: "IDX:BBRI", BMRI: "IDX:BMRI", TLKM: "IDX:TLKM", ASII: "IDX:ASII", GOTO: "IDX:GOTO",
   IHSG: "IDX:COMPOSITE", LQ45: "IDX:LQ45",
   BTCUSD: "BINANCE:BTCUSDT", ETHUSD: "BINANCE:ETHUSDT", XAUUSD: "OANDA:XAUUSD", USDIDR: "FX_IDC:USDIDR",
+  SOLUSD: "BINANCE:SOLUSDT", BNBUSD: "BINANCE:BNBUSDT", XRPUSD: "BINANCE:XRPUSDT", DOGEUSD: "BINANCE:DOGEUSDT", EURIDR: "FX_IDC:EURIDR", SGDIDR: "FX_IDC:SGDIDR",
 };
 
 /**
@@ -345,9 +349,9 @@ export function bindTradingView(html: string, kind: "web" | "app", tvSymbol: str
 }
 
 /** Pasangan Binance untuk kripto (data real-time per transaksi); instrumen lain memakai API OceanPedia. */
-export const BINANCE_PAIR: Record<string, string> = { BTCUSD: "BTCUSDT", ETHUSD: "ETHUSDT" };
+export const BINANCE_PAIR: Record<string, string> = { BTCUSD: "BTCUSDT", ETHUSD: "ETHUSDT", SOLUSD: "SOLUSDT", BNBUSD: "BNBUSDT", XRPUSD: "XRPUSDT", DOGEUSD: "DOGEUSDT" };
 /** Instrumen yang grafiknya digambar dengan Lightweight Charts (data nyata tersedia). */
-export const LIVE_CHART = new Set(["BTCUSD", "ETHUSD", "XAUUSD", "USDIDR"]);
+export const LIVE_CHART = new Set(["BTCUSD", "ETHUSD", "SOLUSD", "BNBUSD", "XRPUSD", "DOGEUSD", "XAUUSD", "USDIDR", "EURIDR", "SGDIDR"]);
 
 /**
  * Area grafik Detail Market menjadi wadah Lightweight Charts (enhancer "lwchart").
@@ -378,4 +382,38 @@ export function bindLiveChart(html: string, kind: "web" | "app", inst: Instrumen
   h = h.replace(/<span style="(color: #(?:15803D|DC2626|E5484D); font-weight: 500)">([+−-][^<]*\([^<]*%\))<\/span>/, '<span data-lg="chg" style="$1">$2</span>');
   if (kind === "app") h = h.replace(/<strong style="color: #0B0B0F; font-weight: 700">([^<]* · 1D · [^<]*)<\/strong>/, '<strong data-lg="title" style="color: #0B0B0F; font-weight: 700">$1</strong>');
   return h;
+}
+
+const TV_LINK = '<a href="https://www.tradingview.com/" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline">';
+
+/** Keterangan sumber data di footer: Binance (kripto) & Twelve Data, plus atribusi TradingView untuk grafik. */
+export function bindDataCredits(html: string): string {
+  return html
+    .split("Data harga oleh Twelve Data, dapat tertunda hingga 15 menit.")
+    .join(`Data harga oleh Binance (kripto, real-time) &amp; Twelve Data, dapat tertunda hingga 15 menit. Grafik oleh ${TV_LINK}TradingView</a>.`)
+    .split("Data harga Twelve Data, dapat tertunda hingga 15 menit. Grafik TradingView Lightweight Charts™.")
+    .join(`Data harga Binance (kripto, real-time) &amp; Twelve Data, dapat tertunda hingga 15 menit. Grafik ${TV_LINK}TradingView Lightweight Charts™</a>.`)
+    .split("Data harga Twelve Data (dapat tertunda 15 menit) · grafik TradingView Lightweight Charts™.")
+    .join(`Data harga Binance &amp; Twelve Data (dapat tertunda 15 menit) · grafik ${TV_LINK}TradingView Lightweight Charts™</a>.`)
+    .split("Data harga dari Twelve Data,")
+    .join("Data harga dari Binance &amp; Twelve Data,")
+    .split("pihak ketiga (Twelve Data)")
+    .join("pihak ketiga (Binance dan Twelve Data)");
+}
+
+/** Tabel kripto di halaman Market: kolom kapitalisasi contoh diganti volume 24 jam nyata (Binance). */
+export function bindCryptoVolume(html: string, quotes: Map<string, Quote>): string {
+  if (!html.includes("$1,35 T")) return html;
+  const usd = (sym: string) => {
+    const q = quotes.get(sym);
+    if (!q || !q.volume) return "—";
+    const v = q.volume * q.price;
+    const f = nf(2);
+    return v >= 1e12 ? `$${f.format(v / 1e12)} T` : v >= 1e9 ? `$${f.format(v / 1e9)} M` : v >= 1e6 ? `$${f.format(v / 1e6)} jt` : `$${f.format(v)}`;
+  };
+  return html
+    .replace(">KAP. PASAR<", ">VOL. 24 JAM<")
+    .replace(">$1,35 T<", `>${usd("BTCUSD")}<`)
+    .replace(">$421 M<", `>${usd("ETHUSD")}<`)
+    .replace(">$78 M<", `>${usd("SOLUSD")}<`);
 }

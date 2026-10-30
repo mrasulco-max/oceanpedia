@@ -44,9 +44,9 @@ func build() {
 	db.SetConnMaxIdleTime(30 * time.Second)
 	var p market.Provider = market.Sample{}
 	if cfg.TwelveDataKey != "" {
-		p = &market.Shared{P: market.NewTwelveData(cfg.TwelveDataKey), KV: &store.PG{DB: db}, QuoteTTL: cfg.QuoteTTL, CandleTTL: cfg.CandleTTL, ErrTTL: 24 * time.Hour, Skip: market.SkipList(cfg.MarketSkip)}
+		p = market.Live(cfg.TwelveDataKey, &store.PG{DB: db}, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
 	}
-	srv := &api.Server{Store: &store.PG{DB: db}, Market: market.NewCached(p, cfg.MarketCacheTTL), Cfg: cfg, Log: log}
+	srv := &api.Server{Store: &store.PG{DB: db}, Market: p, Cfg: cfg, Log: log}
 	h = srv.Handler()
 }
 

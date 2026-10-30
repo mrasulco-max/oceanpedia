@@ -68,7 +68,7 @@ export interface Quote {
   week52_low: number;
   week52_high: number;
   as_of: string;
-  source: "twelvedata" | "sample";
+  source: "twelvedata" | "binance" | "sample";
 }
 
 export interface QuoteItem {
