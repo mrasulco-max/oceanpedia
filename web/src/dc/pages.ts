@@ -7,9 +7,10 @@ import type { Article, ArticleCard, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
+import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
-import type { Quote } from "@/lib/types";
+import type { Candle, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import type { SessionUser } from "@/lib/session";
 
@@ -109,7 +110,9 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       throw e;
     }
     html = bindArticleDetail(html, a);
-    const related = await safe(api.related(a.slug), { data: [] });
+    const [related, ai] = await Promise.all([safe(api.related(a.slug), { data: [] }), api.articleAI(a.slug)]);
+    html = bindArticleAI(html, a, ai);
+    if (!ai) enhance.push("ai");
     html = bindArticleCards(html, dedupe([...related.data, ...all]).filter((x) => x.slug !== a.slug));
     title = a.title;
     description = a.excerpt;
@@ -135,7 +138,15 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       for (const t of ["Berita terkait BBCA", "Semua berita BBCA", "Layout BBCA", "Buat BBCA"]) html = html.split(t).join(esc(t.replace("BBCA", short)));
     }
     html = bindArticleCards(html, dedupe([...info.news, ...all]));
-    const candles = info.quote ? (await safe(api.candles(sym, "1day", 260), { symbol: sym, interval: "1day", data: [] })).data : [];
+    const [candleRes, mai] = await Promise.all([
+      info.quote ? safe(api.candles(sym, "1day", 260), { symbol: sym, interval: "1day", data: [] }) : Promise.resolve({ data: [] as Candle[] }),
+      board.kind === "app" ? api.marketAI(sym) : Promise.resolve(null),
+    ]);
+    const candles = candleRes.data;
+    if (board.kind === "app") {
+      html = bindMarketAICard(html, sym, mai);
+      if (!mai) enhance.push("ai");
+    }
     if (info.quote) html = bindMarketDetail(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote, candles);
     html = bindDetail(html, board.kind === "app" ? "app" : "web", { inst: info.instrument, quote: info.quote, candles, short });
     // Grafik interaktif tanpa logo (Lightweight Charts) dengan data nyata: kripto real-time dari Binance,
@@ -149,6 +160,31 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       enhance.push("tvchart");
     }
     title = `${sym} · ${info.instrument.name}`;
+  } else if (path === "/plus/baca" || path === "/plus/analisis") {
+    // Analisis AI lengkap untuk berita (?a=slug) atau instrumen (?symbol=BTCUSD); bawaan: berita utama terbaru.
+    const symbol = (search.symbol ?? "").toUpperCase();
+    if (path === "/plus/analisis" && /^[A-Z0-9]{2,12}$/.test(symbol)) {
+      const info = await safe(api.instrument(symbol), null);
+      if (!info) notFound();
+      const ai = await api.marketAI(symbol);
+      html = bindAnalysisPage(html, ai, { kind: "market", title: `${info.instrument.symbol} · ${info.instrument.name}`, href: `/market/${symbol}`, symbol });
+      title = `Analisis AI ${symbol}`;
+    } else {
+      const slug = search.a && /^[a-z0-9-]{1,200}$/.test(search.a) ? search.a : (home.top_story ?? all[0])?.slug;
+      const a = slug ? await safe(api.article(slug), null) : null;
+      if (a) {
+        const ai = await api.articleAI(a.slug);
+        if (path === "/plus/baca") {
+          html = bindArticleDetail(html, a);
+          html = bindPlusReadAI(html, a, ai);
+        } else {
+          html = bindAnalysisPage(html, ai, { kind: "article", title: a.title, href: `/berita/${a.slug}`, image: a.cover_url, slug: a.slug });
+        }
+        title = `Analisis AI · ${a.title}`;
+      }
+    }
+    if (path === "/plus/baca") html = bindArticleCards(html, all);
+    enhance.push("ai");
   } else {
     html = bindArticleCards(html, all);
   }

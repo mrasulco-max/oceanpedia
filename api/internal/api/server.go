@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/mrasulco-max/oceanpedia/api/internal/ai"
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/httpx"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
@@ -16,6 +17,7 @@ import (
 type Server struct {
 	Store  store.Store
 	Market market.Provider
+	AI     *ai.Service
 	Cfg    config.Config
 	Log    *slog.Logger
 	Now    func() time.Time
@@ -47,6 +49,7 @@ func (s *Server) Handler() http.Handler {
 	h("GET /v1/articles/{slug}", s.getArticle)
 	h("POST /v1/articles/{slug}/views", s.addView)
 	h("GET /v1/articles/{slug}/related", s.related)
+	h("GET /v1/articles/{slug}/ai", s.articleAI)
 	h("GET /v1/articles/{slug}/reactions", s.reactions)
 	h("GET /v1/articles/{slug}/comments", s.comments)
 	h("GET /v1/authors/{slug}", s.author)
@@ -59,6 +62,7 @@ func (s *Server) Handler() http.Handler {
 	h("GET /v1/market/quotes", s.quotes)
 	h("GET /v1/market/instruments/{symbol}", s.instrument)
 	h("GET /v1/market/instruments/{symbol}/candles", s.candles)
+	h("GET /v1/market/instruments/{symbol}/ai", s.marketAI)
 
 	// autentikasi
 	h("POST /v1/auth/register", s.register)
@@ -67,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 	h("POST /v1/auth/logout", s.logout)
 
 	// milik pengguna
+	auth("POST /v1/ai/ask", s.askAI)
 	auth("GET /v1/me", s.me)
 	auth("GET /v1/me/watchlist", s.watchlist)
 	auth("POST /v1/me/watchlist", s.addWatch)

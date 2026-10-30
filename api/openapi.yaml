@@ -106,6 +106,9 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Article' } } } }
         '404': { $ref: '#/components/responses/Problem' }
+  /v1/articles/{slug}/ai: { get: { summary: "Analisis AI berita (Gemini; disimpan per versi isi)", tags: [AI], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK }, '503': { description: AI belum aktif / sibuk } } } }
+  /v1/market/instruments/{symbol}/ai: { get: { summary: "Analisis AI kondisi terkini instrumen (diperbarui ±10 menit)", tags: [AI], parameters: [{ name: symbol, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK }, '503': { description: AI belum aktif / sibuk } } } }
+  /v1/ai/ask: { post: { summary: "Tanya AI tentang berita (slug) atau instrumen (symbol); perlu masuk, maks. 30/jam", tags: [AI], security: [{ bearer: [] }], responses: { '200': { description: OK }, '401': { description: Perlu masuk }, '429': { description: Batas tercapai } } } }
   /v1/articles/{slug}/related: { get: { summary: Artikel terkait, tags: [Konten], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
   /v1/articles/{slug}/views: { post: { summary: Catat tayangan, tags: [Konten], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK } } } }
   /v1/articles/{slug}/reactions: { get: { summary: Jumlah reaksi, tags: [Interaksi], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }

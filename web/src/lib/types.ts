@@ -106,3 +106,17 @@ export interface AdSlot {
 }
 
 export type Layout = "web" | "app";
+
+/** Analisis AI (Gemini) untuk berita atau instrumen. */
+export interface AIAnalysis {
+  inti: string;
+  poin: string[];
+  sentimen: "positif" | "netral" | "negatif";
+  skor: number;
+  aset: { simbol: string; catatan: string; dampak: "positif" | "netral" | "negatif" }[];
+  pantau: { judul: string; nilai: string }[];
+  pertanyaan: string[];
+  sumber: string;
+  generated_at: string;
+  model: string;
+}
