@@ -234,8 +234,14 @@ Buat ringkasan kondisi terkini instrumen ini: "inti" 1 kalimat tentang pergeraka
 "pantau" boleh kosong (level support/resistance ditambahkan sistem).`)
 	return s.run(ctx, "ai:m:"+in.Symbol, ttl, sb.String(), in.Name, func(a *Analysis) {
 		if t.OK {
-			lv := []Pantau{{Judul: "Support / resistance " + in.Symbol, Nilai: f(t.S1) + " / " + f(t.R1)}, {Judul: "RSI 14 harian", Nilai: fmt.Sprintf("%.1f", t.RSI)}}
-			a.Pantau = append(lv, a.Pantau...)
+			lv := []Pantau{{Judul: "Support / resistance " + in.Symbol, Nilai: f(t.S1) + " / " + f(t.R1)}, {Judul: "RSI 14 harian", Nilai: strings.Replace(fmt.Sprintf("%.1f", t.RSI), ".", ",", 1)}}
+			for _, p := range a.Pantau { // level teknikal sudah ditambahkan sistem
+				j := strings.ToLower(p.Judul)
+				if !strings.Contains(j, "support") && !strings.Contains(j, "resistance") && !strings.Contains(j, "rsi") {
+					lv = append(lv, p)
+				}
+			}
+			a.Pantau = lv
 			if len(a.Pantau) > 4 {
 				a.Pantau = a.Pantau[:4]
 			}

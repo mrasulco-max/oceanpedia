@@ -48,6 +48,11 @@ func (s *Server) marketAIFor(ctx context.Context, in store.Instrument) (*ai.Anal
 	}
 	cs, _ := s.Market.Candles(ctx, in.ProviderSymbol, "1day", 260)
 	news, _ := s.Store.Articles(ctx, store.ArticleFilter{Query: in.Symbol, Limit: 6})
+	if len(news) == 0 { // mis. "BTCUSD" jarang ditulis di berita → cari nama aset ("Bitcoin", "Emas")
+		if w := strings.Fields(in.Name); len(w) > 0 && len(w[0]) > 3 {
+			news, _ = s.Store.Articles(ctx, store.ArticleFilter{Query: w[0], Limit: 6})
+		}
+	}
 	return s.AI.Market(ctx, in, q, cs, news)
 }
 
