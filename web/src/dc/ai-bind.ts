@@ -26,7 +26,7 @@ function timeWIB(iso: string): string {
 export function bindArticleAI(html: string, a: Article, ai: AIAnalysis | null): string {
   let h = html;
   const href = `/plus/analisis?a=${encodeURIComponent(a.slug)}`;
-  if (ai) h = h.split(SAMPLE_INTI).join(esc(ai.inti));
+  if (ai) h = h.split(SAMPLE_INTI).join(`<span data-ai-text>${esc(ai.inti)}</span>`);
   else h = h.split(SAMPLE_INTI).join(`<span data-ai-fill="article:${esc(a.slug)}">Analisis AI sedang disiapkan…</span>`);
   // Tombol di kartu AI: buka analisis lengkap berita ini.
   h = h.replace(/(<section aria-label="Analisis AI"[\s\S]*?)<a href="\/plus"([^>]*>[\s\S]*?)Berlangganan untuk analisis lengkap<\/a>/, `$1<a href="${href}"$2Lihat analisis AI lengkap</a>`);

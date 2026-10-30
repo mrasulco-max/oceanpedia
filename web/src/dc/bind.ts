@@ -71,7 +71,7 @@ export function bindArticleDetail(html: string, a: Article): string {
     let pi = 0;
     let first = true;
     mid = mid.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/g, (whole, o: string, inner: string, c: string) => {
-      if (/<(div|img|svg)\b/.test(inner)) return whole;
+      if (/<(div|img|svg)\b/.test(inner) || inner.includes("data-ai-")) return whole; // kartu Analisis AI diisi binder AI
       if (first) {
         first = false;
         return `${o}${esc(a.excerpt)}${c}`;
