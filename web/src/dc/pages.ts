@@ -8,6 +8,7 @@ import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replac
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
 import { bindMarketDetail, bindQuotes, bindTradingView, TV_SYMBOL } from "./market-bind";
+import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import type { Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import type { SessionUser } from "@/lib/session";
@@ -126,18 +127,17 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const sym = m.params.symbol!.toUpperCase();
     const info = await safe(api.instrument(sym), null);
     if (!info) notFound();
+    // Label pendek ala desain (BTC, ETH, XAU, USD/IDR) agar muat di avatar & tabel.
+    const short = ({ BTCUSD: "BTC", ETHUSD: "ETH", XAUUSD: "XAU", USDIDR: "USD/IDR" } as Record<string, string>)[sym] ?? sym;
     if (sym !== "BBCA") {
-      // Label pendek ala desain (BTC, ETH, XAU, USD/IDR) agar muat di avatar & tabel.
-      const short = ({ BTCUSD: "BTC", ETHUSD: "ETH", XAUUSD: "XAU", USDIDR: "USD/IDR" } as Record<string, string>)[sym] ?? sym;
       html = replaceText(html, "BBCA", short);
       html = html.split("Bank Central Asia Tbk").join(esc(info.instrument.name));
-      html = html.split("Berita terkait BBCA").join(`Berita terkait ${esc(sym)}`);
+      for (const t of ["Berita terkait BBCA", "Semua berita BBCA", "Layout BBCA", "Buat BBCA"]) html = html.split(t).join(esc(t.replace("BBCA", short)));
     }
     html = bindArticleCards(html, dedupe([...info.news, ...all]));
-    if (info.quote) {
-      const candles = await safe(api.candles(sym, "1day", 100), { symbol: sym, interval: "1day", data: [] });
-      html = bindMarketDetail(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote, candles.data);
-    }
+    const candles = info.quote ? (await safe(api.candles(sym, "1day", 260), { symbol: sym, interval: "1day", data: [] })).data : [];
+    if (info.quote) html = bindMarketDetail(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote, candles);
+    html = bindDetail(html, board.kind === "app" ? "app" : "web", { inst: info.instrument, quote: info.quote, candles, short });
     // Grafik real-time & timeframe lengkap dari widget TradingView.
     const tv = TV_SYMBOL[sym];
     if (tv) {
@@ -191,6 +191,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     enhance.push("content");
   }
 
+  if (board.kind === "app") html = hideFakeStatusBar(html);
   html = bindLogout(html);
   if (html.includes("data-logout")) enhance.push("logout");
 
