@@ -7,7 +7,7 @@ import type { Article, ArticleCard, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
-import { bindMarketDetail, bindQuotes } from "./market-bind";
+import { bindMarketDetail, bindQuotes, bindTradingView, TV_SYMBOL } from "./market-bind";
 import type { Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import type { SessionUser } from "@/lib/session";
@@ -137,6 +137,12 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     if (info.quote) {
       const candles = await safe(api.candles(sym, "1day", 100), { symbol: sym, interval: "1day", data: [] });
       html = bindMarketDetail(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote, candles.data);
+    }
+    // Grafik real-time & timeframe lengkap dari widget TradingView.
+    const tv = TV_SYMBOL[sym];
+    if (tv) {
+      html = bindTradingView(html, board.kind === "app" ? "app" : "web", tv);
+      enhance.push("tvchart");
     }
     title = `${sym} · ${info.instrument.name}`;
   } else {

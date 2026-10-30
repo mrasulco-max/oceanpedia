@@ -316,3 +316,28 @@ export function bindMarketDetail(html: string, kind: "web" | "app", inst: Instru
   }
   return h;
 }
+
+/** Simbol TradingView untuk tiap instrumen (data grafik real-time dari widget resmi TradingView). */
+export const TV_SYMBOL: Record<string, string> = {
+  BBCA: "IDX:BBCA", BBRI: "IDX:BBRI", BMRI: "IDX:BMRI", TLKM: "IDX:TLKM", ASII: "IDX:ASII", GOTO: "IDX:GOTO",
+  IHSG: "IDX:COMPOSITE", LQ45: "IDX:LQ45",
+  BTCUSD: "BINANCE:BTCUSDT", ETHUSD: "BINANCE:ETHUSDT", XAUUSD: "OANDA:XAUUSD", USDIDR: "FX_IDC:USDIDR",
+};
+
+/**
+ * Area grafik Detail Market menjadi wadah widget TradingView (Advanced Real-Time Chart).
+ * Grafik SVG tetap ada sebagai cadangan sampai widget selesai dimuat.
+ */
+export function bindTradingView(html: string, kind: "web" | "app", tvSymbol: string): string {
+  let h = html;
+  const svgRe = kind === "app" ? /<svg viewBox="0 0 350 302"[\s\S]*?<\/svg>/ : /<svg viewBox="0 0 1020 448"[\s\S]*?<\/svg>/;
+  const style = kind === "app" ? "position: relative; height: 302px" : "position: absolute; inset: 0";
+  h = h.replace(svgRe, (svg) => `<div data-tv="${esc(tvSymbol)}" data-tv-interval="D" data-dc-keep style="${style}">${svg}</div>`);
+  if (kind === "web") {
+    h = h.replace('<div style="position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column;', '<div data-tv-overlay style="position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column;');
+    h = h.replace('<div style="position: absolute; left: 12px; top: 352px;', '<div data-tv-overlay style="position: absolute; left: 12px; top: 352px;');
+  } else {
+    h = h.replace('<div style="padding: 12px 12px 0">', '<div data-tv-overlay style="padding: 12px 12px 0">');
+  }
+  return h;
+}

@@ -4,7 +4,7 @@
 import { DCLogic } from "@/dc/runtime";
 
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = {"u": {"u1": [false, false, false, true, false, false], "u2": [true, false, false, false, false], "u3": [false, true, false]}, "o": {"ctype": [0], "ind": [0, 4]}, "sheet": null, "toast": "", "toastOn": false}; }
+  constructor(props) { super(props); this.state = {"u": {"u1": [false, false, false, false, false, false, true, false, false], "u2": [true, false, false, false, false], "u3": [false, true, false]}, "o": {"ctype": [0], "ind": [0, 4]}, "sheet": null, "toast": "", "toastOn": false}; }
   componentWillUnmount() { clearTimeout(this._tt); }
   say(t) { clearTimeout(this._tt); this.setState({ toast: t, toastOn: true }); this._tt = setTimeout(() => this.setState({ toastOn: false }), 2200); }
   hook(k, i, on) {
@@ -13,7 +13,7 @@ class Component extends DCLogic {
   renderVals() {
     const S = this.state, v = {};
     const stop = (e) => { if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); } };
-    const U = {"u1": {"n": 6, "single": true, "a": [["flex: none; min-width: 36px; height: 32px; padding: 0 9px; border-radius: 10px; border: 0; background: #0B0B0F; color: #FFFFFF; font-size: 12px; font-weight: 700", "flex: none; min-width: 36px; height: 32px; padding: 0 9px; border-radius: 10px; border: 0; background: transparent; color: #5F6B7D; font-size: 12px; font-weight: 500"]], "t": null, "say": null}, "u2": {"n": 5, "single": true, "a": [["flex: none; padding-bottom: 10px; font-size: 14px; font-weight: 700; color: #0B0B0F; border-bottom: 3px solid #4285F4", "flex: none; padding-bottom: 10px; font-size: 14px; font-weight: 500; color: #5F6B7D; border-bottom: 3px solid transparent"]], "t": null, "say": null}, "u3": {"n": 3, "single": true, "a": [["flex: 1; min-height: 36px; border-radius: 999px; border: 0; background: #FFFFFF; outline: 1px solid #E3EAF4; color: #0B0B0F; font-size: 13px; font-weight: 500", "flex: 1; min-height: 36px; border-radius: 999px; border: 0; background: transparent; color: #5F6B7D; font-size: 13px; font-weight: 500"]], "t": null, "say": null}};
+    const U = {"u1": {"n": 9, "single": true, "a": [["flex: none; min-width: 36px; height: 32px; padding: 0 9px; border-radius: 10px; border: 0; background: #0B0B0F; color: #FFFFFF; font-size: 12px; font-weight: 700", "flex: none; min-width: 36px; height: 32px; padding: 0 9px; border-radius: 10px; border: 0; background: transparent; color: #5F6B7D; font-size: 12px; font-weight: 500"]], "t": null, "say": null}, "u2": {"n": 5, "single": true, "a": [["flex: none; padding-bottom: 10px; font-size: 14px; font-weight: 700; color: #0B0B0F; border-bottom: 3px solid #4285F4", "flex: none; padding-bottom: 10px; font-size: 14px; font-weight: 500; color: #5F6B7D; border-bottom: 3px solid transparent"]], "t": null, "say": null}, "u3": {"n": 3, "single": true, "a": [["flex: 1; min-height: 36px; border-radius: 999px; border: 0; background: #FFFFFF; outline: 1px solid #E3EAF4; color: #0B0B0F; font-size: 13px; font-weight: 500", "flex: 1; min-height: 36px; border-radius: 999px; border: 0; background: transparent; color: #5F6B7D; font-size: 13px; font-weight: 500"]], "t": null, "say": null}};
     for (const k in U) {
       const u = U[k], st = S.u[k], o = {};
       for (let i = 0; i < u.n; i++) {

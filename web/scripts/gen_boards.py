@@ -191,6 +191,55 @@ def convert(name: str) -> dict:
             "title": META[name]["title"]}
 
 
+# ---------------------------------------------------------------------------
+# Patch fungsional di atas desain (tanpa mengubah gaya): pilihan timeframe lengkap pada
+# Detail Market — 1m, 5m, 15m, 30m, 1J, 4J, 1D, 1W, 1M — dan atribut data-tf / data-range
+# yang dibaca enhancer grafik TradingView.
+# ---------------------------------------------------------------------------
+TF_ALL = ["1m", "5m", "15m", "30m", "1J", "4J", "1D", "1W", "1M"]
+RANGE_TV = {"1H": "1D", "5H": "5D", "1B": "1M", "3B": "3M", "6B": "6M", "YTD": "YTD", "1T": "12M", "5T": "60M", "Semua": "ALL"}
+
+
+def patch_web_detail(b: dict) -> None:
+    h, js = b["html"], b["logic"]
+    first = re.search(r'<button aria-pressed="\{\{ tf\.i0\.pr \}\}"[^>]*>1m</button>', h)
+    last = re.search(r'<button aria-pressed="\{\{ tf\.i7\.pr \}\}"[^>]*>1M</button>', h)
+    assert first and last, "tombol timeframe web tidak ditemukan"
+    tpl = first.group(0)
+    new = "".join(
+        tpl.replace("tf.i0.", f"tf.i{i}.").replace(">1m<", f">{lbl}<").replace("<button ", f'<button data-tf="{lbl}" ', 1)
+        for i, lbl in enumerate(TF_ALL)
+    )
+    h = h[: first.start()] + new + h[last.end():]
+    for lbl, rng in RANGE_TV.items():
+        h = re.sub(rf'(<button )(aria-pressed="\{{\{{ rg\.i\d\.pr \}}\}}"[^>]*>{re.escape(lbl)}</button>)', rf'\1data-range="{rng}" \2', h, count=1)
+    assert "const TF = ['1m', '5m', '15m', '1J', '4J', '1D', '1W', '1M'];" in js
+    js = js.replace("const TF = ['1m', '5m', '15m', '1J', '4J', '1D', '1W', '1M'];", "const TF = " + json.dumps(TF_ALL).replace('"', "'") + ";")
+    js = js.replace("grp('tf', 8,", "grp('tf', 9,").replace("this.state = { tf: 5,", "this.state = { tf: 6,")
+    assert "grp('tf', 9," in js and "tf: 6," in js
+    b["html"], b["logic"] = h, js
+
+
+def patch_app_detail(b: dict) -> None:
+    h, js = b["html"], b["logic"]
+    first = re.search(r'<button onClick="\{\{ u1\.m0\.pick \}\}"[^>]*>5m</button>', h)
+    last = re.search(r'<button onClick="\{\{ u1\.m5\.pick \}\}"[^>]*>1M</button>', h)
+    assert first and last, "tombol timeframe app tidak ditemukan"
+    tpl = first.group(0)
+    new = "".join(
+        tpl.replace("u1.m0.", f"u1.m{i}.").replace(">5m<", f">{lbl}<").replace("<button ", f'<button data-tf="{lbl}" ', 1)
+        for i, lbl in enumerate(TF_ALL)
+    )
+    h = h[: first.start()] + new + h[last.end():]
+    old_state = '"u1": [false, false, false, true, false, false]'
+    assert old_state in js and '"u1": {"n": 6,' in js
+    js = js.replace(old_state, '"u1": ' + json.dumps([i == 6 for i in range(9)]))
+    js = js.replace('"u1": {"n": 6,', '"u1": {"n": 9,')
+    b["html"], b["logic"] = h, js
+
+
+PATCHES = {"web-market-detail": patch_web_detail, "app-09": patch_app_detail}
+
 HEADER = "// Dihasilkan oleh scripts/gen_boards.py dari design/boards — JANGAN diedit manual.\n"
 
 
@@ -199,6 +248,9 @@ def main() -> None:
     for f in OUT.iterdir():
         f.unlink()
     boards = [convert(n) for n in sorted(META)]
+    for b in boards:
+        if b["id"] in PATCHES:
+            PATCHES[b["id"]](b)
     used = {r.get(k) for r in ROUTES for k in ("web", "app", "admin")} - {None}
     missing = set(n.replace(".dc.html", "") for n in META) - used
     if missing:

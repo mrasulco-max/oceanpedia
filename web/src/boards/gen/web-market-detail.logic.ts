@@ -4,15 +4,15 @@
 import { DCLogic } from "@/dc/runtime";
 
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { tf: 5, dt: 0, rg: 6, bt: 0, rp: 0, wl: 0, star: true, sym: false, toast: '', toastOn: false }; }
+  constructor(props) { super(props); this.state = { tf: 6, dt: 0, rg: 6, bt: 0, rp: 0, wl: 0, star: true, sym: false, toast: '', toastOn: false }; }
   componentWillUnmount() { clearTimeout(this._tt); }
   say(t) { clearTimeout(this._tt); this.setState({ toast: t, toastOn: true }); this._tt = setTimeout(() => this.setState({ toastOn: false }), 2200); }
   renderVals() {
     const S = this.state, v = {};
     const stop = (e) => { if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); } };
     const grp = (key, n, on, off, cb) => { const o = {}; for (let i = 0; i < n; i++) { const a = S[key] === i; o['i' + i] = { on: a, pr: a ? 'true' : 'false', st: a ? on : off, pick: (e) => { stop(e); this.setState({ [key]: i }); if (cb) cb(i); } }; } return o; };
-    const TF = ['1m', '5m', '15m', '1J', '4J', '1D', '1W', '1M'];
-    v.tf = grp('tf', 8, 'background: #0B0B0F; color: #FFFFFF; font-weight: 700', 'background: transparent; color: #5F6B7D; font-weight: 500');
+    const TF = ['1m', '5m', '15m', '30m', '1J', '4J', '1D', '1W', '1M'];
+    v.tf = grp('tf', 9, 'background: #0B0B0F; color: #FFFFFF; font-weight: 700', 'background: transparent; color: #5F6B7D; font-weight: 500');
     v.tfLbl = TF[S.tf];
     v.dt = grp('dt', 14, 'background: #E8F0FE; color: #2F74EB', 'background: transparent; color: #0B0B0F');
     v.rg = grp('rg', 9, 'background: #E8F0FE; color: #2F74EB; font-weight: 700', 'background: transparent; color: #5F6B7D; font-weight: 500');

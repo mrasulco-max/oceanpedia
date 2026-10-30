@@ -121,3 +121,8 @@ svg {
   font: 500 15px Roboto, Arial, sans-serif;
   cursor: pointer;
 }
+
+/* Saat widget TradingView aktif, legenda statis desain di atas grafik disembunyikan (widget punya legenda sendiri). */
+.dc-tv-ready [data-tv-overlay] {
+  display: none !important;
+}

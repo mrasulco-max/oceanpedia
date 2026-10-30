@@ -110,7 +110,9 @@ function morphChildren(from: Node, to: Node): void {
       if (f.nodeType === Node.ELEMENT_NODE) {
         // <style> & <svg> kecil: bandingkan cepat lewat outerHTML.
         syncAttrs(f as Element, t as Element);
-        if ((f as Element).tagName === "STYLE") {
+        if ((f as Element).hasAttribute("data-dc-keep")) {
+          // Isinya dikelola komponen pihak ketiga (mis. widget TradingView) — jangan disentuh.
+        } else if ((f as Element).tagName === "STYLE") {
           if (f.textContent !== t.textContent) f.textContent = t.textContent;
         } else {
           morphChildren(f, t);
