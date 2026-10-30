@@ -64,8 +64,8 @@ function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
         return;
       }
       toast(host, "Berhasil masuk.", "ok");
+      // Navigasi baru selalu merender ulang halaman dinamis dengan sesi terbaru.
       router.push(ctx.next || "/");
-      router.refresh();
     } catch {
       toast(host, "Koneksi bermasalah. Coba lagi.");
     } finally {
@@ -97,7 +97,6 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
     e.stopPropagation();
     await fetch("/api/auth/logout", { method: "POST" });
     router.push(btn.getAttribute("data-logout") || "/");
-    router.refresh();
   };
   host.addEventListener("click", onClick, true);
   return () => host.removeEventListener("click", onClick, true);
