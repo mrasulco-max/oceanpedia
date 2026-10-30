@@ -22,6 +22,8 @@ type Config struct {
 	RateLimitRPS    float64
 	RunMigrations   bool
 	TwelveDataKey   string
+	GeminiKey       string
+	GeminiModels    []string
 	MarketCacheTTL  time.Duration
 	QuoteTTL        time.Duration
 	CandleTTL       time.Duration
@@ -42,6 +44,8 @@ func Load() (Config, error) {
 		RateLimitRPS:    float("API_RATE_LIMIT_RPS", 20),
 		RunMigrations:   env("API_RUN_MIGRATIONS", "true") == "true",
 		TwelveDataKey:   os.Getenv("TWELVEDATA_API_KEY"),
+		GeminiKey:       os.Getenv("GEMINI_API_KEY"),
+		GeminiModels:    splitList(os.Getenv("GEMINI_MODELS")),
 		MarketCacheTTL:  dur("TWELVEDATA_CACHE_TTL", time.Minute),
 		QuoteTTL:        dur("TWELVEDATA_QUOTE_TTL", 15*time.Minute),
 		CandleTTL:       dur("TWELVEDATA_CANDLE_TTL", time.Hour),

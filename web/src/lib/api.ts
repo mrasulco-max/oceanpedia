@@ -1,5 +1,5 @@
 import "server-only";
-import type { AdSlot, Article, ArticleCard, Candle, Category, EconomicEvent, HomeData, Instrument, Page, Quote, QuoteItem } from "./types";
+import type { AIAnalysis, AdSlot, Article, ArticleCard, Candle, Category, EconomicEvent, HomeData, Instrument, Page, Quote, QuoteItem } from "./types";
 
 const BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
@@ -33,7 +33,19 @@ async function get<T>(path: string, { revalidate = 30, token }: Opts = {}): Prom
   return (await res.json()) as T;
 }
 
+/** Analisis AI: menunggu maks. `ms` (pembuatan pertama bisa beberapa detik); null bila belum siap. */
+async function aiGet(path: string, revalidate: number, ms = 9000): Promise<AIAnalysis | null> {
+  try {
+    const res = await fetch(BASE + path, { headers: { Accept: "application/json" }, next: { revalidate, tags: ["api"] }, signal: AbortSignal.timeout(ms) });
+    return res.ok ? ((await res.json()) as AIAnalysis) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const api = {
+  articleAI: (slug: string) => aiGet(`/v1/articles/${encodeURIComponent(slug)}/ai`, 300),
+  marketAI: (symbol: string) => aiGet(`/v1/market/instruments/${encodeURIComponent(symbol)}/ai`, 60),
   home: (o?: Opts) => get<HomeData>("/v1/home", o),
   categories: () => get<Page<Category>>("/v1/categories", { revalidate: 300 }),
   articles: (q: Record<string, string | number | undefined>, o?: Opts) => {

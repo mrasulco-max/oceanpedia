@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mrasulco-max/oceanpedia/api/internal/ai"
 	"github.com/mrasulco-max/oceanpedia/api/internal/api"
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
@@ -69,7 +70,7 @@ func run(log *slog.Logger) error {
 	} else {
 		log.Warn("TWELVEDATA_API_KEY kosong: memakai data pasar contoh")
 	}
-	srv := &api.Server{Store: &store.PG{DB: db}, Market: provider, Cfg: cfg, Log: log}
+	srv := &api.Server{Store: &store.PG{DB: db}, Market: provider, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: &store.PG{DB: db}}, Cfg: cfg, Log: log}
 
 	hs := &http.Server{
 		Addr:              cfg.Addr,

@@ -13,6 +13,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/mrasulco-max/oceanpedia/api/internal/ai"
 	"github.com/mrasulco-max/oceanpedia/api/internal/api"
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/httpx"
@@ -46,7 +47,7 @@ func build() {
 	if cfg.TwelveDataKey != "" {
 		p = market.Live(cfg.TwelveDataKey, &store.PG{DB: db}, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
 	}
-	srv := &api.Server{Store: &store.PG{DB: db}, Market: p, Cfg: cfg, Log: log}
+	srv := &api.Server{Store: &store.PG{DB: db}, Market: p, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: &store.PG{DB: db}}, Cfg: cfg, Log: log}
 	h = srv.Handler()
 }
 

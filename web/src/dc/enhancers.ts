@@ -7,8 +7,9 @@ import { toast } from "./toast";
 import { content, editor } from "./editorial";
 import { tvchart } from "./tvchart";
 import { lwchart } from "./lwchart";
+import { ai } from "./ai";
 
-export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart";
+export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai";
 
 export interface Env {
   router: ReturnType<typeof useRouter>;
@@ -91,7 +92,7 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
   return () => host.removeEventListener("click", onClick, true);
 }
 
-const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart };
+const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai };
 
 export function runEnhancer(id: EnhancerId, host: HTMLElement, env: Env): Cleanup {
   return REGISTRY[id]?.(host, env);
