@@ -1,0 +1,500 @@
+{
+ "A-Activity.dc.html": {
+  "title": "Admin · Log Aktivitas",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 900
+ },
+ "A-Ads.dc.html": {
+  "title": "Admin · Iklan (alur verifikasi)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1510
+ },
+ "A-Categories.dc.html": {
+  "title": "Admin · Kategori & Tag (lihat, daftar)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1910
+ },
+ "A-CategoryForm.dc.html": {
+  "title": "Admin · Tambah / Edit / Hapus Kategori",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1770
+ },
+ "A-Comments.dc.html": {
+  "title": "Admin · Komentar (moderasi)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1270
+ },
+ "A-Content.dc.html": {
+  "title": "Admin · Konten (alur review)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1320
+ },
+ "A-Editor.dc.html": {
+  "title": "Admin · Tulis Artikel (alur terbit)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1430
+ },
+ "A-Live.dc.html": {
+  "title": "Admin · Breaking & Live Blog",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1480
+ },
+ "A-Login.dc.html": {
+  "title": "Admin · Masuk · 1. Email & sandi",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 900
+ },
+ "A-Login2FA.dc.html": {
+  "title": "Admin · Masuk · 2. Verifikasi 2 langkah",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 900
+ },
+ "A-LoginExpired.dc.html": {
+  "title": "Admin · Masuk · Sesi berakhir",
+  "page": "page-admin",
+  "w": 2153,
+  "h": 1722
+ },
+ "A-LoginForgot.dc.html": {
+  "title": "Admin · Masuk · Lupa kata sandi",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 900
+ },
+ "A-LoginForgotSent.dc.html": {
+  "title": "Admin · Masuk · Cek email",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 900
+ },
+ "A-LoginLocked.dc.html": {
+  "title": "Admin · Masuk · Sandi salah / terkunci",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 900
+ },
+ "A-LoginReset.dc.html": {
+  "title": "Admin · Masuk · Kata sandi baru",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 900
+ },
+ "A-Market.dc.html": {
+  "title": "Admin · Data Pasar (alur insiden)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1340
+ },
+ "A-Media.dc.html": {
+  "title": "Admin · Media (alur unggah & lisensi)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1430
+ },
+ "A-Mockup.dc.html": {
+  "title": "Admin · Mockup (laptop, miring, browser, HP)",
+  "page": "page-admin",
+  "w": 1600,
+  "h": 4920
+ },
+ "A-Newsletter.dc.html": {
+  "title": "Admin · Newsletter (alur kirim)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1930
+ },
+ "A-Notif.dc.html": {
+  "title": "Admin · Notifikasi (halaman)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1640
+ },
+ "A-Overview.dc.html": {
+  "title": "Admin · Dashboard",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1500
+ },
+ "A-Reports.dc.html": {
+  "title": "Admin · Laporan",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1190
+ },
+ "A-Roles.dc.html": {
+  "title": "Admin · Role & Akses (alur undangan)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1240
+ },
+ "A-Search.dc.html": {
+  "title": "Admin · Popup Pencarian (Ctrl K)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1500
+ },
+ "A-SearchResults.dc.html": {
+  "title": "Admin · Hasil Pencarian (filter & tersimpan)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1450
+ },
+ "A-Settings.dc.html": {
+  "title": "Admin · Pengaturan & Akun",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1820
+ },
+ "A-Symbol.dc.html": {
+  "title": "Admin · Detail Simbol (BBCA)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1740
+ },
+ "A-SysStates.dc.html": {
+  "title": "Admin · Kondisi Khusus (403/404/500, toast)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1230
+ },
+ "A-Users.dc.html": {
+  "title": "Admin · Pengguna (alur moderasi)",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1080
+ },
+ "A-Versions.dc.html": {
+  "title": "Admin · Riwayat Versi Artikel",
+  "page": "page-admin",
+  "w": 1440,
+  "h": 1240
+ },
+ "Artboard-hh6l-v23n-1gu5-04on-83f0-ipck-g7o2.dc.html": {
+  "title": "Search",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-hh6l-v23n-1gu5-04on-83f0-ipck.dc.html": {
+  "title": "Detail Market + News Terkait",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-hh6l-v23n-1gu5-04on-83f0.dc.html": {
+  "title": "Calendar Economy Market",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-hh6l-v23n-1gu5-04on.dc.html": {
+  "title": "Market Saham, Crypto, Forex",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-hh6l-v23n-1gu5.dc.html": {
+  "title": "Kategori Berita",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-hh6l-v23n.dc.html": {
+  "title": "Detail Berita",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-hh6l.dc.html": {
+  "title": "Home",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-login.dc.html": {
+  "title": "Masuk / Daftar",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-akun.dc.html": {
+  "title": "Akun & Profil",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-live.dc.html": {
+  "title": "Breaking / Live Blog",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-legal.dc.html": {
+  "title": "Legal (S&K, Privasi, Disclaimer)",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-error.dc.html": {
+  "title": "404 / Error / Offline",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-watchlist.dc.html": {
+  "title": "Watchlist",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-penulis.dc.html": {
+  "title": "Penulis / Analis",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-topik.dc.html": {
+  "title": "Topik / Tag",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-screener.dc.html": {
+  "title": "Screener / Top Movers",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-short.dc.html": {
+  "title": "OceanBird Short / Video",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-tentang.dc.html": {
+  "title": "Tentang Kami & Redaksi",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-iklan.dc.html": {
+  "title": "Pasang Iklan / Media Kit",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-newsletter.dc.html": {
+  "title": "Newsletter",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-web-bantuan.dc.html": {
+  "title": "Kontak / Pusat Bantuan",
+  "page": "page-mnidpi",
+  "w": 1440,
+  "h": 900
+ },
+ "Artboard-app-01.dc.html": {
+  "title": "Splash",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-02.dc.html": {
+  "title": "Onboarding",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-03.dc.html": {
+  "title": "Masuk",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-04.dc.html": {
+  "title": "Verifikasi OTP",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-05.dc.html": {
+  "title": "Home",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-06.dc.html": {
+  "title": "Detail Berita",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-07.dc.html": {
+  "title": "Kategori Berita",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-08.dc.html": {
+  "title": "Market Saham, Crypto, Forex",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-09.dc.html": {
+  "title": "Detail Market + News Terkait",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-10.dc.html": {
+  "title": "Calendar Economy Market",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-11.dc.html": {
+  "title": "Search",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-12.dc.html": {
+  "title": "Watchlist",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-13.dc.html": {
+  "title": "Price Alert",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-14.dc.html": {
+  "title": "Notifikasi",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-15.dc.html": {
+  "title": "Breaking / Live Blog",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-16.dc.html": {
+  "title": "OceanBird Short / Video",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-17.dc.html": {
+  "title": "Tersimpan",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-18.dc.html": {
+  "title": "Penulis / Analis",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-19.dc.html": {
+  "title": "Topik / Tag",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-20.dc.html": {
+  "title": "Profil & Akun",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-21.dc.html": {
+  "title": "Pengaturan (tampilan, notifikasi)",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-22.dc.html": {
+  "title": "Legal (S&K, Privasi, Disclaimer)",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-23.dc.html": {
+  "title": "Error / Offline",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-24.dc.html": {
+  "title": "Daftar",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-25.dc.html": {
+  "title": "Berlangganan (Student · Essential · Corporate)",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-26.dc.html": {
+  "title": "Detail Berita — Pelanggan Plus (AI terbuka)",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-27.dc.html": {
+  "title": "Analisis AI (khusus pelanggan)",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-28.dc.html": {
+  "title": "Checkout · metode pembayaran",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-29.dc.html": {
+  "title": "Menunggu pembayaran (VA)",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-30.dc.html": {
+  "title": "Pembayaran berhasil",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-31.dc.html": {
+  "title": "Notifikasi email (invoice)",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ },
+ "Artboard-app-32.dc.html": {
+  "title": "Notifikasi WhatsApp",
+  "page": "page-app",
+  "w": 390,
+  "h": 844
+ }
+}

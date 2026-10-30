@@ -11,6 +11,6 @@ export async function POST() {
   }
   const out = new NextResponse(null, { status: 204 });
   out.cookies.delete("ob_at");
-  out.cookies.set("ob_rt", "", { path: "/api/auth", maxAge: 0 });
+  out.cookies.set("ob_rt", "", { path: "/", maxAge: 0 });
   return out;
 }

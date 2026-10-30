@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="id">
+<head><meta charset="utf-8"><title>OceanBird App — Splash</title><script src="./support.js"></script></head>
+<body>
+<x-dc>
+  <helmet>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&amp;family=Roboto+Mono:wght@500&amp;display=swap" rel="stylesheet">
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; }
+      body { background: #ffffff; }
+      a { text-decoration: none; }
+      input { font-family: Roboto, Arial, sans-serif; }
+      .ob-scroll{scrollbar-width:none}.ob-scroll::-webkit-scrollbar{display:none}
+      @keyframes ob-flow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+      .ob-anim{background-size:300% 100%!important;animation:ob-flow 8s ease-in-out infinite}
+      @keyframes ob-fade{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+      .ob-fade{animation:ob-fade .9s ease-out both}
+      @keyframes ob-blink{0%,100%{opacity:1}50%{opacity:0}}.caret{animation:ob-blink 1s step-end infinite}
+      @media (prefers-reduced-motion: reduce){.ob-anim,.ob-fade,.caret{animation:none}}
+    </style>
+  </helmet>
+  <div style="position: relative; width: 390px; height: 844px; background: #FFFFFF; color: #0B0B0F; font-family: Roboto, Arial, sans-serif; overflow: hidden">
+    <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center">
+  <img class="ob-fade" src="/_blob/3d351840be016b65eff3af94ab1c93b3" alt="OceanBird" style="width: 210px; height: auto; display: block">
+</div>
+<a href="Artboard-app-03.dc.html" aria-label="Lanjut ke halaman masuk" style="position: absolute; inset: 0"></a>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

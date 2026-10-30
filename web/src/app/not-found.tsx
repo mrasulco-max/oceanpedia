@@ -1,12 +1,10 @@
-import Link from "next/link";
+import { loadBoard } from "@/boards/gen/registry";
+import { getLayout } from "@/lib/layout";
 
-export default function NotFound() {
-  return (
-    <main style={{ minHeight: "70vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24, textAlign: "center" }}>
-      <span className="mono" style={{ fontSize: 64, color: "var(--sky)" }}>404</span>
-      <h1 style={{ fontSize: 24 }}>Halaman tidak ditemukan</h1>
-      <p style={{ color: "var(--sub)" }}>Tautan mungkin salah atau berita sudah dipindahkan.</p>
-      <Link href="/" className="btn grad">Ke beranda</Link>
-    </main>
-  );
+/** 404 memakai artboard "404 / Error / Offline" (web) atau "Error / Offline" (app). */
+export default async function NotFound() {
+  const layout = await getLayout();
+  const b = await loadBoard(layout === "app" ? "app-23" : "web-error");
+  const Board = b.Component;
+  return <Board tpl={b.html} css={b.css} kind={b.kind} />;
 }

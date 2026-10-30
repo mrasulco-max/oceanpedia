@@ -106,13 +106,25 @@ jobs:
           set -e
           DESK='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36'
           MOB='Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'
-          curl -sf -A "$DESK" localhost:3000/ | grep -q 'class="w-head"'
-          curl -sf -A "$MOB" localhost:3000/ | grep -q 'class="a-shell"'
-          curl -sf -A "$DESK" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'NewsArticle'
-          curl -sf -A "$MOB" localhost:3000/market/BBCA | grep -q 'class="a-nav"'
-          curl -sf -A "$DESK" localhost:3000/legal | grep -q 'Ruang iklan kiri'
-          curl -sf -A "$DESK" localhost:3000/kalender | grep -q 'Kalender Ekonomi'
+          curl -sf -A "$DESK" localhost:3000/ | grep -q 'class="dc-frame-web"'
+          curl -sf -A "$MOB" localhost:3000/ | grep -q 'class="dc-frame-app"'
+          curl -sf -A "$DESK" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'IHSG Menguat Ditopang Saham Perbankan'
+          curl -sf -A "$MOB" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'class="dc-frame-app"'
+          curl -sf -A "$MOB" localhost:3000/market/BBCA | grep -q 'class="dc-frame-app"'
+          curl -sf -A "$DESK" localhost:3000/kategori/crypto | grep -q 'Crypto'
+          curl -sf -A "$DESK" localhost:3000/kalender | grep -q 'class="dc-frame-web"'
+          curl -sf -A "$DESK" localhost:3000/legal | grep -q 'class="dc-frame-web"'
+          curl -sf -A "$DESK" localhost:3000/admin/masuk | grep -q 'data-login-submit'
+          curl -sf -A "$MOB" localhost:3000/masuk | grep -q 'data-login-submit'
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/admin); test "$code" = 307
           code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/berita/tidak-ada); test "$code" = 404
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/halaman-tidak-ada); test "$code" = 404
+          # Semua rute desain dapat dirender (desktop & ponsel).
+          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /akun /pengaturan /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa; do
+            for ua in "$DESK" "$MOB"; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -A "$ua" "localhost:3000$p"); test "$code" = 200 || { echo "GAGAL $p ($code)"; exit 1; }
+            done
+          done
       - name: Log bila gagal
         if: failure()
         run: tail -n 100 /tmp/api.log /tmp/web.log || true
