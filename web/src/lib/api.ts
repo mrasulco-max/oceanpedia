@@ -18,7 +18,7 @@ async function get<T>(path: string, { revalidate = 30, token }: Opts = {}): Prom
   const res = await fetch(BASE + path, {
     headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     // Konten publik di-cache (ISR); permintaan bertoken tidak di-cache.
-    ...(token ? { cache: "no-store" as const } : { next: { revalidate } }),
+    ...(token ? { cache: "no-store" as const } : { next: { revalidate, tags: ["api"] } }),
   });
   if (!res.ok) {
     let detail = res.statusText;
@@ -43,6 +43,7 @@ export const api = {
   },
   article: (slug: string, o?: Opts) => get<Article>(`/v1/articles/${encodeURIComponent(slug)}`, { revalidate: 60, ...o }),
   related: (slug: string) => get<Page<ArticleCard>>(`/v1/articles/${encodeURIComponent(slug)}/related?limit=6`, { revalidate: 120 }),
+  instruments: () => get<Page<Instrument>>("/v1/market/instruments", { revalidate: 3600 }),
   quotes: (symbols: string[]) => get<Page<QuoteItem>>(`/v1/market/quotes?symbols=${symbols.join(",")}`, { revalidate: 15 }),
   instrument: (symbol: string) =>
     get<{ instrument: Instrument; quote: Quote | null; news: ArticleCard[]; error?: string }>(`/v1/market/instruments/${encodeURIComponent(symbol)}`, { revalidate: 15 }),

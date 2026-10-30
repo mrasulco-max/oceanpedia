@@ -33,6 +33,9 @@ func (s *Server) Handler() http.Handler {
 	auth := func(pattern string, fn func(http.ResponseWriter, *http.Request) error) {
 		m.Handle(pattern, s.optionalAuth(requireAuth(wrap(fn))))
 	}
+	staff := func(pattern string, fn func(http.ResponseWriter, *http.Request) error) {
+		m.Handle(pattern, s.optionalAuth(requireStaff(wrap(fn))))
+	}
 
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { httpx.JSON(w, 200, map[string]string{"status": "ok"}) })
 	h("GET /readyz", s.ready)
@@ -77,6 +80,15 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /v1/articles/{slug}/reaction", s.react)
 	auth("POST /v1/articles/{slug}/comments", s.addComment)
 	auth("POST /v1/checkout", s.checkout)
+
+	// panel redaksi (penulis, editor, admin)
+	staff("GET /v1/admin/articles", s.adminArticles)
+	staff("POST /v1/admin/articles", s.createArticle)
+	staff("GET /v1/admin/articles/{id}", s.adminArticle)
+	staff("PUT /v1/admin/articles/{id}", s.updateArticle)
+	staff("POST /v1/admin/articles/{id}/status", s.articleStatus)
+	staff("POST /v1/admin/media", s.uploadMedia)
+	h("GET /v1/media/{id}", s.media)
 
 	m.Handle("/", wrap(func(w http.ResponseWriter, r *http.Request) error { return httpx.NotFound("Endpoint tidak dikenal.") }))
 

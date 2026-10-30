@@ -3,30 +3,17 @@
  * tanpa mengubah tampilannya (mis. form login memanggil API sungguhan).
  */
 import type { useRouter } from "next/navigation";
+import { toast } from "./toast";
+import { content, editor } from "./editorial";
 
-export type EnhancerId = "login" | "logout";
+export type EnhancerId = "login" | "logout" | "editor" | "content";
 
-interface Env {
+export interface Env {
   router: ReturnType<typeof useRouter>;
   ctx: Record<string, string>;
 }
 
-type Cleanup = (() => void) | void;
-
-function toast(_host: Element, text: string, kind: "error" | "ok" = "error"): void {
-  let el = document.querySelector<HTMLDivElement>(".dc-flash");
-  if (!el) {
-    el = document.createElement("div");
-    el.className = "dc-flash";
-    el.setAttribute("role", "alert");
-    document.body.appendChild(el);
-  }
-  el.textContent = text;
-  el.dataset.kind = kind;
-  el.dataset.on = "1";
-  window.clearTimeout(Number(el.dataset.t ?? 0));
-  el.dataset.t = String(window.setTimeout(() => el && (el.dataset.on = "0"), 3200));
-}
+export type Cleanup = (() => void) | void;
 
 /** Form login (app, web, admin): input email + sandi → /api/auth/login (cookie httpOnly). */
 function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
@@ -102,7 +89,7 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
   return () => host.removeEventListener("click", onClick, true);
 }
 
-const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout };
+const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content };
 
 export function runEnhancer(id: EnhancerId, host: HTMLElement, env: Env): Cleanup {
   return REGISTRY[id]?.(host, env);

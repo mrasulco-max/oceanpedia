@@ -4,7 +4,7 @@ import { getLayout } from "@/lib/layout";
 import { matchRoute, pickBoard, prepare } from "@/dc/pages";
 import { loadBoard } from "@/boards/gen/registry";
 import { api } from "@/lib/api";
-import { currentUser } from "@/lib/session";
+import { currentUser, type SessionUser } from "@/lib/session";
 
 type Props = { params: Promise<{ path?: string[] }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -23,14 +23,16 @@ async function resolve(props: Props) {
   const search = flat(await props.searchParams);
 
   // Panel admin: wajib masuk dengan peran redaksi/admin.
+  let me: SessionUser | null = null;
   if (m.route.admin && !m.route.public) {
-    const me = await currentUser();
+    me = await currentUser();
     if (!me || !STAFF.has(me.role)) {
-      redirect(`/admin/masuk?next=${encodeURIComponent("/" + path.join("/"))}`);
+      const qs = new URLSearchParams(search).toString();
+      redirect(`/admin/masuk?next=${encodeURIComponent("/" + path.join("/") + (qs ? `?${qs}` : ""))}`);
     }
   }
   const layout = await getLayout();
-  return { prepared: await prepare(m, layout, search), path };
+  return { prepared: await prepare(m, layout, search, me), path };
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {

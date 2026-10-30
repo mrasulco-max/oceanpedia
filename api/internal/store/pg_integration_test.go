@@ -143,4 +143,71 @@ func TestPGStore(t *testing.T) {
 	if err != nil || inv.Total != 10989 || len(inv.Number) < 20 {
 		t.Fatalf("invoice: %v %+v", err, inv)
 	}
+
+	// Alur redaksi: tulis draf → kirim review → terbit → tampil di daftar publik.
+	slugBase := "uji-redaksi-" + time.Now().Format("150405000000")
+	slugFn := func(i int) string {
+		if i == 0 {
+			return slugBase
+		}
+		return slugBase + "-" + string(rune('0'+i))
+	}
+	in := store.ArticleInput{Title: "Uji alur redaksi OceanBird", Excerpt: "Ringkasan uji.", Body: "Isi uji.", CategorySlug: "saham",
+		Symbols: []string{"BBCA", "IHSG"}, Status: "review", ReadingMinutes: 1}
+	art, err := s.CreateArticle(ctx, u.ID, "penguji-"+slugBase, in, slugFn)
+	if err != nil || art.Status != "review" || len(art.Symbols) != 2 || !art.OwnedBy(u.ID) || art.AuthorName != "Penguji" {
+		t.Fatalf("create article: %v %+v", err, art)
+	}
+	dup, err := s.CreateArticle(ctx, u.ID, "penguji-"+slugBase, in, slugFn)
+	if err != nil || dup.Slug == art.Slug {
+		t.Fatalf("slug unik: %v %s %s", err, dup.Slug, art.Slug)
+	}
+	if _, err := s.CreateArticle(ctx, u.ID, "x", store.ArticleInput{Title: "Kategori salah sekali", CategorySlug: "tidak-ada", Status: "draft", ReadingMinutes: 1}, slugFn); err == nil {
+		t.Fatal("kategori tak dikenal harus gagal")
+	}
+	mine, err := s.AdminArticles(ctx, store.AdminArticleFilter{Status: "review", Mine: u.ID, Limit: 10})
+	if err != nil || len(mine) != 2 {
+		t.Fatalf("admin list: %v %d", err, len(mine))
+	}
+	if pub, _ := s.Articles(ctx, store.ArticleFilter{Category: "saham", Limit: 50}); containsSlug(pub, art.Slug) {
+		t.Fatal("artikel review tidak boleh tampil publik")
+	}
+	now := time.Now()
+	if err := s.SetArticleStatus(ctx, art.ID, "published", &now, ""); err != nil {
+		t.Fatal(err)
+	}
+	if pub, _ := s.Articles(ctx, store.ArticleFilter{Category: "saham", Limit: 50}); !containsSlug(pub, art.Slug) {
+		t.Fatal("artikel terbit harus tampil publik")
+	}
+	in.Title, in.Symbols, in.Status, in.PublishedAt = "Uji alur redaksi (revisi)", []string{"BBRI"}, "published", &now
+	upd, err := s.UpdateArticle(ctx, art.ID, in)
+	if err != nil || upd.Title != in.Title || len(upd.Symbols) != 1 || upd.Symbols[0] != "BBRI" {
+		t.Fatalf("update: %v %+v", err, upd)
+	}
+	if _, err := s.UpdateArticle(ctx, art.ID, store.ArticleInput{Title: "Ticker tidak dikenal", CategorySlug: "saham", Symbols: []string{"ZZZZ"}, Status: "draft", ReadingMinutes: 1}); err == nil {
+		t.Fatal("ticker tak dikenal harus gagal")
+	}
+	counts, err := s.AdminCounts(ctx)
+	if err != nil || counts["published"] < 13 || counts["review"] < 1 {
+		t.Fatalf("counts: %v %+v", err, counts)
+	}
+	mid, err := s.CreateMedia(ctx, u.ID, "image/png", []byte("\x89PNG data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mime, data, err := s.Media(ctx, mid); err != nil || mime != "image/png" || len(data) == 0 {
+		t.Fatalf("media: %v %s", err, mime)
+	}
+	if err := s.Audit(ctx, u.ID, "article.publish", "article", art.ID, map[string]string{"title": art.Title}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func containsSlug(list []store.ArticleCard, slug string) bool {
+	for _, a := range list {
+		if a.Slug == slug {
+			return true
+		}
+	}
+	return false
 }

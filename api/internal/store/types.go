@@ -203,4 +203,15 @@ type Store interface {
 	AddComment(ctx context.Context, userID, slug, body string) (Comment, error)
 
 	CreateInvoice(ctx context.Context, userID string, inv Invoice) (Invoice, error)
+
+	// Redaksi (panel admin)
+	AdminArticles(ctx context.Context, f AdminArticleFilter) ([]AdminArticle, error)
+	AdminArticle(ctx context.Context, id string) (AdminArticle, error)
+	AdminCounts(ctx context.Context) (map[string]int, error)
+	CreateArticle(ctx context.Context, userID, authorSlug string, in ArticleInput, slugFn func(i int) string) (AdminArticle, error)
+	UpdateArticle(ctx context.Context, id string, in ArticleInput) (AdminArticle, error)
+	SetArticleStatus(ctx context.Context, id, status string, publishedAt *time.Time, note string) error
+	CreateMedia(ctx context.Context, userID, mime string, data []byte) (string, error)
+	Media(ctx context.Context, id string) (mime string, data []byte, err error)
+	Audit(ctx context.Context, actorID, action, entity, entityID string, data any) error
 }

@@ -53,3 +53,19 @@ func TestPgTextArray(t *testing.T) {
 		t.Fatalf("nil -> %s", got)
 	}
 }
+
+func TestBuildAdminArticlesQuery(t *testing.T) {
+	q, args := BuildAdminArticlesQuery(AdminArticleFilter{Status: "review", Mine: "u1", Query: "bank", Limit: 10})
+	if len(args) != 4 || args[3] != 10 {
+		t.Fatalf("args tak terduga: %#v", args)
+	}
+	for _, want := range []string{"a.status = $1", "(a.created_by = $2 OR au.user_id = $2)", "websearch_to_tsquery('simple', $3)", "LIMIT $4"} {
+		if !strings.Contains(q, want) {
+			t.Errorf("query tidak memuat %q:\n%s", want, q)
+		}
+	}
+	q, args = BuildAdminArticlesQuery(AdminArticleFilter{Status: "scheduled", Limit: 5})
+	if len(args) != 1 || !strings.Contains(q, "published_at > now()") {
+		t.Fatalf("scheduled: %s %#v", q, args)
+	}
+}

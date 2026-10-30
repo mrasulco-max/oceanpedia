@@ -6,6 +6,9 @@ import { api, ApiError, safe } from "@/lib/api";
 import type { Article, ArticleCard, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
+import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
+import { adminApi, type AdminArticle } from "@/lib/admin";
+import type { SessionUser } from "@/lib/session";
 
 export interface Match {
   route: RouteDef;
@@ -69,7 +72,10 @@ function bindSymbolLinks(html: string): string {
   });
 }
 
-export async function prepare(m: Match, layout: Layout, search: Record<string, string>): Promise<Prepared> {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CONTENT_STATUS = new Set(["review", "scheduled", "revision", "breaking", "draft", "published", "archived"]);
+
+export async function prepare(m: Match, layout: Layout, search: Record<string, string>, user: SessionUser | null = null): Promise<Prepared> {
   const boardId = pickBoard(m.route, layout);
   const board = await loadBoard(boardId);
   let html = board.html;
@@ -137,6 +143,31 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     ctx.next = search.next?.startsWith("/admin") ? search.next : "/admin";
     ctx.requireRole = "admin,editor,author";
   }
+  // Panel redaksi: data nyata untuk "Tulis artikel" & "Konten".
+  if (board.kind === "admin") html = bindStaffHeader(html, user);
+  const role = user?.role ?? "reader";
+  if (boardId === "admin-editor") {
+    const id = search.id && UUID.test(search.id) ? search.id : "";
+    const [cats, ins, article] = await Promise.all([
+      safe(api.categories(), { data: [] }),
+      safe(api.instruments(), { data: [] }),
+      id ? adminApi.article(id) : Promise.resolve(null),
+    ]);
+    if (id && !article) notFound();
+    html = bindEditor(html, { article, categories: cats.data, instruments: ins.data, role });
+    enhance.push("editor");
+    if (article) ctx.id = article.id;
+    title = article ? `Edit: ${article.title}` : "Tulis artikel";
+  } else if (boardId === "admin-content") {
+    const status = CONTENT_STATUS.has(search.status ?? "") ? search.status! : "review";
+    const list = (await adminApi.articles(status)) ?? { data: [], counts: {} };
+    let selected: AdminArticle | null = null;
+    if (search.id && UUID.test(search.id)) selected = list.data.find((x) => x.id === search.id) ?? (await adminApi.article(search.id));
+    selected ??= list.data[0] ?? null;
+    html = bindContent(html, { list, status, selected, role });
+    enhance.push("content");
+  }
+
   html = bindLogout(html);
   if (html.includes("data-logout")) enhance.push("logout");
 

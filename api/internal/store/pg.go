@@ -600,7 +600,7 @@ func (p *PG) CreateInvoice(ctx context.Context, userID string, inv Invoice) (Inv
 // AllQueries dipakai uji integrasi untuk memvalidasi sintaks SQL terhadap PostgreSQL.
 func AllQueries() map[string]string {
 	q, _ := BuildArticlesQuery(ArticleFilter{Category: "x", Tag: "y", Author: "z", Query: "q", Before: &time.Time{}, Limit: 10})
-	return map[string]string{
+	out := map[string]string{
 		"categories": qCategories, "articles": q, "most_read": qMostRead, "article": qArticle, "related": qRelated,
 		"inc_view": qIncView, "author": qAuthor, "instruments": qInstruments, "events": qEvents, "plans": qPlans, "ads": qAds,
 		"create_user": qCreateUser, "user_by_email": qUserByEmail, "user_by_id": qUserByID, "save_refresh": qSaveRefresh,
@@ -609,4 +609,8 @@ func AllQueries() map[string]string {
 		"delete_alert": qDeleteAlert, "bookmark_on": qBookmarkOn, "bookmark_off": qBookmarkOff, "bookmarks": qBookmarks,
 		"react": qReact, "reactions": qReactions, "comments": qComments, "add_comment": qAddComment, "create_invoice": qCreateInvoice,
 	}
+	for k, v := range adminQueries() {
+		out[k] = v
+	}
+	return out
 }
