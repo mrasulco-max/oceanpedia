@@ -65,11 +65,11 @@ func run(log *slog.Logger) error {
 
 	var provider market.Provider = market.Sample{}
 	if cfg.TwelveDataKey != "" {
-		provider = &market.Shared{P: market.NewTwelveData(cfg.TwelveDataKey), KV: &store.PG{DB: db}, QuoteTTL: cfg.QuoteTTL, CandleTTL: cfg.CandleTTL, ErrTTL: 24 * time.Hour, Skip: market.SkipList(cfg.MarketSkip)}
+		provider = market.Live(cfg.TwelveDataKey, &store.PG{DB: db}, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
 	} else {
 		log.Warn("TWELVEDATA_API_KEY kosong: memakai data pasar contoh")
 	}
-	srv := &api.Server{Store: &store.PG{DB: db}, Market: market.NewCached(provider, cfg.MarketCacheTTL), Cfg: cfg, Log: log}
+	srv := &api.Server{Store: &store.PG{DB: db}, Market: provider, Cfg: cfg, Log: log}
 
 	hs := &http.Server{
 		Addr:              cfg.Addr,

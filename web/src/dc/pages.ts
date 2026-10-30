@@ -7,7 +7,7 @@ import type { Article, ArticleCard, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
-import { bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
+import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import type { Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
@@ -62,8 +62,8 @@ function dedupe(list: (ArticleCard | null | undefined)[]): ArticleCard[] {
   return out;
 }
 
-const KNOWN_SYMBOLS = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "GOTO", "ANTM", "ADRO", "UNVR", "ICBP", "INDF", "IHSG", "LQ45", "BTC", "ETH", "BTCUSD", "ETHUSD", "XAUUSD", "USDIDR"];
-const SYMBOL_ALIAS: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD" };
+const KNOWN_SYMBOLS = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "GOTO", "ANTM", "ADRO", "UNVR", "ICBP", "INDF", "IHSG", "LQ45", "BTC", "ETH", "SOL", "BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "USDIDR", "EUR/IDR", "SGD/IDR", "XAU/USD", "USD/IDR"];
+const SYMBOL_ALIAS: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", "EUR/IDR": "EURIDR", "SGD/IDR": "SGDIDR", "XAU/USD": "XAUUSD", "USD/IDR": "USDIDR" };
 
 /** Baris pasar yang menautkan ke contoh BBCA diarahkan ke simbolnya masing-masing. */
 function bindSymbolLinks(html: string): string {
@@ -128,7 +128,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const info = await safe(api.instrument(sym), null);
     if (!info) notFound();
     // Label pendek ala desain (BTC, ETH, XAU, USD/IDR) agar muat di avatar & tabel.
-    const short = ({ BTCUSD: "BTC", ETHUSD: "ETH", XAUUSD: "XAU", USDIDR: "USD/IDR" } as Record<string, string>)[sym] ?? sym;
+    const short = ({ BTCUSD: "BTC", ETHUSD: "ETH", SOLUSD: "SOL", BNBUSD: "BNB", XRPUSD: "XRP", DOGEUSD: "DOGE", XAUUSD: "XAU", USDIDR: "USD/IDR", EURIDR: "EUR/IDR", SGDIDR: "SGD/IDR" } as Record<string, string>)[sym] ?? sym;
     if (sym !== "BBCA") {
       html = replaceText(html, "BBCA", short);
       html = html.split("Bank Central Asia Tbk").join(esc(info.instrument.name));
@@ -154,6 +154,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   }
   html = bindSymbolLinks(html);
   html = bindQuotes(html, quotes);
+  html = bindCryptoVolume(html, quotes);
+  html = bindDataCredits(html);
 
   // Form masuk memanggil API sungguhan.
   if (boardId === "app-03") {
