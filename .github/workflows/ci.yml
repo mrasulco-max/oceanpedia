@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (Go)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: api } }
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: oceanpedia, POSTGRES_PASSWORD: ci, POSTGRES_DB: oceanpedia }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U oceanpedia" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://oceanpedia:ci@localhost:5432/oceanpedia?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.24", cache: false }
+      - name: Modul
+        run: go mod tidy && go mod verify
+      - name: Format
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - name: Unit test
+        run: go test -race -count=1 ./...
+      - name: Integration test (PostgreSQL)
+        run: go test -count=1 -tags integration ./internal/store/
+      - run: go build -trimpath -o bin/api ./cmd/api
+      - uses: actions/upload-artifact@v4
+        with: { name: api-bin, path: api/bin/api, retention-days: 3 }
+
+  web:
+    name: Web (Next.js)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+        env: { NEXT_TELEMETRY_DISABLED: "1" }
+      - name: Simpan build
+        run: tar -czf /tmp/web-build.tgz .next public package.json node_modules next.config.ts
+      - uses: actions/upload-artifact@v4
+        with: { name: web-build, path: /tmp/web-build.tgz, retention-days: 3 }
+
+  smoke:
+    name: Smoke test (desktop vs mobile)
+    needs: [api, web]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: oceanpedia, POSTGRES_PASSWORD: ci, POSTGRES_DB: oceanpedia }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U oceanpedia" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://oceanpedia:ci@localhost:5432/oceanpedia?sslmode=disable
+      API_JWT_SECRET: ci-secret-ci-secret-ci-secret-ci-secret
+      API_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/download-artifact@v4
+        with: { name: api-bin, path: bin }
+      - uses: actions/download-artifact@v4
+        with: { name: web-build, path: /tmp }
+      - name: Jalankan API + seed
+        run: |
+          chmod +x bin/api
+          ./bin/api > /tmp/api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:8080/readyz && break; sleep 1; done
+          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -v ON_ERROR_STOP=1 -f db/seed/dev_seed.sql
+      - name: Uji API
+        run: |
+          set -e
+          curl -sf localhost:8080/v1/home | jq -e '.latest | length > 5'
+          curl -sf "localhost:8080/v1/market/quotes?symbols=BBCA,BTCUSD" | jq -e '.data | length == 2'
+          curl -sf "localhost:8080/v1/ads?surface=web&page=legal" | jq -e '.data | length == 2'
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/v1/articles/tidak-ada); test "$code" = 404
+          curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' \
+            -d '{"email":"ci@example.com","password":"sandi-rahasia","full_name":"CI Bot"}' | jq -e '.access_token | length > 20'
+      - name: Jalankan web
+        run: |
+          mkdir -p /tmp/web && tar -xzf /tmp/web-build.tgz -C /tmp/web
+          cd /tmp/web && API_INTERNAL_URL=http://localhost:8080 npx next start -p 3000 > /tmp/web.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:3000 -o /dev/null && break; sleep 1; done
+      - name: Desktop → UI website, ponsel → UI app
+        run: |
+          set -e
+          DESK='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36'
+          MOB='Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'
+          curl -sf -A "$DESK" localhost:3000/ | grep -q 'class="w-head"'
+          curl -sf -A "$MOB" localhost:3000/ | grep -q 'class="a-shell"'
+          curl -sf -A "$DESK" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'NewsArticle'
+          curl -sf -A "$MOB" localhost:3000/market/BBCA | grep -q 'class="a-nav"'
+          curl -sf -A "$DESK" localhost:3000/legal | grep -q 'Ruang iklan kiri'
+          curl -sf -A "$DESK" localhost:3000/kalender | grep -q 'Kalender Ekonomi'
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/berita/tidak-ada); test "$code" = 404
+      - name: Log bila gagal
+        if: failure()
+        run: tail -n 100 /tmp/api.log /tmp/web.log || true

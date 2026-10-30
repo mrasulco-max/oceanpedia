@@ -1,0 +1,45 @@
+# Lingkungan lokal lengkap: PostgreSQL + API (Go) + Web (Next.js)
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-oceanpedia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-oceanpedia}
+    ports: ["5432:5432"]
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oceanpedia}"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-oceanpedia}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-oceanpedia}?sslmode=disable
+      API_CORS_ORIGINS: http://localhost:3000
+    ports: ["8080:8080"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  seed:
+    image: postgres:16-alpine
+    profiles: [seed]
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes: [./db/seed:/seed:ro]
+    command: psql -h db -U ${POSTGRES_USER:-oceanpedia} -d ${POSTGRES_DB:-oceanpedia} -v ON_ERROR_STOP=1 -f /seed/dev_seed.sql
+    depends_on:
+      api: { condition: service_started }
+
+  web:
+    build: ./web
+    environment:
+      API_INTERNAL_URL: http://api:8080
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  db-data:

@@ -1,0 +1,148 @@
+openapi: 3.1.0
+info:
+  title: OceanPedia API
+  version: 1.0.0
+  description: |
+    REST API OceanPedia (berita & data pasar). Semua waktu dalam ISO 8601 (UTC),
+    uang dalam satuan terkecil + kode ISO 4217, error mengikuti RFC 9457 (application/problem+json).
+  contact: { name: PT Nusantara Entertainment Asia, email: help@jalaexplorer.com }
+servers:
+  - url: http://localhost:8080
+security: []
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        errors: { type: object, additionalProperties: { type: string } }
+    Category:
+      type: object
+      properties: { id: {type: string, format: uuid}, slug: {type: string}, name: {type: string}, description: {type: string}, icon: {type: string}, article_count: {type: integer} }
+    ArticleCard:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        title: { type: string }
+        excerpt: { type: string }
+        cover_url: { type: [string, "null"] }
+        category: { $ref: '#/components/schemas/Category' }
+        author_name: { type: string }
+        is_premium: { type: boolean }
+        is_breaking: { type: boolean }
+        reading_minutes: { type: integer }
+        view_count: { type: integer }
+        published_at: { type: string, format: date-time }
+    Article:
+      allOf:
+        - $ref: '#/components/schemas/ArticleCard'
+        - type: object
+          properties:
+            body: { type: string }
+            locked: { type: boolean, description: true bila artikel premium dan pembaca belum berlangganan }
+            ai_summary: { type: [string, "null"], description: Hanya untuk pelanggan Plus }
+            tags: { type: array, items: { type: object, properties: { slug: {type: string}, name: {type: string} } } }
+            symbols: { type: array, items: { type: string } }
+    Quote:
+      type: object
+      properties: { symbol: {type: string}, price: {type: number}, change: {type: number}, change_percent: {type: number}, open: {type: number}, high: {type: number}, low: {type: number}, previous_close: {type: number}, volume: {type: number}, as_of: {type: string, format: date-time}, source: {type: string, enum: [twelvedata, sample]} }
+    TokenResponse:
+      type: object
+      properties: { access_token: {type: string}, token_type: {type: string, const: Bearer}, expires_in: {type: integer}, refresh_token: {type: string}, user: {type: object} }
+  responses:
+    Problem:
+      description: Error
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+paths:
+  /healthz: { get: { summary: Liveness, responses: { '200': { description: OK } } } }
+  /readyz: { get: { summary: Readiness (cek database), responses: { '200': { description: Siap }, '503': { description: Belum siap } } } }
+  /v1/home:
+    get: { summary: Data beranda (top story, terbaru, terpopuler, per kategori), tags: [Konten], responses: { '200': { description: OK } } }
+  /v1/categories:
+    get: { summary: Daftar kategori, tags: [Konten], responses: { '200': { description: OK } } }
+  /v1/articles:
+    get:
+      summary: Daftar artikel (paginasi keyset)
+      tags: [Konten]
+      parameters:
+        - { name: category, in: query, schema: { type: string } }
+        - { name: tag, in: query, schema: { type: string } }
+        - { name: author, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string, maxLength: 120 } }
+        - { name: cursor, in: query, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ArticleCard' } }, next_cursor: { type: [string, "null"] } } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /v1/articles/{slug}:
+    get:
+      summary: Detail artikel
+      tags: [Konten]
+      parameters: [{ name: slug, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Article' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/articles/{slug}/related: { get: { summary: Artikel terkait, tags: [Konten], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /v1/articles/{slug}/views: { post: { summary: Catat tayangan, tags: [Konten], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK } } } }
+  /v1/articles/{slug}/reactions: { get: { summary: Jumlah reaksi, tags: [Interaksi], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /v1/articles/{slug}/reaction:
+    put: { summary: Beri reaksi, tags: [Interaksi], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], requestBody: { content: { application/json: { schema: { type: object, required: [kind], properties: { kind: { enum: [bullish, bearish, informative, favorite] } } } } } }, responses: { '200': { description: OK } } }
+  /v1/articles/{slug}/comments:
+    get: { summary: Komentar, tags: [Interaksi], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } }
+    post: { summary: Tulis komentar, tags: [Interaksi], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], requestBody: { content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string, maxLength: 2000 } } } } } }, responses: { '201': { description: Dibuat } } }
+  /v1/authors/{slug}: { get: { summary: Profil penulis + artikel, tags: [Konten], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /v1/events:
+    get:
+      summary: Kalender ekonomi
+      tags: [Pasar]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 31 } }
+        - { name: impact, in: query, schema: { enum: [low, medium, high] } }
+      responses: { '200': { description: OK } }
+  /v1/market/instruments: { get: { summary: Daftar instrumen, tags: [Pasar], responses: { '200': { description: OK } } } }
+  /v1/market/quotes:
+    get: { summary: Harga beberapa simbol, tags: [Pasar], parameters: [{ name: symbols, in: query, required: true, schema: { type: string, example: 'BBCA,BTCUSD' } }], responses: { '200': { description: OK }, '400': { $ref: '#/components/responses/Problem' } } }
+  /v1/market/instruments/{symbol}: { get: { summary: Detail instrumen + harga + berita terkait, tags: [Pasar], parameters: [{ name: symbol, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /v1/market/instruments/{symbol}/candles:
+    get:
+      summary: Data OHLCV
+      tags: [Pasar]
+      parameters:
+        - { name: symbol, in: path, required: true, schema: { type: string } }
+        - { name: interval, in: query, schema: { enum: [1min, 5min, 15min, 1h, 4h, 1day, 1week, 1month], default: 1day } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500, default: 120 } }
+      responses: { '200': { description: OK }, '502': { $ref: '#/components/responses/Problem' } }
+  /v1/plans: { get: { summary: Paket langganan (harga belum termasuk pajak), tags: [Langganan], responses: { '200': { description: OK } } } }
+  /v1/ads: { get: { summary: Slot iklan per halaman, tags: [Iklan], parameters: [{ name: surface, in: query, required: true, schema: { enum: [web, app] } }, { name: page, in: query, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /v1/auth/register:
+    post: { summary: Daftar akun, tags: [Auth], requestBody: { content: { application/json: { schema: { type: object, required: [email, password, full_name], properties: { email: { type: string, format: email }, password: { type: string, minLength: 8, maxLength: 128 }, full_name: { type: string } } } } } }, responses: { '201': { description: Dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/TokenResponse' } } } }, '409': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } } }
+  /v1/auth/login:
+    post: { summary: Masuk, tags: [Auth], requestBody: { content: { application/json: { schema: { type: object, required: [email, password], properties: { email: { type: string }, password: { type: string } } } } } }, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenResponse' } } } }, '401': { $ref: '#/components/responses/Problem' } } }
+  /v1/auth/refresh: { post: { summary: Tukar refresh token (rotasi), tags: [Auth], responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Problem' } } } }
+  /v1/auth/logout: { post: { summary: Cabut refresh token, tags: [Auth], responses: { '204': { description: OK } } } }
+  /v1/me: { get: { summary: Profil saya, tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Problem' } } } }
+  /v1/me/watchlist:
+    get: { summary: Watchlist, tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK } } }
+    post: { summary: Tambah simbol, tags: [Akun], security: [{ bearer: [] }], requestBody: { content: { application/json: { schema: { type: object, required: [symbol], properties: { symbol: { type: string } } } } } }, responses: { '200': { description: OK }, '422': { $ref: '#/components/responses/Problem' } } }
+  /v1/me/watchlist/{symbol}: { delete: { summary: Hapus simbol, tags: [Akun], security: [{ bearer: [] }], parameters: [{ name: symbol, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK } } } }
+  /v1/me/alerts:
+    get: { summary: Price alert, tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK } } }
+    post: { summary: Buat price alert, tags: [Akun], security: [{ bearer: [] }], responses: { '201': { description: Dibuat }, '403': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } } }
+  /v1/me/alerts/{id}: { delete: { summary: Hapus alert, tags: [Akun], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: OK } } } }
+  /v1/me/bookmarks: { get: { summary: Artikel tersimpan, tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK } } } }
+  /v1/me/bookmarks/{slug}:
+    put: { summary: Simpan artikel, tags: [Akun], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK } } }
+    delete: { summary: Hapus dari tersimpan, tags: [Akun], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK } } }
+  /v1/checkout:
+    post: { summary: Buat tagihan langganan (PPN dihitung server), tags: [Langganan], security: [{ bearer: [] }], requestBody: { content: { application/json: { schema: { type: object, required: [plan_code], properties: { plan_code: { type: string }, seats: { type: integer }, promo_code: { type: string }, method: { type: string } } } } } }, responses: { '201': { description: Tagihan dibuat }, '422': { $ref: '#/components/responses/Problem' } } }
