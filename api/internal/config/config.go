@@ -23,6 +23,8 @@ type Config struct {
 	RunMigrations   bool
 	TwelveDataKey   string
 	MarketCacheTTL  time.Duration
+	QuoteTTL        time.Duration
+	CandleTTL       time.Duration
 	TaxRate         float64 // PPN, mis. 0.11
 }
 
@@ -40,6 +42,8 @@ func Load() (Config, error) {
 		RunMigrations:   env("API_RUN_MIGRATIONS", "true") == "true",
 		TwelveDataKey:   os.Getenv("TWELVEDATA_API_KEY"),
 		MarketCacheTTL:  dur("TWELVEDATA_CACHE_TTL", time.Minute),
+		QuoteTTL:        dur("TWELVEDATA_QUOTE_TTL", 10*time.Minute),
+		CandleTTL:       dur("TWELVEDATA_CANDLE_TTL", time.Hour),
 		TaxRate:         float("API_TAX_RATE", 0.11),
 	}
 	var errs []error

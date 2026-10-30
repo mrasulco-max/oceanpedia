@@ -609,6 +609,7 @@ func AllQueries() map[string]string {
 		"delete_alert": qDeleteAlert, "bookmark_on": qBookmarkOn, "bookmark_off": qBookmarkOff, "bookmarks": qBookmarks,
 		"react": qReact, "reactions": qReactions, "comments": qComments, "add_comment": qAddComment, "create_invoice": qCreateInvoice,
 	}
+	out["market_cache_get"], out["market_cache_put"] = qMarketCacheGet, qMarketCachePut
 	for k, v := range adminQueries() {
 		out[k] = v
 	}

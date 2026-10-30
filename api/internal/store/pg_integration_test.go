@@ -201,6 +201,22 @@ func TestPGStore(t *testing.T) {
 	if err := s.Audit(ctx, u.ID, "article.publish", "article", art.ID, map[string]string{"title": art.Title}); err != nil {
 		t.Fatal(err)
 	}
+	// Cache data pasar bersama.
+	if err := s.MarketCachePut(ctx, "q:TEST", []byte(`{"price":1}`), ""); err != nil {
+		t.Fatal(err)
+	}
+	if b, e, _, ok, err := s.MarketCacheGet(ctx, "q:TEST"); err != nil || !ok || e != "" || len(b) == 0 {
+		t.Fatalf("market cache: %v %v %s", err, ok, b)
+	}
+	if err := s.MarketCachePut(ctx, "q:TEST", nil, "plan"); err != nil {
+		t.Fatal(err)
+	}
+	if b, e, _, ok, _ := s.MarketCacheGet(ctx, "q:TEST"); !ok || e != "plan" || len(b) == 0 {
+		t.Fatalf("galat dicatat tanpa menghapus data lama: %s %q", b, e)
+	}
+	if _, _, _, ok, err := s.MarketCacheGet(ctx, "q:TIDAK-ADA"); ok || err != nil {
+		t.Fatalf("kunci tak ada: %v %v", ok, err)
+	}
 }
 
 func containsSlug(list []store.ArticleCard, slug string) bool {

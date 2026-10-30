@@ -88,12 +88,28 @@ func (t *TwelveData) get(ctx context.Context, path string, q url.Values, out any
 	}
 	var e struct {
 		Status  string `json:"status"`
+		Code    int    `json:"code"`
 		Message string `json:"message"`
 	}
 	if json.Unmarshal(raw, &e) == nil && e.Status == "error" {
-		return fmt.Errorf("twelvedata: %s", e.Message)
+		return &APIError{Code: e.Code, Message: e.Message}
 	}
 	return json.Unmarshal(raw, out)
+}
+
+// APIError adalah galat dari penyedia data (mis. simbol butuh paket berbayar, kuota habis).
+type APIError struct {
+	Code    int
+	Message string
+}
+
+func (e *APIError) Error() string { return fmt.Sprintf("twelvedata %d: %s", e.Code, e.Message) }
+
+// Permanent: galat yang tidak akan berubah dalam waktu dekat (simbol tidak ada / tidak termasuk paket).
+// Galat kuota (429) dan gangguan jaringan dianggap sementara.
+func Permanent(err error) bool {
+	var e *APIError
+	return errors.As(err, &e) && (e.Code == 400 || e.Code == 403 || e.Code == 404)
 }
 
 type num string

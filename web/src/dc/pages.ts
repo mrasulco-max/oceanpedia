@@ -7,6 +7,8 @@ import type { Article, ArticleCard, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
+import { bindMarketDetail, bindQuotes } from "./market-bind";
+import type { Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import type { SessionUser } from "@/lib/session";
 
@@ -85,6 +87,14 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   const ctx: Record<string, string> = {};
   const path = m.route.path;
 
+  // Harga live (Twelve Data lewat API) untuk semua angka pasar di halaman mana pun.
+  const quotes = new Map<string, Quote>();
+  if (board.kind !== "admin") {
+    const ins = await safe(api.instruments(), { data: [] });
+    const qs = ins.data.length ? await safe(api.quotes(ins.data.map((i) => i.symbol)), { data: [] }) : { data: [] };
+    for (const it of qs.data) if (it.quote) quotes.set(it.instrument.symbol, it.quote);
+  }
+
   // Daftar artikel nyata untuk semua kartu berita di halaman mana pun.
   const home = await safe(api.home(), { top_story: null, latest: [], most_read: [], sections: [] });
   const all = dedupe([home.top_story, ...home.latest, ...home.sections.flatMap((s) => s.articles), ...home.most_read]);
@@ -117,16 +127,23 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const info = await safe(api.instrument(sym), null);
     if (!info) notFound();
     if (sym !== "BBCA") {
-      html = replaceText(html, "BBCA", sym);
+      // Label pendek ala desain (BTC, ETH, XAU, USD/IDR) agar muat di avatar & tabel.
+      const short = ({ BTCUSD: "BTC", ETHUSD: "ETH", XAUUSD: "XAU", USDIDR: "USD/IDR" } as Record<string, string>)[sym] ?? sym;
+      html = replaceText(html, "BBCA", short);
       html = html.split("Bank Central Asia Tbk").join(esc(info.instrument.name));
       html = html.split("Berita terkait BBCA").join(`Berita terkait ${esc(sym)}`);
     }
     html = bindArticleCards(html, dedupe([...info.news, ...all]));
+    if (info.quote) {
+      const candles = await safe(api.candles(sym, "1day", 100), { symbol: sym, interval: "1day", data: [] });
+      html = bindMarketDetail(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote, candles.data);
+    }
     title = `${sym} · ${info.instrument.name}`;
   } else {
     html = bindArticleCards(html, all);
   }
   html = bindSymbolLinks(html);
+  html = bindQuotes(html, quotes);
 
   // Form masuk memanggil API sungguhan.
   if (boardId === "app-03") {
