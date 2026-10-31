@@ -7,6 +7,8 @@ import type { Article, ArticleCard, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
+import { bindAccount, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
+import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
@@ -74,6 +76,11 @@ function bindSymbolLinks(html: string): string {
     if (!sym || sym === "BBCA") return whole;
     return `<a${pre}href="/market/${SYMBOL_ALIAS[sym] ?? sym}"${post}>${inner}</a>`;
   });
+}
+
+/** Hanya tautan internal yang boleh dipakai sebagai tujuan setelah masuk (cegah open redirect). */
+export function safeNext(v: string | undefined): string {
+  return v && v.startsWith("/") && !v.startsWith("//") && !v.startsWith("/\\") ? v : "/";
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -160,6 +167,13 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       enhance.push("tvchart");
     }
     title = `${sym} · ${info.instrument.name}`;
+  } else if (path === "/cari") {
+    const q = (search.q ?? "").trim().slice(0, 80);
+    const [res, ins] = await Promise.all([q ? safe(api.search(q), null) : Promise.resolve(null), q ? Promise.resolve({ data: [] }) : safe(api.instruments(), { data: [] })]);
+    const data = { q, res, quotes, popular: { instruments: ins.data.slice(0, 6), articles: home.latest.slice(0, 6) } };
+    html = board.kind === "app" ? bindSearchApp(html, data) : bindSearchWeb(html, data);
+    enhance.push("search");
+    title = q ? `Cari “${q}”` : "Cari";
   } else if (path === "/plus/baca" || path === "/plus/analisis") {
     // Analisis AI lengkap untuk berita (?a=slug) atau instrumen (?symbol=BTCUSD); bawaan: berita utama terbaru.
     const symbol = (search.symbol ?? "").toUpperCase();
@@ -194,14 +208,22 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   html = bindDataCredits(html);
 
   // Form masuk memanggil API sungguhan.
-  if (boardId === "app-03") {
+  const nextUrl = safeNext(search.next);
+  if (boardId === "app-03" || (boardId === "web-login" && path === "/masuk")) {
     html = bindLogin(html, "nadia.putri@email.com", "Masuk");
-    enhance.push("login");
-    ctx.next = search.next ?? "/";
-  } else if (boardId === "web-login" && path === "/masuk") {
-    html = bindLogin(html, "nadia.putri@email.com", "Masuk");
-    enhance.push("login");
-    ctx.next = search.next ?? "/";
+    html = bindLoginExtras(html);
+    enhance.push("login", "auth");
+    ctx.next = nextUrl;
+  } else if (path === "/daftar") {
+    html = boardId === "app-24" ? bindRegisterApp(html) : bindRegisterWeb(html);
+    enhance.push("auth");
+    ctx.next = nextUrl;
+  } else if (boardId === "app-04") {
+    const email = (search.email ?? "").trim().toLowerCase();
+    const mode: OtpMode = search.mode === "login" || search.mode === "reset" ? search.mode : "signup";
+    html = bindVerify(html, { email: /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(email) ? email : "", mode, next: nextUrl });
+    enhance.push("auth");
+    title = mode === "reset" ? "Atur ulang kata sandi" : "Verifikasi kode";
   } else if (boardId === "admin-login") {
     html = bindLogin(html, "andi@oceanbird.id", "Lanjut");
     enhance.push("login");
@@ -233,6 +255,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     enhance.push("content");
   }
 
+  if (user && board.kind !== "admin") html = bindAccount(html, user);
   if (board.kind === "app") html = hideFakeStatusBar(html);
   html = bindLogout(html);
   if (html.includes("data-logout")) enhance.push("logout");

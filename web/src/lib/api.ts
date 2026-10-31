@@ -1,5 +1,5 @@
 import "server-only";
-import type { AIAnalysis, AdSlot, Article, ArticleCard, Candle, Category, EconomicEvent, HomeData, Instrument, Page, Quote, QuoteItem } from "./types";
+import type { AIAnalysis, AdSlot, SearchResponse, Article, ArticleCard, Candle, Category, EconomicEvent, HomeData, Instrument, Page, Quote, QuoteItem } from "./types";
 
 const BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
@@ -44,6 +44,7 @@ async function aiGet(path: string, revalidate: number, ms = 9000): Promise<AIAna
 }
 
 export const api = {
+  search: (q: string) => get<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}&limit=6`, { revalidate: 30 }),
   articleAI: (slug: string) => aiGet(`/v1/articles/${encodeURIComponent(slug)}/ai`, 300),
   marketAI: (symbol: string) => aiGet(`/v1/market/instruments/${encodeURIComponent(symbol)}/ai`, 60),
   home: (o?: Opts) => get<HomeData>("/v1/home", o),

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -66,6 +67,31 @@ var ErrWeakPassword = errors.New("kata sandi minimal 8 karakter dan maksimal 128
 func ValidatePassword(pw string) error {
 	if n := len([]rune(pw)); n < 8 || n > 128 {
 		return ErrWeakPassword
+	}
+	return nil
+}
+
+// ErrPasswordRules: aturan kata sandi akun baru (sesuai form pendaftaran).
+var ErrPasswordRules = errors.New("kata sandi minimal 8 karakter, berisi huruf & angka, dan minimal 1 huruf besar")
+
+// ValidateNewPassword dipakai saat daftar & atur ulang: min. 8 karakter, huruf & angka, 1 huruf besar.
+func ValidateNewPassword(pw string) error {
+	if err := ValidatePassword(pw); err != nil {
+		return ErrPasswordRules
+	}
+	var letter, digit, upper bool
+	for _, r := range pw {
+		switch {
+		case r >= '0' && r <= '9':
+			digit = true
+		case unicode.IsUpper(r):
+			upper, letter = true, true
+		case unicode.IsLetter(r):
+			letter = true
+		}
+	}
+	if !letter || !digit || !upper {
+		return ErrPasswordRules
 	}
 	return nil
 }

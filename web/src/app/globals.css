@@ -126,3 +126,16 @@ svg {
 .dc-tv-ready [data-tv-overlay] {
   display: none !important;
 }
+
+/* Halaman Cari: filter tab (enhancer "search"). */
+[data-search-tab="aset"] [data-sec]:not([data-sec="aset"]),
+[data-search-tab="berita"] [data-sec]:not([data-sec="berita"]),
+[data-search-tab="penulis"] [data-sec]:not([data-sec="penulis"]),
+[data-search-tab="topik"] [data-sec]:not([data-sec="topik"]) {
+  display: none !important;
+}
+[aria-busy="true"][data-reg-submit],
+[aria-busy="true"][data-otp-submit] {
+  opacity: 0.6;
+  pointer-events: none;
+}

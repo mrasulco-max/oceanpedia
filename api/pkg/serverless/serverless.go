@@ -18,6 +18,7 @@ import (
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/httpx"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
+	"github.com/mrasulco-max/oceanpedia/api/internal/otp"
 	"github.com/mrasulco-max/oceanpedia/api/internal/store"
 )
 
@@ -48,6 +49,9 @@ func build() {
 		p = market.Live(cfg.TwelveDataKey, &store.PG{DB: db}, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
 	}
 	srv := &api.Server{Store: &store.PG{DB: db}, Market: p, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: &store.PG{DB: db}}, Cfg: cfg, Log: log}
+	if cfg.BirdKey != "" {
+		srv.OTP = otp.NewBird(cfg.BirdKey, cfg.BirdURL)
+	}
 	h = srv.Handler()
 }
 

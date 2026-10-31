@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getLayout } from "@/lib/layout";
-import { matchRoute, pickBoard, prepare } from "@/dc/pages";
+import { matchRoute, pickBoard, prepare, safeNext } from "@/dc/pages";
 import { loadBoard } from "@/boards/gen/registry";
 import { api } from "@/lib/api";
 import { currentUser, type SessionUser } from "@/lib/session";
@@ -30,6 +30,13 @@ async function resolve(props: Props) {
       const qs = new URLSearchParams(search).toString();
       redirect(`/admin/masuk?next=${encodeURIComponent("/" + path.join("/") + (qs ? `?${qs}` : ""))}`);
     }
+  }
+  // Situs: sesi pembaca (bila ada) untuk ikon akun, halaman akun, dan alur masuk/daftar.
+  if (!m.route.admin) {
+    me = await currentUser();
+    const p = m.route.path;
+    if (me && (p === "/masuk" || p === "/daftar")) redirect(safeNext(search.next) === "/" ? "/akun" : safeNext(search.next));
+    if (!me && (p === "/akun" || p === "/pengaturan")) redirect(`/masuk?next=${encodeURIComponent(p)}`);
   }
   const layout = await getLayout();
   return { prepared: await prepare(m, layout, search, me), path };
