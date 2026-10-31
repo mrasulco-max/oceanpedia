@@ -271,10 +271,14 @@ export function bindDetail(html: string, kind: "web" | "app", d: DetailData): st
 
 /** Status bar tiruan (9:41) di artboard app disembunyikan di ponsel sungguhan. */
 export function hideFakeStatusBar(html: string): string {
-  // Status bar tiruan desain (jam 9:41 & baterai) tidak ditampilkan; ruangnya tetap sebagai area aman atas.
-  return html.replace(/<div style="([^"]*)"><span>9:41<\/span>([\s\S]*?)<\/div>/, (_m, st: string, rest: string) =>
-    rest.includes("<img")
-      ? `<div style="${st}"><span style="visibility: hidden" aria-hidden="true">9:41</span>${rest}</div>`
-      : `<div aria-hidden="true" style="${st}; visibility: hidden"><span>9:41</span>${rest}</div>`,
-  );
+  // Status bar tiruan desain (jam 9:41 & baterai) dibuang beserta ruangnya, supaya header tidak terlalu tinggi.
+  // Yang tersisa hanya area aman atas (notch) saat dibuka sebagai aplikasi layar penuh; di browser biasa = 0.
+  return html.replace(/<div style="([^"]*)"><span>9:41<\/span>([\s\S]*?)<\/div>/, (_m, st: string, rest: string) => {
+    if (rest.includes("<img")) {
+      // Varian dengan logo (profil): logo tetap, jam dihapus, jarak atas dirapatkan.
+      return `<div style="${st.replace(/padding: 14px (\d+px) 0/, "padding: max(10px, env(safe-area-inset-top)) $1 0").replace("justify-content: space-between", "justify-content: flex-end")}">${rest}</div>`;
+    }
+    const pos = st.includes("position: relative") ? "position: relative; " : "";
+    return `<div aria-hidden="true" style="${pos}height: env(safe-area-inset-top, 0px)"></div>`;
+  });
 }
