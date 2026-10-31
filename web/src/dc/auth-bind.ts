@@ -13,7 +13,7 @@ const ruleHtml = (key: string, label: string) =>
 const rulesRow = () => `<div style="display: flex; flex-wrap: wrap; gap: 10px 14px">${RULES.map(([k, l]) => ruleHtml(k, l)).join("")}</div>`;
 
 function socialSoon(h: string): string {
-  return h.replace(/<a href="\/"([^>]*>(?:<svg[\s\S]*?<\/svg>)?)(Google|Apple)<\/a>/g, (_m, rest: string, name: string) => `<a href="#" data-auth-soon="${name}"${rest}${name}</a>`);
+  return h.replace(/<a href="\/"([^>]*>(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?)(Google|Apple)<\/a>/g, (_m, rest: string, name: string) => `<a href="#" data-auth-soon="${name}"${rest}${name}</a>`);
 }
 
 /** Form daftar aplikasi (app-24). */

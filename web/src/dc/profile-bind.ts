@@ -62,15 +62,15 @@ export function bindProfileWeb(html: string, p: Profile, alertLimit: number): st
   let h = html;
   // Menu samping: tautan sungguhan.
   const nav: Record<string, string> = { Profil: "/akun", Watchlist: "/watchlist", "Price alert": "/alert", Tersimpan: "/tersimpan", "Notifikasi &amp; newsletter": "/newsletter", "Notifikasi & newsletter": "/newsletter", Langganan: "/plus", Keamanan: "/pengaturan" };
-  h = h.replace(/<a href="#"([^>]*)>(<svg[\s\S]*?<\/svg>)?([^<]+)<\/a>/g, (whole, attrs: string, icon: string | undefined, label: string) => {
+  h = h.replace(/<a href="#"([^>]*)>(<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?([^<]+)<\/a>/g, (whole, attrs: string, icon: string | undefined, label: string) => {
     const to = nav[label.trim()];
     return to ? `<a href="${to}"${attrs}>${icon ?? ""}${label}</a>` : whole;
   });
-  h = h.replace(/color: \[[\d, ]+\]; (font-size: 14px; font-weight: 500">(?:<svg[\s\S]*?<\/svg>)?Keluar)/, "color: #DC2626; $1");
+  h = h.replace(/color: \[[\d, ]+\]; (font-size: 14px; font-weight: 500">(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Keluar)/, "color: #DC2626; $1");
   const av = avatarUrl(p);
   h = h.replace(/<span class="ob-anim" style="(width: 76px; height: 76px; border-radius: 999px;[^"]*font-size: 30px; font-weight: 700)">N<\/span>/, (_m, st: string) =>
     `<span data-avatar-pick class="ob-anim" title="Ubah foto profil" style="position: relative; cursor: pointer; flex: none; ${st}">${esc(initials(p.full_name).slice(0, 1) || "?")}${av ? avatarImg(av, p.full_name) : ""}</span>`);
-  h = h.replace(/<a href="#"([^>]*>(?:<svg[\s\S]*?<\/svg>)?)Ubah foto<\/a>/, (_m, rest: string) =>
+  h = h.replace(/<a href="#"([^>]*>(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?)Ubah foto<\/a>/, (_m, rest: string) =>
     `<a href="#" data-avatar-pick${rest}Ubah foto</a>` +
     (av ? `<a href="#" data-avatar-remove style="height: 42px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 500; color: #DC2626">Hapus foto</a>` : ""));
   if (p.plan) {
@@ -90,7 +90,7 @@ export function bindProfileWeb(html: string, p: Profile, alertLimit: number): st
   h = h.replace(/<input type="text" value="nadia\.putri@email\.com" placeholder="" style="([^"]*)"/, `<input type="email" data-prof-email readonly value="${esc(p.email)}" title="Email tidak dapat diubah di sini" style="$1; color: #5F6B7D"`);
   h = h.replace(/<input type="text" value="\+62 812-\*\*\*\*-7890" placeholder=""/, `<input type="tel" data-prof-phone inputmode="tel" value="${esc(localPhone(p.phone))}" placeholder="812 3456 7890"`);
   h = h.replace(/<a href="#"([^>]*)>Batal<\/a>/, '<a href="#" data-prof-reset$1>Batal</a>');
-  h = h.replace(/<a href="#"([^>]*)>((?:<svg[\s\S]*?<\/svg>)?)Simpan perubahan<\/a>/, '<a href="#" data-prof-save$1>$2Simpan perubahan</a>');
+  h = h.replace(/<a href="#"([^>]*)>((?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?)Simpan perubahan<\/a>/, '<a href="#" data-prof-save$1>$2Simpan perubahan</a>');
   // Preferensi tersimpan.
   for (const [label, key, def] of WEB_PREFS) {
     const on = typeof p.preferences[key] === "boolean" ? (p.preferences[key] as boolean) : def;

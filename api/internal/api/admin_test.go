@@ -34,8 +34,11 @@ func TestDecideStatus(t *testing.T) {
 	if st, _, err := decideStatus("author", "review", nil, now); err != nil || st != "review" {
 		t.Fatalf("penulis kirim review: %s %v", st, err)
 	}
-	if _, _, err := decideStatus("author", "publish", nil, now); err == nil {
-		t.Fatal("penulis tidak boleh menerbitkan langsung")
+	if st, _, err := decideStatus("author", "publish", nil, now); err != nil || st != "published" {
+		t.Fatalf("penulis terbit langsung tanpa review: %s %v", st, err)
+	}
+	if _, _, err := decideStatus("reader", "publish", nil, now); err == nil {
+		t.Fatal("pembaca tidak boleh menerbitkan")
 	}
 	st, at, err := decideStatus("editor", "publish", nil, now)
 	if err != nil || st != "published" || !at.Equal(now) {
@@ -82,8 +85,12 @@ func TestAdminArticleRoles(t *testing.T) {
 		t.Fatalf("tanpa login harus 401, dapat %d", w.Code)
 	}
 	pub := do(h, "POST", "/v1/admin/articles", fmtAction(body, "publish"), "Authorization", tok("author"))
-	if pub.Code != 403 {
-		t.Fatalf("penulis terbit langsung harus 403, dapat %d %s", pub.Code, pub.Body)
+	if pub.Code != 201 || !strings.Contains(pub.Body.String(), `"status":"published"`) {
+		t.Fatalf("penulis terbit langsung harus 201, dapat %d %s", pub.Code, pub.Body)
+	}
+	brk := do(h, "POST", "/v1/admin/articles", strings.Replace(fmtAction(body, "publish"), `"category"`, `"is_breaking":true,"category"`, 1), "Authorization", tok("author"))
+	if brk.Code != 422 {
+		t.Fatalf("penulis BREAKING harus ditolak, dapat %d %s", brk.Code, brk.Body)
 	}
 	rev := do(h, "POST", "/v1/admin/articles", fmtAction(body, "review"), "Authorization", tok("author"))
 	if rev.Code != 201 {
@@ -102,8 +109,8 @@ func TestAdminArticleRoles(t *testing.T) {
 	if bad.Code != 422 {
 		t.Fatalf("validasi harus 422, dapat %d %s", bad.Code, bad.Body)
 	}
-	if w := do(h, "POST", "/v1/admin/articles/bukan-uuid/status", `{"action":"publish"}`, "Authorization", tok("author")); w.Code != 403 {
-		t.Fatalf("penulis ubah status harus 403, dapat %d", w.Code)
+	if w := do(h, "POST", "/v1/admin/articles/bukan-uuid/status", `{"action":"publish"}`, "Authorization", tok("reader")); w.Code != 403 {
+		t.Fatalf("pembaca ubah status harus 403, dapat %d", w.Code)
 	}
 }
 
@@ -140,7 +147,8 @@ func TestDeleteArticleRoles(t *testing.T) {
 	}{
 		{"penulis hapus draf sendiri", owner, "author", "draft", nil, 204},
 		{"penulis hapus draf orang lain", "u-lain", "author", "draft", nil, 404},
-		{"penulis hapus yang terbit", owner, "author", "published", &past, 403},
+		{"penulis hapus yang sedang tayang", owner, "author", "published", &past, 409},
+		{"penulis hapus arsip sendiri", owner, "author", "archived", &past, 204},
 		{"editor hapus yang tayang", "u-ed", "editor", "published", &past, 409},
 		{"editor hapus arsip", "u-ed", "editor", "archived", &past, 204},
 		{"pembaca", owner, "reader", "draft", nil, 403},
