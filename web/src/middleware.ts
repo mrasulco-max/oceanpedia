@@ -18,13 +18,13 @@ export async function middleware(req: NextRequest) {
 
   // Sesi kedaluwarsa tapi refresh token masih ada → terbitkan token baru sebelum halaman dirender.
   let fresh: { access_token: string; refresh_token: string; expires_in: number } | null = null;
-  const needsAuth = req.nextUrl.pathname.startsWith("/admin") || req.nextUrl.pathname.startsWith("/akun");
+  const needsAuth = ["/admin", "/akun", "/pengaturan"].some((p) => req.nextUrl.pathname.startsWith(p));
   const rt = req.cookies.get("ob_rt")?.value;
   if (needsAuth && !req.cookies.get("ob_at") && rt) {
     try {
       const r = await fetch(`${API}/v1/auth/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "User-Agent": req.headers.get("user-agent") ?? "", "X-Forwarded-For": req.headers.get("x-forwarded-for") ?? "" },
         body: JSON.stringify({ refresh_token: rt }),
         cache: "no-store",
       });

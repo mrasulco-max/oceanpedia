@@ -20,6 +20,8 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path?: st
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
       "X-Session-Hash": sessionHash(jar.get("ob_rt")?.value),
+      "User-Agent": req.headers.get("user-agent") ?? "",
+      "X-Forwarded-For": req.headers.get("x-forwarded-for") ?? "",
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
     },
     body: hasBody ? await req.text() : undefined,

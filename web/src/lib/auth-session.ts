@@ -7,7 +7,8 @@ export const API_BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 export async function forward(req: Request, path: string): Promise<{ res: Response; data: Record<string, unknown> }> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Forwarded-For": req.headers.get("x-forwarded-for") ?? "" },
+    // IP & perangkat asli pengguna (untuk daftar "perangkat yang masuk" dan pembatas laju).
+    headers: { "Content-Type": "application/json", "X-Forwarded-For": req.headers.get("x-forwarded-for") ?? "", "User-Agent": req.headers.get("user-agent") ?? "" },
     body: await req.text(),
     cache: "no-store",
   });
