@@ -329,11 +329,11 @@ func (p *PG) AdSlots(ctx context.Context, surface, page string) ([]AdSlot, error
 
 const userCols = `u.id, u.email, u.full_name, u.role, coalesce(u.password_hash, ''), u.created_at,
        (SELECT s.plan_code FROM subscriptions s WHERE s.user_id = u.id AND s.status IN ('active', 'past_due') LIMIT 1),
-       u.email_verified_at IS NOT NULL, u.phone_e164`
+       u.email_verified_at IS NOT NULL, u.phone_e164, u.avatar_media_id`
 
 func scanUser(s scanner) (User, error) {
 	var u User
-	err := s.Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &u.PasswordHash, &u.CreatedAt, &u.Plan, &u.EmailVerified, &u.Phone)
+	err := s.Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &u.PasswordHash, &u.CreatedAt, &u.Plan, &u.EmailVerified, &u.Phone, &u.AvatarID)
 	return u, notFound(err)
 }
 

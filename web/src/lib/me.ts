@@ -14,6 +14,7 @@ export interface Profile {
   email_verified: boolean;
   phone?: string | null;
   display_name: string | null;
+  avatar_id: string | null;
   preferences: Record<string, boolean | string>;
   stats: { watchlist: number; alerts_active: number; alerts_triggered: number; bookmarks: number; topics: number };
   topics: { slug: string; name: string }[];

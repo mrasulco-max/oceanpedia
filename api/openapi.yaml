@@ -157,6 +157,9 @@ paths:
     patch: { summary: "Ubah nama, nama tampilan, nomor HP, dan preferensi (digabung)", tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: Profil terbaru }, '422': { description: Validasi } } }
   /v1/me/profile: { get: { summary: "Profil, preferensi, ringkasan aktivitas, topik diikuti, batas alert", tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK } } } }
   /v1/me/password: { post: { summary: "Ganti kata sandi (sandi lama wajib); semua sesi lain dicabut, sesi baru diterbitkan", tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: Token baru }, '422': { description: Validasi } } } }
+  /v1/me/avatar:
+    post: { summary: "Unggah foto profil (multipart field file; JPG/PNG/WebP, maks. 4 MB); foto lama dihapus", tags: [Akun], security: [{ bearer: [] }], requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }, responses: { '201': { description: "avatar_id & avatar_url (GET /v1/media/{id})" }, '400': { description: Format/ukuran tidak valid } } }
+    delete: { summary: "Hapus foto profil", tags: [Akun], security: [{ bearer: [] }], responses: { '204': { description: OK } } }
   /v1/me/sessions: { get: { summary: "Perangkat yang sedang masuk (header X-Session-Hash menandai perangkat ini)", tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK } } } }
   /v1/me/sessions/{id}: { delete: { summary: "Keluarkan satu perangkat", tags: [Akun], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: OK } } } }
   /v1/me/topics/{slug}:

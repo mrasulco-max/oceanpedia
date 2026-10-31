@@ -204,3 +204,29 @@ func (s *Server) unfollowTopic(w http.ResponseWriter, r *http.Request) error {
 
 // sessionHash: helper uji/BFF — sha256 hex dari refresh token.
 func sessionHash(rt string) string { h := sha256.Sum256([]byte(rt)); return hex.EncodeToString(h[:]) }
+
+// POST /v1/me/avatar (multipart "file") — unggah foto profil; foto lama dihapus.
+func (s *Server) uploadAvatar(w http.ResponseWriter, r *http.Request) error {
+	data, mime, err := readImage(w, r)
+	if err != nil {
+		return err
+	}
+	if mime == "image/gif" {
+		return httpx.BadRequest("Foto profil harus JPG, PNG, atau WebP.")
+	}
+	id, err := s.Store.SetAvatar(r.Context(), claims(r).Sub, mime, data)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, http.StatusCreated, map[string]string{"avatar_id": id, "avatar_url": publicBase(r) + "/v1/media/" + id})
+	return nil
+}
+
+// DELETE /v1/me/avatar — hapus foto profil.
+func (s *Server) deleteAvatar(w http.ResponseWriter, r *http.Request) error {
+	if err := s.Store.RemoveAvatar(r.Context(), claims(r).Sub); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}

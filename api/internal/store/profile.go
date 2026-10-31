@@ -164,7 +164,31 @@ func (p *PG) ActiveAlertCount(ctx context.Context, userID string) (int, error) {
 	return n, err
 }
 
+// SetAvatar menyimpan foto profil baru dan menghapus foto lama milik pengguna (satu transaksi).
+const qSetAvatar = `
+WITH old AS (SELECT avatar_media_id AS id FROM users WHERE id = $4::uuid),
+ins AS (INSERT INTO media (mime, size, bytes, uploaded_by) VALUES ($1::text, $2::int, $3::bytea, $4::uuid) RETURNING id),
+upd AS (UPDATE users SET avatar_media_id = (SELECT id FROM ins), updated_at = now() WHERE id = $4::uuid RETURNING 1),
+del AS (DELETE FROM media WHERE id = (SELECT id FROM old) AND uploaded_by = $4::uuid RETURNING 1)
+SELECT id FROM ins`
+
+func (p *PG) SetAvatar(ctx context.Context, userID, mime string, data []byte) (string, error) {
+	var id string
+	err := p.DB.QueryRowContext(ctx, qSetAvatar, mime, len(data), data, userID).Scan(&id)
+	return id, err
+}
+
+const qRemoveAvatar = `
+WITH old AS (SELECT avatar_media_id AS id FROM users WHERE id = $1::uuid),
+upd AS (UPDATE users SET avatar_media_id = NULL, updated_at = now() WHERE id = $1::uuid RETURNING 1)
+DELETE FROM media WHERE id = (SELECT id FROM old) AND uploaded_by = $1::uuid`
+
+func (p *PG) RemoveAvatar(ctx context.Context, userID string) error {
+	_, err := p.DB.ExecContext(ctx, qRemoveAvatar, userID)
+	return err
+}
+
 func profileQueries() map[string]string {
-	return map[string]string{"profile_extra": qProfileExtra, "profile_topics": qProfileTopics, "update_profile": qUpdateProfile, "sessions": qSessions,
+	return map[string]string{"set_avatar": qSetAvatar, "remove_avatar": qRemoveAvatar, "profile_extra": qProfileExtra, "profile_topics": qProfileTopics, "update_profile": qUpdateProfile, "sessions": qSessions,
 		"revoke_session": qRevokeSession, "follow_topic": qFollowTopic, "tag_exists": qTagExists, "unfollow_topic": qUnfollowTopic, "active_alerts": qActiveAlerts}
 }

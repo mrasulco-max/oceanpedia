@@ -82,6 +82,8 @@ func (s *Server) Handler() http.Handler {
 	auth("PATCH /v1/me", s.updateMe)
 	auth("GET /v1/me/profile", s.profile)
 	auth("POST /v1/me/password", s.changePassword)
+	auth("POST /v1/me/avatar", s.uploadAvatar)
+	auth("DELETE /v1/me/avatar", s.deleteAvatar)
 	auth("GET /v1/me/sessions", s.sessions)
 	auth("DELETE /v1/me/sessions/{id}", s.revokeSession)
 	auth("PUT /v1/me/topics/{slug}", s.followTopic)

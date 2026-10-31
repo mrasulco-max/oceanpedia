@@ -25,6 +25,7 @@ type fake struct {
 	store.Store
 	users  map[string]store.User
 	tokens map[string]string
+	avatar map[string]string
 }
 
 func (f *fake) Ping(context.Context) error { return nil }
