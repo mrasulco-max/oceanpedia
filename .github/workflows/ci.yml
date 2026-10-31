@@ -35,7 +35,11 @@ jobs:
       - name: Unit test
         run: go test -race -count=1 ./...
       - name: Integration test (PostgreSQL)
-        run: go test -count=1 -tags integration ./internal/store/
+        shell: bash
+        run: |
+          set -o pipefail
+          # Baris kegagalan juga ditulis sebagai anotasi agar terlihat tanpa membuka log lengkap.
+          go test -count=1 -tags integration ./internal/store/ 2>&1 | tee /tmp/it.log || { grep -E "FAIL|_test.go:|panic|ERROR" /tmp/it.log | head -20 | sed 's/^/::error::/'; exit 1; }
       - run: go build -trimpath -o bin/api ./cmd/api
       - uses: actions/upload-artifact@v4
         with: { name: api-bin, path: api/bin/api, retention-days: 3 }
