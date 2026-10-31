@@ -1,7 +1,7 @@
 /**
  * Enhancer "auth": alur akun sungguhan di atas desain.
  *  - Daftar: validasi + POST /api/auth/register → halaman verifikasi kode (OTP dikirim ke email).
- *  - Verifikasi: 6 digit (ketik, tempel, isi otomatis, atau papan angka) → POST /api/auth/verify → langsung masuk.
+ *  - Verifikasi: 6 karakter huruf & angka (ketik, tempel, atau isi otomatis) → POST /api/auth/verify → langsung masuk.
  *  - Lupa kata sandi & masuk dengan kode: kirim kode → verifikasi → atur sandi baru / masuk.
  * Akun yang sudah terverifikasi masuk biasa tanpa OTP (lihat enhancer "login").
  */
@@ -150,7 +150,7 @@ export function auth(host: HTMLElement, { router, ctx }: Env): Cleanup {
   };
   const setCode = (v: string) => {
     if (!input) return;
-    input.value = v.replace(/\D/g, "").slice(0, 6);
+    input.value = v.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6);
     paintBoxes();
     if (input.value.length === 6 && mode !== "reset") void submitCode();
   };
@@ -178,7 +178,7 @@ export function auth(host: HTMLElement, { router, ctx }: Env): Cleanup {
     if (busy || !input) return;
     const code = input.value;
     if (!email) return toast(host, "Isi email lalu ketuk “Kirim kode”.");
-    if (code.length !== 6) return toast(host, "Masukkan 6 digit kode.");
+    if (code.length !== 6) return toast(host, "Masukkan 6 karakter kode dari email.");
     const pw = $<HTMLInputElement>("[data-otp-password]")?.value ?? "";
     if (mode === "reset" && !Object.values(RULES).every((r) => r(pw))) return toast(host, "Kata sandi baru min. 8 karakter, berisi huruf & angka, dan 1 huruf besar.");
     busy = true;
@@ -214,7 +214,10 @@ export function auth(host: HTMLElement, { router, ctx }: Env): Cleanup {
   };
 
   if (group && input) {
-    if (email) startTimer(45);
+    if (email) {
+      startTimer(45);
+      input.focus();
+    }
     paintBoxes();
     const onInput = () => setCode(input.value);
     const onFocus = () => paintBoxes();

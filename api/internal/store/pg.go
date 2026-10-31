@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mrasulco-max/oceanpedia/api/internal/otp"
 	"strings"
 	"time"
 
@@ -640,7 +641,8 @@ func AllQueries() map[string]string {
 		"inc_view": qIncView, "author": qAuthor, "instruments": qInstruments, "events": qEvents, "plans": qPlans, "ads": qAds,
 		"create_user": qCreateUser, "update_pending_user": qUpdatePendingUser, "mark_verified": qMarkVerified, "set_password": qSetPassword,
 		"revoke_user_tokens": qRevokeUserTokens, "search_instruments": qSearchInstruments, "search_articles": qSearchArticles,
-		"search_authors": qSearchAuthors, "search_tags": qSearchTags, "user_by_email": qUserByEmail, "user_by_id": qUserByID, "save_refresh": qSaveRefresh,
+		"search_authors": qSearchAuthors, "search_tags": qSearchTags, "auth_code": qAuthCode, "save_auth_code": qSaveAuthCode,
+		"auth_code_attempt": qAuthCodeAttempt, "delete_auth_code": qDeleteAuthCode, "user_by_email": qUserByEmail, "user_by_id": qUserByID, "save_refresh": qSaveRefresh,
 		"consume_refresh": qConsumeRefresh, "revoke_refresh": qRevokeRefresh, "default_watchlist": qDefaultWatchlist,
 		"watchlist": qWatchlist, "add_watch": qAddWatch, "remove_watch": qRemoveWatch, "alerts": qAlerts, "create_alert": qCreateAlert,
 		"delete_alert": qDeleteAlert, "bookmark_on": qBookmarkOn, "bookmark_off": qBookmarkOff, "bookmarks": qBookmarks,
@@ -739,4 +741,42 @@ func (p *PG) Search(ctx context.Context, q string, limit int) (SearchResult, err
 		out.Tags = append(out.Tags, t)
 	}
 	return out, rows.Err()
+}
+
+// ---------------------------------------------------------------- kode OTP (hanya hash)
+
+const qAuthCode = `SELECT email, code_hash, provider, expires_at, attempts, sent_at, window_at, window_sent FROM auth_codes WHERE email = $1::text`
+
+func (p *PG) AuthCode(ctx context.Context, email string) (otp.CodeRecord, bool, error) {
+	var r otp.CodeRecord
+	err := p.DB.QueryRowContext(ctx, qAuthCode, email).Scan(&r.Email, &r.Hash, &r.Provider, &r.ExpiresAt, &r.Attempts, &r.SentAt, &r.WindowAt, &r.WindowSent)
+	if errors.Is(err, sql.ErrNoRows) {
+		return r, false, nil
+	}
+	return r, err == nil, err
+}
+
+const qSaveAuthCode = `
+INSERT INTO auth_codes (email, code_hash, provider, expires_at, attempts, sent_at, window_at, window_sent)
+VALUES ($1::text, $2::bytea, $3::text, $4::timestamptz, 0, $5::timestamptz, $6::timestamptz, $7::int)
+ON CONFLICT (email) DO UPDATE SET code_hash = EXCLUDED.code_hash, provider = EXCLUDED.provider, expires_at = EXCLUDED.expires_at,
+  attempts = 0, sent_at = EXCLUDED.sent_at, window_at = EXCLUDED.window_at, window_sent = EXCLUDED.window_sent`
+
+func (p *PG) SaveAuthCode(ctx context.Context, r otp.CodeRecord) error {
+	_, err := p.DB.ExecContext(ctx, qSaveAuthCode, r.Email, r.Hash, r.Provider, r.ExpiresAt, r.SentAt, r.WindowAt, r.WindowSent)
+	return err
+}
+
+const qAuthCodeAttempt = `UPDATE auth_codes SET attempts = attempts + 1 WHERE email = $1::text`
+
+func (p *PG) AuthCodeAttempt(ctx context.Context, email string) error {
+	_, err := p.DB.ExecContext(ctx, qAuthCodeAttempt, email)
+	return err
+}
+
+const qDeleteAuthCode = `DELETE FROM auth_codes WHERE email = $1::text`
+
+func (p *PG) DeleteAuthCode(ctx context.Context, email string) error {
+	_, err := p.DB.ExecContext(ctx, qDeleteAuthCode, email)
+	return err
 }

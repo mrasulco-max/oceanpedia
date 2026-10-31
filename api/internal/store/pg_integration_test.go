@@ -17,6 +17,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/mrasulco-max/oceanpedia/api/internal/migrate"
+	"github.com/mrasulco-max/oceanpedia/api/internal/otp"
 	"github.com/mrasulco-max/oceanpedia/api/internal/store"
 	"github.com/mrasulco-max/oceanpedia/api/migrations"
 )
@@ -115,6 +116,24 @@ func TestPGStore(t *testing.T) {
 	}
 	if err := s.SetPassword(ctx, u.ID, "hash3"); err != nil {
 		t.Fatal(err)
+	}
+	codeAt := time.Now().UTC().Truncate(time.Second)
+	if err := s.SaveAuthCode(ctx, otp.CodeRecord{Email: email, Hash: []byte("h"), Provider: "email", ExpiresAt: codeAt.Add(10 * time.Minute), SentAt: codeAt, WindowAt: codeAt, WindowSent: 1}); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.AuthCodeAttempt(ctx, email)
+	if rc, ok, err := s.AuthCode(ctx, email); err != nil || !ok || rc.Attempts != 1 || string(rc.Hash) != "h" || rc.Provider != "email" {
+		t.Fatalf("auth code: %v %v %+v", err, ok, rc)
+	}
+	if err := s.SaveAuthCode(ctx, otp.CodeRecord{Email: email, Provider: "verify", ExpiresAt: codeAt, SentAt: codeAt, WindowAt: codeAt, WindowSent: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if rc, _, _ := s.AuthCode(ctx, email); rc.Attempts != 0 || rc.Hash != nil || rc.WindowSent != 2 {
+		t.Fatalf("auth code diperbarui: %+v", rc)
+	}
+	_ = s.DeleteAuthCode(ctx, email)
+	if _, ok, _ := s.AuthCode(ctx, email); ok {
+		t.Fatal("kode harus terhapus")
 	}
 	if sr, err := s.Search(ctx, "bbca", 6); err != nil || len(sr.Instruments) == 0 || sr.Instruments[0].Symbol != "BBCA" {
 		t.Fatalf("search: %v %+v", err, sr)

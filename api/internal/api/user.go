@@ -227,12 +227,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) error {
 	return s.issue(w, r, u, http.StatusOK)
 }
 
-var codeRe = regexp.MustCompile(`^[0-9]{4,8}$`)
+var codeRe = regexp.MustCompile(`^[A-Za-z0-9]{4,8}$`)
 
 func (s *Server) checkCode(ctx context.Context, email, code string) (store.User, error) {
 	code = strings.TrimSpace(code)
 	if !codeRe.MatchString(code) {
-		return store.User{}, httpx.Validation(map[string]string{"code": "Masukkan 6 digit kode."})
+		return store.User{}, httpx.Validation(map[string]string{"code": "Masukkan 6 karakter kode dari email."})
 	}
 	u, err := s.Store.UserByEmail(ctx, strings.TrimSpace(email))
 	if errors.Is(err, httpx.ErrNotFound) {
