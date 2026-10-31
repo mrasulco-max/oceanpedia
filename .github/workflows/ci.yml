@@ -94,8 +94,13 @@ jobs:
           curl -sf "localhost:8080/v1/market/quotes?symbols=BBCA,BTCUSD" | jq -e '.data | length == 2'
           curl -sf "localhost:8080/v1/ads?surface=web&page=legal" | jq -e '.data | length == 2'
           code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/v1/articles/tidak-ada); test "$code" = 404
+          # Daftar → wajib OTP (kode pengembangan 000000) → masuk tanpa OTP.
           curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' \
-            -d '{"email":"ci@example.com","password":"sandi-rahasia","full_name":"CI Bot"}' | jq -e '.access_token | length > 20'
+            -d '{"email":"ci@example.com","password":"Sandi-rahasia1","full_name":"CI Bot","phone":"0812 3456 7890"}' | jq -e '.status == "verification_required"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}'); test "$code" = 403
+          curl -sf -X POST localhost:8080/v1/auth/verify -H 'Content-Type: application/json' -d '{"email":"ci@example.com","code":"000000"}' | jq -e '.access_token | length > 20'
+          curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -e '.user.email_verified == true'
+          curl -sf "localhost:8080/v1/search?q=bbca" | jq -e '.result.instruments[0].symbol == "BBCA"'
       - name: Jalankan web
         run: |
           mkdir -p /tmp/web && tar -xzf /tmp/web-build.tgz -C /tmp/web
@@ -119,8 +124,15 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/admin); test "$code" = 307
           code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/berita/tidak-ada); test "$code" = 404
           code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/halaman-tidak-ada); test "$code" = 404
+          # Alur akun & pencarian.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" localhost:3000/akun); test "$code" = 307
+          curl -sf -A "$MOB" localhost:3000/daftar | grep -q 'data-reg-submit'
+          curl -sf -A "$DESK" localhost:3000/daftar | grep -q 'data-reg-submit'
+          curl -sf -A "$MOB" "localhost:3000/verifikasi?email=ci%40example.com&mode=signup" | grep -q 'data-otp-input'
+          curl -sf -A "$DESK" "localhost:3000/cari?q=bbca" | grep -q '/market/BBCA'
+          curl -sf -A "$MOB" "localhost:3000/cari?q=bbca" | grep -q 'data-search-input'
           # Semua rute desain dapat dirender (desktop & ponsel).
-          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /akun /pengaturan /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa; do
+          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa; do
             for ua in "$DESK" "$MOB"; do
               code=$(curl -s -o /dev/null -w '%{http_code}' -A "$ua" "localhost:3000$p"); test "$code" = 200 || { echo "GAGAL $p ($code)"; exit 1; }
             done

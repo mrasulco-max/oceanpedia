@@ -120,3 +120,30 @@ export interface AIAnalysis {
   generated_at: string;
   model: string;
 }
+
+export interface Author {
+  id: string;
+  slug: string;
+  name: string;
+  title: string;
+  bio?: string;
+  avatar_url: string | null;
+  verified: boolean;
+}
+
+export interface Tag {
+  slug: string;
+  name: string;
+}
+
+export interface AuthorHit extends Author {
+  article_count: number;
+}
+
+/** Hasil GET /v1/search. */
+export interface SearchResponse {
+  query: string;
+  took_ms: number;
+  total: number;
+  result: { instruments: Instrument[]; articles: ArticleCard[]; authors: AuthorHit[]; tags: Tag[] };
+}

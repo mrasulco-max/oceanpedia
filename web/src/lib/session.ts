@@ -8,6 +8,9 @@ export interface SessionUser {
   email: string;
   full_name: string;
   role: "reader" | "author" | "editor" | "admin";
+  phone?: string | null;
+  created_at?: string;
+  email_verified?: boolean;
 }
 
 /** Pengguna yang sedang masuk (dari cookie httpOnly ob_at), atau null. */

@@ -91,12 +91,36 @@ func TestPGStore(t *testing.T) {
 	}
 
 	email := "uji-" + time.Now().Format("150405.000000") + "@example.com"
-	u, err := s.CreateUser(ctx, email, "Penguji", "hash")
-	if err != nil || u.ID == "" {
-		t.Fatalf("create user: %v", err)
+	u, err := s.CreateUser(ctx, email, "Penguji", "hash", "+6281234567890")
+	if err != nil || u.ID == "" || u.EmailVerified || u.Phone == nil || *u.Phone != "+6281234567890" {
+		t.Fatalf("create user (belum terverifikasi): %v %+v", err, u)
 	}
-	if _, err := s.CreateUser(ctx, email, "Lagi", "hash"); err != store.ErrDuplicate {
+	if _, err := s.CreateUser(ctx, email, "Lagi", "hash", ""); err != store.ErrDuplicate {
 		t.Fatalf("duplikat: %v", err)
+	}
+	if u2, err := s.UpdatePendingUser(ctx, u.ID, "Penguji Baru", "hash2", ""); err != nil || u2.FullName != "Penguji Baru" || u2.Phone != nil {
+		t.Fatalf("update pending: %v %+v", err, u2)
+	}
+	if err := s.MarkEmailVerified(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if u3, _ := s.UserByEmail(ctx, email); !u3.EmailVerified {
+		t.Fatal("harus terverifikasi")
+	}
+	if _, err := s.UpdatePendingUser(ctx, u.ID, "Tidak boleh", "x", ""); err != nil {
+		t.Fatal(err)
+	}
+	if u4, _ := s.UserByID(ctx, u.ID); u4.FullName != "Penguji Baru" {
+		t.Fatal("akun terverifikasi tidak boleh diubah lewat pendaftaran ulang")
+	}
+	if err := s.SetPassword(ctx, u.ID, "hash3"); err != nil {
+		t.Fatal(err)
+	}
+	if sr, err := s.Search(ctx, "bbca", 6); err != nil || len(sr.Instruments) == 0 || sr.Instruments[0].Symbol != "BBCA" {
+		t.Fatalf("search: %v %+v", err, sr)
+	}
+	if sr, err := s.Search(ctx, "50%_", 6); err != nil || len(sr.Instruments) != 0 {
+		t.Fatalf("search wildcard: %v %+v", err, sr)
 	}
 	if err := s.SaveRefreshToken(ctx, u.ID, []byte("h1"+email), "ua", "127.0.0.1", time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)

@@ -109,6 +109,22 @@ type User struct {
 	PasswordHash string    `json:"-"`
 	Plan         *string   `json:"plan"`
 	CreatedAt    time.Time `json:"created_at"`
+	// EmailVerified: akun baru wajib konfirmasi OTP sebelum bisa masuk.
+	EmailVerified bool    `json:"email_verified"`
+	Phone         *string `json:"phone,omitempty"`
+}
+
+// SearchResult adalah hasil pencarian gabungan (aset, berita, penulis, topik).
+type SearchResult struct {
+	Instruments []Instrument  `json:"instruments"`
+	Articles    []ArticleCard `json:"articles"`
+	Authors     []AuthorHit   `json:"authors"`
+	Tags        []Tag         `json:"tags"`
+}
+
+type AuthorHit struct {
+	Author
+	ArticleCount int `json:"article_count"`
 }
 
 type WatchItem struct {
@@ -182,7 +198,12 @@ type Store interface {
 	PlanByCode(ctx context.Context, code string) (Plan, error)
 	AdSlots(ctx context.Context, surface, page string) ([]AdSlot, error)
 
-	CreateUser(ctx context.Context, email, fullName, passwordHash string) (User, error)
+	CreateUser(ctx context.Context, email, fullName, passwordHash, phone string) (User, error)
+	UpdatePendingUser(ctx context.Context, id, fullName, passwordHash, phone string) (User, error)
+	MarkEmailVerified(ctx context.Context, id string) error
+	SetPassword(ctx context.Context, id, passwordHash string) error
+	RevokeUserTokens(ctx context.Context, id string) error
+	Search(ctx context.Context, q string, limit int) (SearchResult, error)
 	UserByEmail(ctx context.Context, email string) (User, error)
 	UserByID(ctx context.Context, id string) (User, error)
 	SaveRefreshToken(ctx context.Context, userID string, hash []byte, ua, ip string, exp time.Time) error

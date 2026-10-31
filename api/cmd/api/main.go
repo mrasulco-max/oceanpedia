@@ -20,6 +20,7 @@ import (
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
 	"github.com/mrasulco-max/oceanpedia/api/internal/migrate"
+	"github.com/mrasulco-max/oceanpedia/api/internal/otp"
 	"github.com/mrasulco-max/oceanpedia/api/internal/store"
 	"github.com/mrasulco-max/oceanpedia/api/migrations"
 )
@@ -71,6 +72,12 @@ func run(log *slog.Logger) error {
 		log.Warn("TWELVEDATA_API_KEY kosong: memakai data pasar contoh")
 	}
 	srv := &api.Server{Store: &store.PG{DB: db}, Market: provider, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: &store.PG{DB: db}}, Cfg: cfg, Log: log}
+	if cfg.BirdKey != "" {
+		srv.OTP = otp.NewBird(cfg.BirdKey, cfg.BirdURL)
+	} else if cfg.Env == "development" {
+		srv.OTP = otp.Dev{}
+		log.Warn("BIRD_API_KEY kosong: OTP pengembangan aktif (kode 000000)")
+	}
 
 	hs := &http.Server{
 		Addr:              cfg.Addr,

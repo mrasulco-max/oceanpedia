@@ -327,25 +327,60 @@ func (p *PG) AdSlots(ctx context.Context, surface, page string) ([]AdSlot, error
 // ---------------------------------------------------------------- pengguna & sesi
 
 const userCols = `u.id, u.email, u.full_name, u.role, coalesce(u.password_hash, ''), u.created_at,
-       (SELECT s.plan_code FROM subscriptions s WHERE s.user_id = u.id AND s.status IN ('active', 'past_due') LIMIT 1)`
+       (SELECT s.plan_code FROM subscriptions s WHERE s.user_id = u.id AND s.status IN ('active', 'past_due') LIMIT 1),
+       u.email_verified_at IS NOT NULL, u.phone_e164`
 
 func scanUser(s scanner) (User, error) {
 	var u User
-	err := s.Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &u.PasswordHash, &u.CreatedAt, &u.Plan)
+	err := s.Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &u.PasswordHash, &u.CreatedAt, &u.Plan, &u.EmailVerified, &u.Phone)
 	return u, notFound(err)
 }
 
-const qCreateUser = `INSERT INTO users (email, full_name, password_hash) VALUES ($1, $2, $3) RETURNING id`
+const qCreateUser = `INSERT INTO users (email, full_name, password_hash, phone_e164) VALUES ($1, $2, $3, nullif($4, '')) RETURNING id`
 
-func (p *PG) CreateUser(ctx context.Context, email, name, hash string) (User, error) {
+// CreateUser membuat akun baru yang belum terverifikasi (email_verified_at kosong).
+func (p *PG) CreateUser(ctx context.Context, email, name, hash, phone string) (User, error) {
 	var id string
-	if err := p.DB.QueryRowContext(ctx, qCreateUser, email, name, hash).Scan(&id); err != nil {
+	if err := p.DB.QueryRowContext(ctx, qCreateUser, email, name, hash, phone).Scan(&id); err != nil {
 		if isUnique(err) {
 			return User{}, ErrDuplicate
 		}
 		return User{}, err
 	}
 	return p.UserByID(ctx, id)
+}
+
+const qUpdatePendingUser = `UPDATE users SET full_name = $2, password_hash = $3, phone_e164 = nullif($4, ''), updated_at = now()
+WHERE id = $1 AND email_verified_at IS NULL AND deleted_at IS NULL`
+
+// UpdatePendingUser: pendaftaran ulang untuk akun yang belum menyelesaikan OTP.
+func (p *PG) UpdatePendingUser(ctx context.Context, id, name, hash, phone string) (User, error) {
+	if _, err := p.DB.ExecContext(ctx, qUpdatePendingUser, id, name, hash, phone); err != nil {
+		return User{}, err
+	}
+	return p.UserByID(ctx, id)
+}
+
+const qMarkVerified = `UPDATE users SET email_verified_at = coalesce(email_verified_at, now()), updated_at = now() WHERE id = $1`
+
+func (p *PG) MarkEmailVerified(ctx context.Context, id string) error {
+	_, err := p.DB.ExecContext(ctx, qMarkVerified, id)
+	return err
+}
+
+const qSetPassword = `UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
+
+func (p *PG) SetPassword(ctx context.Context, id, hash string) error {
+	_, err := p.DB.ExecContext(ctx, qSetPassword, id, hash)
+	return err
+}
+
+const qRevokeUserTokens = `UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`
+
+// RevokeUserTokens mengeluarkan akun dari semua perangkat (mis. setelah ganti kata sandi).
+func (p *PG) RevokeUserTokens(ctx context.Context, id string) error {
+	_, err := p.DB.ExecContext(ctx, qRevokeUserTokens, id)
+	return err
 }
 
 const qUserByEmail = `SELECT ` + userCols + ` FROM users u WHERE lower(u.email) = lower($1) AND u.deleted_at IS NULL`
@@ -603,7 +638,9 @@ func AllQueries() map[string]string {
 	out := map[string]string{
 		"categories": qCategories, "articles": q, "most_read": qMostRead, "article": qArticle, "related": qRelated,
 		"inc_view": qIncView, "author": qAuthor, "instruments": qInstruments, "events": qEvents, "plans": qPlans, "ads": qAds,
-		"create_user": qCreateUser, "user_by_email": qUserByEmail, "user_by_id": qUserByID, "save_refresh": qSaveRefresh,
+		"create_user": qCreateUser, "update_pending_user": qUpdatePendingUser, "mark_verified": qMarkVerified, "set_password": qSetPassword,
+		"revoke_user_tokens": qRevokeUserTokens, "search_instruments": qSearchInstruments, "search_articles": qSearchArticles,
+		"search_authors": qSearchAuthors, "search_tags": qSearchTags, "user_by_email": qUserByEmail, "user_by_id": qUserByID, "save_refresh": qSaveRefresh,
 		"consume_refresh": qConsumeRefresh, "revoke_refresh": qRevokeRefresh, "default_watchlist": qDefaultWatchlist,
 		"watchlist": qWatchlist, "add_watch": qAddWatch, "remove_watch": qRemoveWatch, "alerts": qAlerts, "create_alert": qCreateAlert,
 		"delete_alert": qDeleteAlert, "bookmark_on": qBookmarkOn, "bookmark_off": qBookmarkOff, "bookmarks": qBookmarks,
@@ -614,4 +651,92 @@ func AllQueries() map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+// ---------------------------------------------------------------- pencarian
+
+const qSearchInstruments = `
+SELECT i.symbol, i.name, i.exchange, i.asset_class, i.currency, i.provider_symbol, i.sector
+FROM instruments i
+WHERE i.active AND (i.symbol ILIKE $1 || '%' OR i.name ILIKE '%' || $1 || '%' OR replace(i.provider_symbol, '/', '') ILIKE $1 || '%')
+ORDER BY (upper(i.symbol) = upper($1)) DESC, (i.symbol ILIKE $1 || '%') DESC, i.symbol
+LIMIT $2`
+
+const qSearchArticles = `SELECT ` + cardCols + cardFrom + `
+  AND (a.search @@ websearch_to_tsquery('simple', $1) OR a.title ILIKE '%' || $1 || '%' OR a.excerpt ILIKE '%' || $1 || '%'
+       OR EXISTS (SELECT 1 FROM article_instruments ai WHERE ai.article_id = a.id AND ai.symbol ILIKE $1))
+ORDER BY (a.title ILIKE '%' || $1 || '%') DESC, a.published_at DESC
+LIMIT $2`
+
+const qSearchAuthors = `
+SELECT au.id, au.slug, au.name, coalesce(au.title, ''), au.avatar_url, au.verified,
+       (SELECT count(*) FROM articles a WHERE a.author_id = au.id AND a.status = 'published')
+FROM authors au
+WHERE au.name ILIKE '%' || $1 || '%' OR au.title ILIKE '%' || $1 || '%'
+   OR EXISTS (SELECT 1 FROM articles a WHERE a.author_id = au.id AND a.status = 'published' AND a.title ILIKE '%' || $1 || '%')
+ORDER BY (au.name ILIKE '%' || $1 || '%') DESC, au.name
+LIMIT $2`
+
+const qSearchTags = `
+SELECT t.slug, t.name FROM tags t
+WHERE t.name ILIKE '%' || $1 || '%' OR t.slug ILIKE '%' || $1 || '%'
+   OR EXISTS (SELECT 1 FROM article_tags at JOIN articles a ON a.id = at.article_id
+              WHERE at.tag_id = t.id AND a.status = 'published' AND a.title ILIKE '%' || $1 || '%')
+ORDER BY t.name
+LIMIT $2`
+
+// Search mencari aset, berita, penulis, dan topik sekaligus.
+func (p *PG) Search(ctx context.Context, q string, limit int) (SearchResult, error) {
+	out := SearchResult{Instruments: []Instrument{}, Articles: []ArticleCard{}, Authors: []AuthorHit{}, Tags: []Tag{}}
+	// Karakter wildcard LIKE dari pengguna diperlakukan sebagai teks biasa.
+	q = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(q)
+	rows, err := p.DB.QueryContext(ctx, qSearchInstruments, q, limit)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var i Instrument
+		if err := rows.Scan(&i.Symbol, &i.Name, &i.Exchange, &i.AssetClass, &i.Currency, &i.ProviderSymbol, &i.Sector); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.Instruments = append(out.Instruments, i)
+	}
+	rows.Close()
+	if rows, err = p.DB.QueryContext(ctx, qSearchArticles, q, limit*3); err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		c, err := scanCard(rows)
+		if err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.Articles = append(out.Articles, c)
+	}
+	rows.Close()
+	if rows, err = p.DB.QueryContext(ctx, qSearchAuthors, q, limit); err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var a AuthorHit
+		if err := rows.Scan(&a.ID, &a.Slug, &a.Name, &a.Title, &a.AvatarURL, &a.Verified, &a.ArticleCount); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.Authors = append(out.Authors, a)
+	}
+	rows.Close()
+	if rows, err = p.DB.QueryContext(ctx, qSearchTags, q, limit); err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t Tag
+		if err := rows.Scan(&t.Slug, &t.Name); err != nil {
+			return out, err
+		}
+		out.Tags = append(out.Tags, t)
+	}
+	return out, rows.Err()
 }

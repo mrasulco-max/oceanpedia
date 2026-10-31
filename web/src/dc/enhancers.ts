@@ -8,8 +8,10 @@ import { content, editor } from "./editorial";
 import { tvchart } from "./tvchart";
 import { lwchart } from "./lwchart";
 import { ai } from "./ai";
+import { auth, verifyUrl } from "./auth";
+import { search } from "./search";
 
-export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai";
+export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search";
 
 export interface Env {
   router: ReturnType<typeof useRouter>;
@@ -42,7 +44,13 @@ function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = (await res.json().catch(() => ({}))) as { user?: { role?: string }; detail?: string };
+      const data = (await res.json().catch(() => ({}))) as { user?: { role?: string }; detail?: string; type?: string; errors?: Record<string, string> };
+      if (res.status === 403 && data.type?.includes("verification-required")) {
+        // Akun baru yang belum konfirmasi OTP: kode sudah dikirim, lanjut ke verifikasi.
+        toast(host, data.detail ?? "Konfirmasi akun dengan kode yang dikirim ke email.", "ok");
+        router.push(verifyUrl(data.errors?.email ?? email, "signup", ctx.next));
+        return;
+      }
       if (!res.ok) {
         toast(host, data.detail ?? "Gagal masuk. Coba lagi.");
         return;
@@ -92,7 +100,7 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
   return () => host.removeEventListener("click", onClick, true);
 }
 
-const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai };
+const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search };
 
 export function runEnhancer(id: EnhancerId, host: HTMLElement, env: Env): Cleanup {
   return REGISTRY[id]?.(host, env);

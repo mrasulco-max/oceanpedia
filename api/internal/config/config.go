@@ -23,6 +23,8 @@ type Config struct {
 	RunMigrations   bool
 	TwelveDataKey   string
 	GeminiKey       string
+	BirdKey         string
+	BirdURL         string
 	GeminiModels    []string
 	MarketCacheTTL  time.Duration
 	QuoteTTL        time.Duration
@@ -45,6 +47,8 @@ func Load() (Config, error) {
 		RunMigrations:   env("API_RUN_MIGRATIONS", "true") == "true",
 		TwelveDataKey:   os.Getenv("TWELVEDATA_API_KEY"),
 		GeminiKey:       os.Getenv("GEMINI_API_KEY"),
+		BirdKey:         os.Getenv("BIRD_API_KEY"),
+		BirdURL:         os.Getenv("BIRD_API_URL"),
 		GeminiModels:    splitList(os.Getenv("GEMINI_MODELS")),
 		MarketCacheTTL:  dur("TWELVEDATA_CACHE_TTL", time.Minute),
 		QuoteTTL:        dur("TWELVEDATA_QUOTE_TTL", 15*time.Minute),

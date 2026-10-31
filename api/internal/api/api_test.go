@@ -16,6 +16,7 @@ import (
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/httpx"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
+	"github.com/mrasulco-max/oceanpedia/api/internal/otp"
 	"github.com/mrasulco-max/oceanpedia/api/internal/store"
 )
 
@@ -37,13 +38,67 @@ func (f *fake) ArticleBySlug(_ context.Context, slug string) (store.Article, err
 	sum := "ringkasan"
 	return store.Article{ArticleCard: store.ArticleCard{Slug: slug, IsPremium: true}, Body: "paragraf satu\n\nparagraf dua", AISummary: &sum}, nil
 }
-func (f *fake) CreateUser(_ context.Context, email, name, hash string) (store.User, error) {
+func (f *fake) CreateUser(_ context.Context, email, name, hash, phone string) (store.User, error) {
 	if _, ok := f.users[email]; ok {
 		return store.User{}, store.ErrDuplicate
 	}
 	u := store.User{ID: "u-" + email, Email: email, FullName: name, Role: "reader", PasswordHash: hash}
+	if phone != "" {
+		u.Phone = &phone
+	}
 	f.users[email] = u
 	return u, nil
+}
+func (f *fake) UpdatePendingUser(_ context.Context, id, name, hash, _ string) (store.User, error) {
+	for k, u := range f.users {
+		if u.ID == id {
+			u.FullName, u.PasswordHash = name, hash
+			f.users[k] = u
+			return u, nil
+		}
+	}
+	return store.User{}, httpx.ErrNotFound
+}
+func (f *fake) MarkEmailVerified(_ context.Context, id string) error {
+	for k, u := range f.users {
+		if u.ID == id {
+			u.EmailVerified = true
+			f.users[k] = u
+		}
+	}
+	return nil
+}
+func (f *fake) SetPassword(_ context.Context, id, hash string) error {
+	for k, u := range f.users {
+		if u.ID == id {
+			u.PasswordHash = hash
+			f.users[k] = u
+		}
+	}
+	return nil
+}
+func (f *fake) RevokeUserTokens(_ context.Context, id string) error {
+	for k, v := range f.tokens {
+		if v == id {
+			delete(f.tokens, k)
+		}
+	}
+	return nil
+}
+
+// fakeOTP: kode yang benar "123456"; mencatat email yang dikirimi kode.
+type fakeOTP struct{ sent []string }
+
+func (o *fakeOTP) Send(_ context.Context, email string) error {
+	o.sent = append(o.sent, email)
+	return nil
+}
+func (o *fakeOTP) Check(_ context.Context, _, code string) (otp.Result, error) {
+	if code == "123456" {
+		return otp.Result{OK: true}, nil
+	}
+	n := 2
+	return otp.Result{Reason: "incorrect_code", Remaining: &n}, nil
 }
 func (f *fake) UserByEmail(_ context.Context, email string) (store.User, error) {
 	u, ok := f.users[email]
@@ -78,6 +133,7 @@ func newTest(t *testing.T) (*Server, http.Handler) {
 	s := &Server{
 		Store:  &fake{users: map[string]store.User{}, tokens: map[string]string{}},
 		Market: market.Sample{},
+		OTP:    &fakeOTP{},
 		Cfg:    config.Config{Env: "development", JWTSecret: []byte(strings.Repeat("s", 32)), AccessTokenTTL: time.Minute, RefreshTokenTTL: time.Hour, RateLimitRPS: 1000, TaxRate: 0.11},
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
@@ -131,26 +187,56 @@ func TestPremiumArticleLockedForFreeUser(t *testing.T) {
 }
 
 func TestRegisterLoginRefresh(t *testing.T) {
-	_, h := newTest(t)
-	bad := do(h, "POST", "/v1/auth/register", `{"email":"bukan-email","password":"123","full_name":"A"}`)
-	if bad.Code != 422 || !bytes.Contains(bad.Body.Bytes(), []byte(`"password"`)) {
+	s, h := newTest(t)
+	bad := do(h, "POST", "/v1/auth/register", `{"email":"bukan-email","password":"123","full_name":"A","phone":"12"}`)
+	if bad.Code != 422 || !bytes.Contains(bad.Body.Bytes(), []byte(`"password"`)) || !bytes.Contains(bad.Body.Bytes(), []byte(`"phone"`)) {
 		t.Fatalf("validasi: %d %s", bad.Code, bad.Body)
 	}
-	ok := do(h, "POST", "/v1/auth/register", `{"email":"Nadia@Example.com","password":"sandi-rahasia","full_name":"Nadia Putri"}`)
-	if ok.Code != 201 {
-		t.Fatalf("register: %d %s", ok.Code, ok.Body)
+	if weak := do(h, "POST", "/v1/auth/register", `{"email":"a@b.co","password":"sandirahasia","full_name":"Nadia"}`); weak.Code != 422 {
+		t.Fatalf("sandi tanpa angka/huruf besar harus ditolak: %d", weak.Code)
 	}
-	if dup := do(h, "POST", "/v1/auth/register", `{"email":"nadia@example.com","password":"sandi-rahasia","full_name":"Nadia"}`); dup.Code != 409 {
-		t.Fatalf("duplikat: %d", dup.Code)
+	reg := do(h, "POST", "/v1/auth/register", `{"email":"Nadia@Example.com","password":"Sandi-rahasia1","full_name":"Nadia Putri","phone":"0812 3456 7890"}`)
+	if reg.Code != 202 || !strings.Contains(reg.Body.String(), `"verification_required"`) || strings.Contains(reg.Body.String(), "access_token") {
+		t.Fatalf("register harus meminta OTP tanpa token: %d %s", reg.Code, reg.Body)
+	}
+	if u := s.Store.(*fake).users["nadia@example.com"]; u.Phone == nil || *u.Phone != "+6281234567890" || u.EmailVerified {
+		t.Fatalf("data akun: %+v", u)
+	}
+	if o := s.OTP.(*fakeOTP); len(o.sent) != 1 || o.sent[0] != "nadia@example.com" {
+		t.Fatalf("OTP tidak terkirim: %+v", o.sent)
+	}
+	// Belum konfirmasi OTP → login ditolak (403) dan kode dikirim lagi.
+	pending := do(h, "POST", "/v1/auth/login", `{"email":"nadia@example.com","password":"Sandi-rahasia1"}`)
+	if pending.Code != 403 || !strings.Contains(pending.Body.String(), "verification-required") {
+		t.Fatalf("login akun belum terverifikasi: %d %s", pending.Code, pending.Body)
+	}
+	// Daftar ulang sebelum konfirmasi: diperbolehkan (kirim kode baru), bukan duplikat.
+	if again := do(h, "POST", "/v1/auth/register", `{"email":"nadia@example.com","password":"Sandi-rahasia1","full_name":"Nadia P"}`); again.Code != 202 {
+		t.Fatalf("daftar ulang: %d", again.Code)
+	}
+	if wrongCode := do(h, "POST", "/v1/auth/verify", `{"email":"nadia@example.com","code":"000000"}`); wrongCode.Code != 422 || !strings.Contains(wrongCode.Body.String(), "Sisa 2") {
+		t.Fatalf("kode salah: %d %s", wrongCode.Code, wrongCode.Body)
+	}
+	ver := do(h, "POST", "/v1/auth/verify", `{"email":"nadia@example.com","code":"123456"}`)
+	if ver.Code != 200 || !strings.Contains(ver.Body.String(), "access_token") {
+		t.Fatalf("verifikasi: %d %s", ver.Code, ver.Body)
+	}
+	if dup := do(h, "POST", "/v1/auth/register", `{"email":"nadia@example.com","password":"Sandi-rahasia1","full_name":"Nadia"}`); dup.Code != 409 {
+		t.Fatalf("duplikat setelah terverifikasi: %d", dup.Code)
 	}
 	if wrong := do(h, "POST", "/v1/auth/login", `{"email":"nadia@example.com","password":"salah-sandi"}`); wrong.Code != 401 {
 		t.Fatalf("login salah: %d", wrong.Code)
 	}
-	login := do(h, "POST", "/v1/auth/login", `{"email":"nadia@example.com","password":"sandi-rahasia"}`)
+	// Akun terverifikasi: masuk langsung tanpa OTP.
+	sentBefore := len(s.OTP.(*fakeOTP).sent)
+	login := do(h, "POST", "/v1/auth/login", `{"email":"nadia@example.com","password":"Sandi-rahasia1"}`)
 	var tr TokenResponse
 	_ = json.Unmarshal(login.Body.Bytes(), &tr)
-	if login.Code != 200 || tr.AccessToken == "" || tr.TokenType != "Bearer" || tr.User.PasswordHash != "" {
+	if login.Code != 200 || tr.AccessToken == "" || tr.TokenType != "Bearer" || tr.User.PasswordHash != "" || !tr.User.EmailVerified {
 		t.Fatalf("login: %d %s", login.Code, login.Body)
+	}
+	if len(s.OTP.(*fakeOTP).sent) != sentBefore {
+		t.Fatal("akun terverifikasi tidak boleh dikirimi OTP saat masuk")
 	}
 	if strings.Contains(login.Body.String(), "pbkdf2") {
 		t.Fatal("hash kata sandi bocor di respons")
@@ -163,6 +249,36 @@ func TestRegisterLoginRefresh(t *testing.T) {
 	r2 := do(h, "POST", "/v1/auth/refresh", `{"refresh_token":"`+tr.RefreshToken+`"}`)
 	if r1.Code != 200 || r2.Code != 401 {
 		t.Fatalf("rotasi refresh token: %d %d", r1.Code, r2.Code)
+	}
+	// Lupa kata sandi: kirim kode (email tak terdaftar tetap 202), lalu atur sandi baru.
+	if w := do(h, "POST", "/v1/auth/otp", `{"email":"tidak-ada@example.com"}`); w.Code != 202 {
+		t.Fatalf("otp email tak terdaftar: %d", w.Code)
+	}
+	if w := do(h, "POST", "/v1/auth/otp", `{"email":"nadia@example.com"}`); w.Code != 202 {
+		t.Fatalf("otp: %d", w.Code)
+	}
+	if w := do(h, "POST", "/v1/auth/password/reset", `{"email":"nadia@example.com","code":"123456","password":"lemah"}`); w.Code != 422 {
+		t.Fatalf("sandi lemah: %d", w.Code)
+	}
+	if w := do(h, "POST", "/v1/auth/password/reset", `{"email":"nadia@example.com","code":"123456","password":"Baru-sekali9"}`); w.Code != 200 {
+		t.Fatalf("reset: %d %s", w.Code, w.Body)
+	}
+	if w := do(h, "POST", "/v1/auth/login", `{"email":"nadia@example.com","password":"Baru-sekali9"}`); w.Code != 200 {
+		t.Fatalf("login sandi baru: %d", w.Code)
+	}
+}
+
+func TestNormalizePhoneMask(t *testing.T) {
+	for in, want := range map[string]string{"0812 3456 7890": "+6281234567890", "812-3456-7890": "+6281234567890", "+62 812 3456 789": "+628123456789", "": ""} {
+		if got, ok := normalizePhone(in); !ok || got != want {
+			t.Errorf("%q → %q %v", in, got, ok)
+		}
+	}
+	if _, ok := normalizePhone("021 555"); ok {
+		t.Error("nomor bukan HP harus ditolak")
+	}
+	if maskEmail("nadia.putri@email.com") != "na*********@email.com" {
+		t.Error(maskEmail("nadia.putri@email.com"))
 	}
 }
 

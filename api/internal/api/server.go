@@ -10,6 +10,7 @@ import (
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/httpx"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
+	"github.com/mrasulco-max/oceanpedia/api/internal/otp"
 	"github.com/mrasulco-max/oceanpedia/api/internal/store"
 )
 
@@ -18,6 +19,7 @@ type Server struct {
 	Store  store.Store
 	Market market.Provider
 	AI     *ai.Service
+	OTP    otp.Sender
 	Cfg    config.Config
 	Log    *slog.Logger
 	Now    func() time.Time
@@ -69,6 +71,10 @@ func (s *Server) Handler() http.Handler {
 	h("POST /v1/auth/login", s.login)
 	h("POST /v1/auth/refresh", s.refresh)
 	h("POST /v1/auth/logout", s.logout)
+	h("POST /v1/auth/verify", s.verifyOTP)
+	h("POST /v1/auth/otp", s.requestOTP)
+	h("POST /v1/auth/password/reset", s.resetPassword)
+	h("GET /v1/search", s.search)
 
 	// milik pengguna
 	auth("POST /v1/ai/ask", s.askAI)
