@@ -129,11 +129,20 @@ jobs:
           curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$ID/status" -d '{"action":"publish"}' | jq -e '.status == "published"'
           SLUG=$(curl -sf -H "$ED" "localhost:8080/v1/admin/articles/$ID" | jq -r .slug)
           code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/articles/$SLUG"); test "$code" = 200
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$AU" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$AU" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 409
           code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$ED" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 409
           curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$ID/status" -d '{"action":"archive"}' | jq -e '.status == "archived"'
           code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$ED" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 204
           code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/articles/$SLUG"); test "$code" = 404
+          # Penulis menerbitkan langsung tanpa review, menarik ke draf, lalu menghapus.
+          PUB=$(curl -sf -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(echo "$ART" | jq -c '.title="Uji CI: penulis terbit langsung" | .action="publish"')")
+          echo "$PUB" | jq -e '.status == "published"'
+          PID=$(echo "$PUB" | jq -r .id); PSLUG=$(echo "$PUB" | jq -r .slug)
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/articles/$PSLUG"); test "$code" = 200
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$PID/status" -d '{"action":"reject","note":"x"}'); test "$code" = 403
+          curl -sf -X POST -H "$AU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$PID/status" -d '{"action":"unpublish"}' | jq -e '.status == "draft"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$AU" "localhost:8080/v1/admin/articles/$PID"); test "$code" = 204
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(echo "$ART" | jq -c '.title="Uji CI: penulis breaking" | .is_breaking=true | .action="publish"')"); test "$code" = 422
           echo "$ART" > /tmp/art.json
       - name: Jalankan web
         run: |
@@ -171,6 +180,10 @@ jobs:
           echo "$ED_HTML" | grep -q 'class="dc-admin"'
           echo "$ED_HTML" | grep -q 'data-ed-actions'
           echo "$ED_HTML" | grep -q 'data-ed-tool="image"'
+          echo "$ED_HTML" | grep -q 'data-ed-action="publish"'
+          # Tombol foto sampul terpasang di elemen yang benar (bukan tombol lain).
+          echo "$ED_HTML" | grep -qP 'data-ed="cover-btn"[^>]*>(?:(?!<a ).){0,1500}Unggah foto</a>'
+          echo "$ED_HTML" | grep -qP 'data-ed-action="preview"[^>]*>(?:(?!<a ).){0,1500}Pratinjau</a>'
           NEW=$(curl -sf -b /tmp/jar -A "$MOB" -X POST localhost:3000/api/admin/articles -H 'Content-Type: application/json' -d "$(jq -c '.title="Uji CI dari HP: rupiah stabil hari ini" | .action="review"' /tmp/art.json)" | jq -r .id)
           curl -sf -b /tmp/jar -A "$MOB" "localhost:3000/admin/tulis?id=$NEW" | grep -q 'Uji CI dari HP: rupiah stabil hari ini'
           curl -sf -b /tmp/jar -A "$MOB" "localhost:3000/admin/konten?status=review&id=$NEW" | grep -q 'data-cnt-action="delete"'

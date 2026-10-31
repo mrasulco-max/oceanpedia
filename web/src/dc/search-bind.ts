@@ -155,7 +155,7 @@ export function bindSearchApp(html: string, d: SearchData): string {
   h = markSections(h, scrollStart, head, ["Aset", "aset"], ["Berita", "berita"], ["Penulis", "penulis"], ["Topik terkait", "topik"]);
   h = h.replace(/(<div style="margin-top: 22px; padding-top: 14px; border-top: 1px solid #E3EAF4"><span[^>]*>)PENCARIAN TERAKHIR/, `<div data-sec="recent" style="margin-top: 22px; padding-top: 14px; border-top: 1px solid #E3EAF4"><span style="font-size: 12px; font-weight: 700; letter-spacing: .06em; color: #5F6B7D">PENCARIAN TERAKHIR`);
   // Chip pencarian: tautan sungguhan.
-  h = h.replace(/<a tabindex="0" role="button" onClick="\{\{ f[345] \}\}"([^>]*)>(<svg[\s\S]*?<\/svg>)?([^<]*)<\/a>/g, (_m, attrs: string, icon: string | undefined, label: string) => `<a data-search-chip href="/cari?q=${encodeURIComponent(label.trim())}"${attrs}>${icon ?? ""}${label}</a>`);
+  h = h.replace(/<a tabindex="0" role="button" onClick="\{\{ f[345] \}\}"([^>]*)>(<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?([^<]*)<\/a>/g, (_m, attrs: string, icon: string | undefined, label: string) => `<a data-search-chip href="/cari?q=${encodeURIComponent(label.trim())}"${attrs}>${icon ?? ""}${label}</a>`);
   return h;
 }
 
@@ -280,6 +280,6 @@ export function bindSearchWeb(html: string, d: SearchData): string {
   h = h.replace('<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 32px"><div style="border-radius: 22px; border: 1px solid #E3EAF4; padding: 20px; ">', '</div><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 32px"><div data-sec="penulis" style="border-radius: 22px; border: 1px solid #E3EAF4; padding: 20px; ">');
   h = h.replace(/(<\/div><div) (style="border-radius: 22px; border: 1px solid #E3EAF4; padding: 20px; "><h3 style="margin: 0 0 12px; font-size: 17px; font-weight: 700">Topik terkait)/, '$1 data-sec="topik" $2');
   // Chip pencarian terakhir & populer: tautan sungguhan.
-  h = h.replace(/<a href="#" (style="height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 999px; background: #F6F8FC; font-size: 14px">)(<svg[\s\S]*?<\/svg>)?([^<]*)<\/a>/g, (_m, st: string, icon: string | undefined, label: string) => `<a data-search-chip href="/cari?q=${encodeURIComponent(label.trim())}" ${st}>${icon ?? ""}${label}</a>`);
+  h = h.replace(/<a href="#" (style="height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 999px; background: #F6F8FC; font-size: 14px">)(<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?([^<]*)<\/a>/g, (_m, st: string, icon: string | undefined, label: string) => `<a data-search-chip href="/cari?q=${encodeURIComponent(label.trim())}" ${st}>${icon ?? ""}${label}</a>`);
   return h;
 }

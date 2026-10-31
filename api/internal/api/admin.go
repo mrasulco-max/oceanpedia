@@ -18,8 +18,12 @@ import (
 // Peran redaksi yang boleh membuka panel admin.
 var staffRoles = map[string]bool{"author": true, "editor": true, "admin": true}
 
-// canPublish: hanya editor & admin yang boleh menerbitkan; penulis mengirim ke review.
+// canPublish: editor & admin mengelola artikel siapa pun (termasuk BREAKING & minta revisi).
 func canPublish(role string) bool { return role == "editor" || role == "admin" }
+
+// canRelease: semua peran redaksi boleh menerbitkan artikelnya sendiri tanpa review
+// (penulis: hanya miliknya; editor/admin: semua artikel).
+func canRelease(role string) bool { return staffRoles[role] }
 
 func requireStaff(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -117,8 +121,8 @@ func decideStatus(role, action string, publishAt *time.Time, now time.Time) (str
 	case "review":
 		return "review", nil, nil
 	case "publish":
-		if !canPublish(role) {
-			return "", nil, httpx.Forbidden("Penulis tidak bisa menerbitkan langsung. Kirim ke review agar diperiksa editor.")
+		if !canRelease(role) {
+			return "", nil, httpx.Forbidden("Peran ini tidak bisa menerbitkan artikel.")
 		}
 		t := now
 		if publishAt != nil && publishAt.After(now) {
@@ -280,13 +284,8 @@ func (s *Server) updateArticle(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if !canPublish(c.Role) {
-		if !cur.OwnedBy(c.Sub) {
-			return httpx.NotFound("Artikel tidak ditemukan.")
-		}
-		if cur.Status != "draft" && cur.Status != "review" {
-			return httpx.Forbidden("Artikel yang sudah terbit hanya bisa diubah editor.")
-		}
+	if !canPublish(c.Role) && !cur.OwnedBy(c.Sub) {
+		return httpx.NotFound("Artikel tidak ditemukan.")
 	}
 	var in articleReq
 	if err := httpx.Decode(r, &in); err != nil {
@@ -315,9 +314,6 @@ func (s *Server) updateArticle(w http.ResponseWriter, r *http.Request) error {
 // POST /v1/admin/articles/{id}/status  {action: publish|reject|archive|unpublish, note, publish_at}
 func (s *Server) articleStatus(w http.ResponseWriter, r *http.Request) error {
 	c := claims(r)
-	if !canPublish(c.Role) {
-		return httpx.Forbidden("Hanya editor/admin yang bisa mengubah status terbit.")
-	}
 	id, err := pathID(r)
 	if err != nil {
 		return err
@@ -333,6 +329,18 @@ func (s *Server) articleStatus(w http.ResponseWriter, r *http.Request) error {
 	cur, err := s.Store.AdminArticle(r.Context(), id)
 	if err != nil {
 		return err
+	}
+	// Penulis mengelola status artikelnya sendiri (terbit, tarik, arsip); minta revisi hanya editor/admin.
+	if !canPublish(c.Role) {
+		if !cur.OwnedBy(c.Sub) {
+			return httpx.NotFound("Artikel tidak ditemukan.")
+		}
+		if in.Action == "reject" {
+			return httpx.Forbidden("Hanya editor/admin yang bisa meminta revisi.")
+		}
+		if in.Action == "publish" && cur.IsBreaking {
+			return httpx.Forbidden("Artikel BREAKING hanya bisa diterbitkan editor/admin.")
+		}
 	}
 	var (
 		status string
@@ -364,7 +372,7 @@ func (s *Server) articleStatus(w http.ResponseWriter, r *http.Request) error {
 }
 
 // DELETE /v1/admin/articles/{id}
-// Penulis: hanya draf/revisi/review miliknya. Editor/admin: semua kecuali yang sedang tayang
+// Penulis: artikel miliknya; editor/admin: semua — kecuali yang sedang tayang
 // (tarik ke draf atau arsipkan dulu supaya tautan publik tidak tiba-tiba hilang).
 func (s *Server) deleteArticle(w http.ResponseWriter, r *http.Request) error {
 	c := claims(r)
@@ -377,14 +385,10 @@ func (s *Server) deleteArticle(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	live := cur.Status == "published" && cur.PublishedAt != nil && !cur.PublishedAt.After(s.Now())
-	if !canPublish(c.Role) {
-		if !cur.OwnedBy(c.Sub) {
-			return httpx.NotFound("Artikel tidak ditemukan.")
-		}
-		if cur.Status != "draft" && cur.Status != "review" {
-			return httpx.Forbidden("Artikel yang sudah dijadwalkan atau terbit hanya bisa dihapus editor.")
-		}
-	} else if live {
+	if !canPublish(c.Role) && !cur.OwnedBy(c.Sub) {
+		return httpx.NotFound("Artikel tidak ditemukan.")
+	}
+	if live {
 		return httpx.Conflict("Artikel sedang tayang. Tarik ke draf atau arsipkan dulu sebelum menghapus.")
 	}
 	if err := s.Store.DeleteArticle(r.Context(), id); err != nil {
