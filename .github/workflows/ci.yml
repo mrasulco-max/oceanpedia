@@ -156,6 +156,8 @@ jobs:
           MOB='Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'
           curl -sf -A "$DESK" localhost:3000/ | grep -q 'class="dc-frame-web"'
           curl -sf -A "$MOB" localhost:3000/ | grep -q 'class="dc-frame-app"'
+          # Status bar tiruan (9:41) tidak ikut dirender → header aplikasi tidak terlalu tinggi.
+          if curl -sf -A "$MOB" localhost:3000/ | grep -q '>9:41<'; then echo "status bar tiruan masih ada"; exit 1; fi
           curl -sf -A "$DESK" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'IHSG Menguat Ditopang Saham Perbankan'
           curl -sf -A "$MOB" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'class="dc-frame-app"'
           curl -sf -A "$MOB" localhost:3000/market/BBCA | grep -q 'class="dc-frame-app"'
