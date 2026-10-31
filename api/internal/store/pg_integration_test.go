@@ -117,15 +117,15 @@ func TestPGStore(t *testing.T) {
 	if err := s.SetPassword(ctx, u.ID, "hash3"); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now().UTC().Truncate(time.Second)
-	if err := s.SaveAuthCode(ctx, otp.CodeRecord{Email: email, Hash: []byte("h"), Provider: "email", ExpiresAt: now.Add(10 * time.Minute), SentAt: now, WindowAt: now, WindowSent: 1}); err != nil {
+	codeAt := time.Now().UTC().Truncate(time.Second)
+	if err := s.SaveAuthCode(ctx, otp.CodeRecord{Email: email, Hash: []byte("h"), Provider: "email", ExpiresAt: codeAt.Add(10 * time.Minute), SentAt: codeAt, WindowAt: codeAt, WindowSent: 1}); err != nil {
 		t.Fatal(err)
 	}
 	_ = s.AuthCodeAttempt(ctx, email)
 	if rc, ok, err := s.AuthCode(ctx, email); err != nil || !ok || rc.Attempts != 1 || string(rc.Hash) != "h" || rc.Provider != "email" {
 		t.Fatalf("auth code: %v %v %+v", err, ok, rc)
 	}
-	if err := s.SaveAuthCode(ctx, otp.CodeRecord{Email: email, Provider: "verify", ExpiresAt: now, SentAt: now, WindowAt: now, WindowSent: 2}); err != nil {
+	if err := s.SaveAuthCode(ctx, otp.CodeRecord{Email: email, Provider: "verify", ExpiresAt: codeAt, SentAt: codeAt, WindowAt: codeAt, WindowSent: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if rc, _, _ := s.AuthCode(ctx, email); rc.Attempts != 0 || rc.Hash != nil || rc.WindowSent != 2 {
