@@ -110,6 +110,31 @@ jobs:
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/profile | jq -e '.profile.stats.watchlist == 0 and .alert_limit == 3'
           curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"full_name":"CI Bot 2","preferences":{"breaking":false,"theme":"dark"}}' | jq -e '.profile.full_name == "CI Bot 2" and .profile.preferences.breaking == false'
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/sessions | jq -e '.data | length >= 1'
+          # Redaksi: penulis & editor — CRUD artikel lengkap.
+          for who in penulis editor; do
+            curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d "{\"email\":\"$who@example.com\",\"password\":\"Sandi-rahasia1\",\"full_name\":\"CI $who\"}" > /dev/null
+            curl -sf -X POST localhost:8080/v1/auth/verify -H 'Content-Type: application/json' -d "{\"email\":\"$who@example.com\",\"code\":\"000000\"}" > /dev/null
+          done
+          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -c "UPDATE users SET role='author' WHERE email='penulis@example.com'; UPDATE users SET role='editor' WHERE email='editor@example.com';"
+          tok() { curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"$1@example.com\",\"password\":\"Sandi-rahasia1\"}" | jq -r .access_token; }
+          AU="Authorization: Bearer $(tok penulis)"; ED="Authorization: Bearer $(tok editor)"
+          ART='{"title":"Uji CI: IHSG menguat di sesi pertama","excerpt":"Ringkasan uji CI.","body":"JAKARTA — IHSG ditutup menguat pada sesi pertama ditopang **saham bank** besar.\n\n- Poin satu\n- Poin dua\n\nParagraf ketiga uji.","category":"saham","symbols":["BBCA"],"action":"review"}'
+          ID=$(curl -sf -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$ART" | jq -r .id)
+          curl -sf -H "$AU" "localhost:8080/v1/admin/articles?status=review" | jq -e --arg id "$ID" '(.data | map(.id) | index($id)) != null and .counts.all >= 1'
+          curl -sf -X PUT -H "$AU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$ID" -d "$(echo "$ART" | jq -c '.title="Uji CI: judul diperbarui" | .action="draft"')" | jq -e '.title == "Uji CI: judul diperbarui" and .status == "draft"'
+          curl -sf -H "$AU" "localhost:8080/v1/admin/articles/$ID" | jq -e '.symbols == ["BBCA"]'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$AU" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 204
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$AU" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 404
+          ID=$(curl -sf -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$ART" | jq -r .id)
+          curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$ID/status" -d '{"action":"publish"}' | jq -e '.status == "published"'
+          SLUG=$(curl -sf -H "$ED" "localhost:8080/v1/admin/articles/$ID" | jq -r .slug)
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/articles/$SLUG"); test "$code" = 200
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$AU" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$ED" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 409
+          curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$ID/status" -d '{"action":"archive"}' | jq -e '.status == "archived"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$ED" "localhost:8080/v1/admin/articles/$ID"); test "$code" = 204
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/articles/$SLUG"); test "$code" = 404
+          echo "$ART" > /tmp/art.json
       - name: Jalankan web
         run: |
           mkdir -p /tmp/web && tar -xzf /tmp/web-build.tgz -C /tmp/web
@@ -140,6 +165,19 @@ jobs:
           curl -sf -A "$MOB" "localhost:3000/verifikasi?email=ci%40example.com&mode=signup" | grep -q 'data-otp-input'
           curl -sf -A "$DESK" "localhost:3000/cari?q=bbca" | grep -q '/market/BBCA'
           curl -sf -A "$MOB" "localhost:3000/cari?q=bbca" | grep -q 'data-search-input'
+          # Penulis di HP: masuk lewat web, Tulis artikel & Konten tampil responsif, simpan → tampil di Konten.
+          curl -sf -c /tmp/jar -A "$MOB" -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"penulis@example.com","password":"Sandi-rahasia1"}' > /dev/null
+          ED_HTML=$(curl -sf -b /tmp/jar -A "$MOB" localhost:3000/admin/tulis)
+          echo "$ED_HTML" | grep -q 'class="dc-admin"'
+          echo "$ED_HTML" | grep -q 'data-ed-actions'
+          echo "$ED_HTML" | grep -q 'data-ed-tool="image"'
+          NEW=$(curl -sf -b /tmp/jar -A "$MOB" -X POST localhost:3000/api/admin/articles -H 'Content-Type: application/json' -d "$(jq -c '.title="Uji CI dari HP: rupiah stabil hari ini" | .action="review"' /tmp/art.json)" | jq -r .id)
+          curl -sf -b /tmp/jar -A "$MOB" "localhost:3000/admin/tulis?id=$NEW" | grep -q 'Uji CI dari HP: rupiah stabil hari ini'
+          curl -sf -b /tmp/jar -A "$MOB" "localhost:3000/admin/konten?status=review&id=$NEW" | grep -q 'data-cnt-action="delete"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/jar -A "$MOB" -X DELETE "localhost:3000/api/admin/articles/$NEW"); test "$code" = 204
+          # Format isi artikel (tebal & daftar) tampil di halaman publik.
+          EID=$(curl -sf -X POST -H "Authorization: Bearer $(curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"editor@example.com","password":"Sandi-rahasia1"}' | jq -r .access_token)" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(jq -c '.title="Uji CI format isi artikel publik" | .action="publish"' /tmp/art.json)" | jq -r .slug)
+          curl -sf -A "$DESK" "localhost:3000/berita/$EID" | grep -q '<strong>saham bank</strong>'
           # Semua rute desain dapat dirender (desktop & ponsel).
           for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa; do
             for ua in "$DESK" "$MOB"; do

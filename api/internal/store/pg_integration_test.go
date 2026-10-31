@@ -8,6 +8,7 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -230,9 +231,26 @@ func TestPGStore(t *testing.T) {
 	if _, err := s.UpdateArticle(ctx, art.ID, store.ArticleInput{Title: "Ticker tidak dikenal", CategorySlug: "saham", Symbols: []string{"ZZZZ"}, Status: "draft", ReadingMinutes: 1}); err == nil {
 		t.Fatal("ticker tak dikenal harus gagal")
 	}
-	counts, err := s.AdminCounts(ctx)
+	counts, err := s.AdminCounts(ctx, "")
 	if err != nil || counts["published"] < 13 || counts["review"] < 1 {
 		t.Fatalf("counts: %v %+v", err, counts)
+	}
+	if mine, err := s.AdminCounts(ctx, u.ID); err != nil || mine["all"] < 1 || mine["all"] >= counts["all"] {
+		t.Fatalf("counts milik penulis: %v %+v", err, mine)
+	}
+	// Hapus artikel (cascade ticker) lalu pastikan hilang.
+	tmp, err := s.CreateArticle(ctx, u.ID, "penguji-"+slugBase, store.ArticleInput{Title: "Draf yang dihapus", CategorySlug: "saham", Symbols: []string{"BBCA"}, Status: "draft", ReadingMinutes: 1}, func(i int) string { return fmt.Sprintf("hapus-%s-%d", slugBase, i) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteArticle(ctx, tmp.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AdminArticle(ctx, tmp.ID); err == nil {
+		t.Fatal("artikel terhapus masih ada")
+	}
+	if err := s.DeleteArticle(ctx, tmp.ID); err == nil {
+		t.Fatal("hapus dua kali harus 404")
 	}
 	mid, err := s.CreateMedia(ctx, u.ID, "image/png", []byte("\x89PNG data"))
 	if err != nil {

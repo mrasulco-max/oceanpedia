@@ -52,7 +52,8 @@ export default function DCBoard({ Logic, tpl, css, kind, enhance, ctx }: BoardPr
 
   // Skala untuk layar yang lebih sempit dari kanvas desktop.
   useIsoLayoutEffect(() => {
-    if (kind === "app") return;
+    // Aplikasi menyesuaikan sendiri; panel admin responsif (tata letak HP/tablet dari desain), tidak diperkecil.
+    if (kind !== "web") return;
     const el = scaleRef.current;
     if (!el) return;
     const fit = () => {

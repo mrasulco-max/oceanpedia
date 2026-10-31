@@ -35,6 +35,55 @@ function problemText(p: Problem): string {
 
 const $ = <T extends Element = HTMLElement>(root: ParentNode, sel: string) => root.querySelector<T & HTMLElement>(sel);
 
+/** Foto dari kamera HP sering > 4 MB: kecilkan ke sisi terpanjang `max` px (JPEG) sebelum diunggah. */
+async function shrink(file: File, max = 1600): Promise<Blob> {
+  if (file.type === "image/gif" && file.size <= 4 * 1024 * 1024) return file; // jaga animasi
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    if (k === 1 && file.size <= 1.5 * 1024 * 1024 && /^image\/(jpeg|png|webp)$/.test(file.type)) {
+      bmp.close();
+      return file;
+    }
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k);
+    c.height = Math.round(bmp.height * k);
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#FFFFFF";
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
+    return await new Promise<Blob>((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("canvas"))), "image/jpeg", 0.85));
+  } catch {
+    return file; // biar server yang menilai formatnya
+  }
+}
+
+async function uploadImage(file: File): Promise<{ ok: true; url: string } | { ok: false; msg: string }> {
+  if (!file.type.startsWith("image/")) return { ok: false, msg: "Pilih berkas foto." };
+  const blob = await shrink(file);
+  if (blob.size > 4 * 1024 * 1024) return { ok: false, msg: "Ukuran foto maksimal 4 MB." };
+  const fd = new FormData();
+  fd.append("file", blob, blob === file ? file.name : "foto.jpg");
+  const r = await call<{ id: string; url: string }>("POST", "media", fd);
+  return r.ok ? { ok: true, url: r.data.url } : { ok: false, msg: problemText(r.problem) };
+}
+
+/** Tombol hapus dua ketukan (tanpa dialog bawaan browser, ramah HP). */
+function armed(btn: HTMLElement, label = "Ketuk lagi untuk hapus"): boolean {
+  if (btn.dataset.armed === "1") return true;
+  const old = btn.textContent;
+  btn.dataset.armed = "1";
+  btn.textContent = label;
+  window.setTimeout(() => {
+    if (btn.isConnected && btn.dataset.armed === "1") {
+      btn.dataset.armed = "";
+      btn.textContent = old;
+    }
+  }, 4000);
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Tulis artikel
 // ---------------------------------------------------------------------------
@@ -62,6 +111,7 @@ export function editor(host: HTMLElement, { router, ctx }: Env): Cleanup {
   const cover = $(host, '[data-ed="cover"]');
   const coverFile = $<HTMLInputElement>(host, '[data-ed="cover-file"]');
   const confirmBox = $(host, '[data-ed="confirm"]');
+  const imageFile = $<HTMLInputElement>(host, '[data-ed="image-file"]');
   if (!title || !excerpt || !body || !category || !type || !chips || !symInput || !cover || !coverFile) return;
 
   const known = new Set([...host.querySelectorAll<HTMLOptionElement>("#ob-symbols option")].map((o) => o.value));
@@ -186,6 +236,77 @@ export function editor(host: HTMLElement, { router, ctx }: Env): Cleanup {
     router.push(`/admin/konten?status=${action === "review" ? "review" : scheduled ? "scheduled" : "published"}&id=${a.id}`);
   };
 
+  // Toolbar format: bekerja pada teks terpilih di area isi.
+  const edit = (fn: (sel: string, before: string, after: string) => { text: string; caret?: [number, number] }) => {
+    const a = body.selectionStart ?? body.value.length;
+    const b = body.selectionEnd ?? a;
+    const r = fn(body.value.slice(a, b), body.value.slice(0, a), body.value.slice(b));
+    body.focus();
+    body.setRangeText(r.text, a, b, "end");
+    if (r.caret) body.setSelectionRange(a + r.caret[0], a + r.caret[1]);
+    body.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  const block = (before: string) => (before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "");
+  const prefixLines = (sel: string, before: string, mark: string, sample: string) => {
+    const lines = (sel || sample).split("\n").map((l) => (l.startsWith(mark) ? l : mark + l));
+    const lead = block(before);
+    const text = lead + lines.join("\n");
+    return { text, caret: sel ? undefined : ([lead.length + mark.length, text.length] as [number, number]) };
+  };
+  const tool = (key: string) => {
+    if (key === "bold") {
+      edit((sel) => ({ text: `**${sel || "teks tebal"}**`, caret: sel ? undefined : [2, 12] }));
+    } else if (key === "list") {
+      edit((sel, before) => prefixLines(sel, before, "- ", "Poin pertama"));
+    } else if (key === "quote") {
+      edit((sel, before) => prefixLines(sel, before, "> ", "Kutipan narasumber"));
+    } else if (key === "link") {
+      const url = window.prompt("Alamat tautan (https://…)", "https://");
+      if (!url) return;
+      if (!/^https?:\/\/[^\s"'<>]+\.[^\s"'<>]+$/.test(url.trim())) {
+        toast(host, "Tautan harus diawali https:// dan berupa alamat lengkap.");
+        return;
+      }
+      edit((sel) => {
+        const label = (sel || "teks tautan").replace(/[[\]]/g, "");
+        return { text: `[${label}](${url.trim()})`, caret: sel ? undefined : [1, 1 + label.length] };
+      });
+    } else if (key === "image") {
+      imageFile?.click();
+    } else if (key === "widget") {
+      toast(host, "Grafik harga tampil otomatis dari “Ticker terkait”. Tambahkan ticker di sini.");
+      symInput.scrollIntoView({ block: "center", behavior: "smooth" });
+      symInput.focus({ preventScroll: true });
+    }
+  };
+  const onImage = async () => {
+    const f = imageFile?.files?.[0];
+    if (!f || !imageFile) return;
+    imageFile.value = "";
+    toast(host, "Mengunggah gambar…");
+    const r = await uploadImage(f);
+    if (!r.ok) return toast(host, r.msg);
+    edit((_sel, before) => {
+      const lead = block(before);
+      return { text: `${lead}![Keterangan foto](${r.url})\n\n`, caret: [lead.length + 2, lead.length + 17] };
+    });
+    toast(host, "Gambar disisipkan. Ganti “Keterangan foto” dengan keterangan & sumbernya.", "ok");
+  };
+
+  const remove = async (btn: HTMLElement) => {
+    if (!id || busy || !armed(btn)) return;
+    busy = true;
+    const r = await call<unknown>("DELETE", `articles/${id}`);
+    busy = false;
+    if (!r.ok) {
+      toast(host, problemText(r.problem));
+      return;
+    }
+    dirty = false;
+    toast(host, "Artikel dihapus.", "ok");
+    router.push("/admin/konten?status=draft");
+  };
+
   const onClick = (e: MouseEvent) => {
     const t = e.target instanceof Element ? e.target : null;
     if (!t) return;
@@ -206,6 +327,12 @@ export function editor(host: HTMLElement, { router, ctx }: Env): Cleanup {
       dirty = true;
       return;
     }
+    const tb = t.closest<HTMLElement>("[data-ed-tool]");
+    if (tb) {
+      e.preventDefault();
+      tool(tb.dataset.edTool!);
+      return;
+    }
     if (t.closest('[data-ed="cover-btn"]')) {
       e.preventDefault();
       coverFile.click();
@@ -215,7 +342,9 @@ export function editor(host: HTMLElement, { router, ctx }: Env): Cleanup {
     if (!act) return;
     e.preventDefault();
     e.stopPropagation();
-    if (act === "preview") {
+    if (act === "delete") {
+      void remove(t.closest<HTMLElement>("[data-ed-action]")!);
+    } else if (act === "preview") {
       toast(host, "Pratinjau tersedia setelah artikel terbit.");
     } else if (act === "draft" || act === "review") {
       void save(act);
@@ -262,23 +391,17 @@ export function editor(host: HTMLElement, { router, ctx }: Env): Cleanup {
   const onFile = async () => {
     const f = coverFile.files?.[0];
     if (!f) return;
-    if (f.size > 4 * 1024 * 1024) {
-      toast(host, "Ukuran foto maksimal 4 MB.");
-      return;
-    }
     const note = $(host, '[data-ed="cover-note"]');
     if (note) note.textContent = "Mengunggah…";
-    const fd = new FormData();
-    fd.append("file", f);
-    const r = await call<{ id: string; url: string }>("POST", "media", fd);
+    const r = await uploadImage(f);
     coverFile.value = "";
     if (!r.ok) {
       if (note) note.textContent = "Gagal mengunggah";
-      toast(host, problemText(r.problem));
+      toast(host, r.msg);
       return;
     }
-    cover.dataset.url = r.data.url;
-    cover.style.background = `url("${r.data.url}") center / cover no-repeat, linear-gradient(150deg, #2C3A63, #1B2235)`;
+    cover.dataset.url = r.url;
+    cover.style.background = `url("${r.url}") center / cover no-repeat, linear-gradient(150deg, #2C3A63, #1B2235)`;
     if (note) note.textContent = "Foto terpasang";
     const btn = $(host, '[data-ed="cover-btn"]');
     if (btn?.lastChild) btn.lastChild.textContent = "Ganti foto";
@@ -295,6 +418,7 @@ export function editor(host: HTMLElement, { router, ctx }: Env): Cleanup {
   host.addEventListener("keydown", onKey);
   host.addEventListener("change", onChange);
   coverFile.addEventListener("change", onFile);
+  imageFile?.addEventListener("change", onImage);
   window.addEventListener("beforeunload", beforeUnload);
   sync();
   return () => {
@@ -303,6 +427,7 @@ export function editor(host: HTMLElement, { router, ctx }: Env): Cleanup {
     host.removeEventListener("keydown", onKey);
     host.removeEventListener("change", onChange);
     coverFile.removeEventListener("change", onFile);
+    imageFile?.removeEventListener("change", onImage);
     window.removeEventListener("beforeunload", beforeUnload);
   };
 }
@@ -334,6 +459,22 @@ export function content(host: HTMLElement, { router }: Env): Cleanup {
         host.querySelector<HTMLTextAreaElement>('[data-cnt="note"]')?.focus();
         return;
       }
+      if (action === "delete") {
+        if (!armed(act)) return;
+        busy = true;
+        const d = await call<unknown>("DELETE", `articles/${act.dataset.id}`);
+        busy = false;
+        if (!d.ok) {
+          toast(host, problemText(d.problem));
+          return;
+        }
+        toast(host, "Artikel dihapus.", "ok");
+        const u = new URL(location.href);
+        u.searchParams.delete("id");
+        router.replace(u.pathname + u.search);
+        router.refresh();
+        return;
+      }
       busy = true;
       act.setAttribute("aria-busy", "true");
       const r = await call<{ status: string }>("POST", `articles/${act.dataset.id}/status`, { action, note: action === "reject" ? note : "" });
@@ -350,7 +491,7 @@ export function content(host: HTMLElement, { router }: Env): Cleanup {
         archive: "Artikel diarsipkan.",
       };
       toast(host, msg[action] ?? "Tersimpan.", "ok");
-      const next = action === "publish" ? "published" : action === "reject" ? "revision" : "draft";
+      const next = action === "publish" ? "published" : action === "reject" ? "revision" : action === "archive" ? "archived" : "draft";
       router.push(`/admin/konten?status=${next}&id=${act.dataset.id}`);
       return;
     }
@@ -363,5 +504,9 @@ export function content(host: HTMLElement, { router }: Env): Cleanup {
   };
   host.addEventListener("click", onClick, true);
   host.querySelectorAll<HTMLElement>("[data-row]").forEach((r) => (r.style.cursor = "pointer"));
+  // Di HP panel detail ada di bawah tabel: setelah memilih artikel, gulir ke sana.
+  if (new URLSearchParams(location.search).has("id") && window.matchMedia("(max-width: 1023px)").matches) {
+    host.querySelector<HTMLElement>("[data-cnt-panel]")?.scrollIntoView({ block: "start" });
+  }
   return () => host.removeEventListener("click", onClick, true);
 }

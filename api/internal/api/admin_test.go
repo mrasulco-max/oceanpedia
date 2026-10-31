@@ -108,3 +108,49 @@ func TestAdminArticleRoles(t *testing.T) {
 }
 
 func fmtAction(body, action string) string { return strings.Replace(body, "%s", action, 1) }
+
+// fakeDel menyimpan satu artikel untuk uji hapus.
+type fakeDel struct {
+	*fakeAdmin
+	art     store.AdminArticle
+	deleted bool
+}
+
+func (f *fakeDel) AdminArticle(context.Context, string) (store.AdminArticle, error) {
+	return f.art, nil
+}
+func (f *fakeDel) DeleteArticle(context.Context, string) error { f.deleted = true; return nil }
+
+func TestDeleteArticleRoles(t *testing.T) {
+	s, _ := newTest(t)
+	owner := "u-author"
+	past := time.Now().Add(-time.Hour)
+	fd := &fakeDel{fakeAdmin: &fakeAdmin{fake: s.Store.(*fake)}}
+	s.Store = fd
+	h := s.Handler()
+	tok := func(sub, role string) string {
+		t, _ := auth.Sign(s.Cfg.JWTSecret, auth.Claims{Sub: sub, Role: role}, time.Minute, time.Now())
+		return "Bearer " + t
+	}
+	const path = "/v1/admin/articles/11111111-1111-1111-1111-111111111111"
+	cases := []struct {
+		name, sub, role, status string
+		at                      *time.Time
+		want                    int
+	}{
+		{"penulis hapus draf sendiri", owner, "author", "draft", nil, 204},
+		{"penulis hapus draf orang lain", "u-lain", "author", "draft", nil, 404},
+		{"penulis hapus yang terbit", owner, "author", "published", &past, 403},
+		{"editor hapus yang tayang", "u-ed", "editor", "published", &past, 409},
+		{"editor hapus arsip", "u-ed", "editor", "archived", &past, 204},
+		{"pembaca", owner, "reader", "draft", nil, 403},
+	}
+	for _, c := range cases {
+		fd.art = store.AdminArticle{ID: "11111111-1111-1111-1111-111111111111", Title: "Uji", Status: c.status, PublishedAt: c.at, CreatedBy: &owner}
+		fd.deleted = false
+		w := do(h, "DELETE", path, "", "Authorization", tok(c.sub, c.role))
+		if w.Code != c.want || fd.deleted != (c.want == 204) {
+			t.Errorf("%s: %d (hapus=%v) %s", c.name, w.Code, fd.deleted, w.Body)
+		}
+	}
+}
