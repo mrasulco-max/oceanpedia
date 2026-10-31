@@ -179,7 +179,7 @@ func TestPGStore(t *testing.T) {
 	in := store.ArticleInput{Title: "Uji alur redaksi OceanBird", Excerpt: "Ringkasan uji.", Body: "Isi uji.", CategorySlug: "saham",
 		Symbols: []string{"BBCA", "IHSG"}, Status: "review", ReadingMinutes: 1}
 	art, err := s.CreateArticle(ctx, u.ID, "penguji-"+slugBase, in, slugFn)
-	if err != nil || art.Status != "review" || len(art.Symbols) != 2 || !art.OwnedBy(u.ID) || art.AuthorName != "Penguji" {
+	if err != nil || art.Status != "review" || len(art.Symbols) != 2 || !art.OwnedBy(u.ID) || art.AuthorName != "Penguji Baru" {
 		t.Fatalf("create article: %v %+v", err, art)
 	}
 	dup, err := s.CreateArticle(ctx, u.ID, "penguji-"+slugBase, in, slugFn)
