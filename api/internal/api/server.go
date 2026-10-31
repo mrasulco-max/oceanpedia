@@ -79,6 +79,13 @@ func (s *Server) Handler() http.Handler {
 	// milik pengguna
 	auth("POST /v1/ai/ask", s.askAI)
 	auth("GET /v1/me", s.me)
+	auth("PATCH /v1/me", s.updateMe)
+	auth("GET /v1/me/profile", s.profile)
+	auth("POST /v1/me/password", s.changePassword)
+	auth("GET /v1/me/sessions", s.sessions)
+	auth("DELETE /v1/me/sessions/{id}", s.revokeSession)
+	auth("PUT /v1/me/topics/{slug}", s.followTopic)
+	auth("DELETE /v1/me/topics/{slug}", s.unfollowTopic)
 	auth("GET /v1/me/watchlist", s.watchlist)
 	auth("POST /v1/me/watchlist", s.addWatch)
 	auth("DELETE /v1/me/watchlist/{symbol}", s.removeWatch)

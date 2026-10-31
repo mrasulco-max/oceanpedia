@@ -127,12 +127,14 @@ export function bindLogin(html: string, emailSample: string, submitText: string)
 }
 
 /** Tautan/tombol "Keluar" menghapus sesi sungguhan (enhancer "logout"). */
-export function bindLogout(html: string): string {
+export function bindLogout(html: string, toHome = true): string {
   return html.replace(/<(a|button)\b([^>]*)>([\s\S]*?)<\/\1>/g, (whole, tag: string, attrs: string, inner: string) => {
     const text = inner.replace(/<[^>]+>/g, "").trim();
     if (!/^Keluar\b/.test(text)) return whole;
+    // Pembaca: setelah keluar selalu kembali ke beranda. Panel redaksi: ke tujuan tautan (halaman masuk admin).
     const href = /href="([^"]*)"/.exec(attrs)?.[1] ?? "/";
-    return `<${tag} data-logout="${href.startsWith("/") ? href : "/"}"${attrs}>${inner}</${tag}>`;
+    const to = toHome ? "/" : href.startsWith("/") ? href : "/";
+    return `<${tag} data-logout="${to}"${toHome ? attrs.replace(/href="[^"]*"/, 'href="/"') : attrs}>${inner}</${tag}>`;
   });
 }
 

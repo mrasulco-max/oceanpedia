@@ -10,8 +10,9 @@ import { lwchart } from "./lwchart";
 import { ai } from "./ai";
 import { auth, verifyUrl } from "./auth";
 import { search } from "./search";
+import { profile } from "./profile";
 
-export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search";
+export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile";
 
 export interface Env {
   router: ReturnType<typeof useRouter>;
@@ -93,14 +94,16 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
     if (!btn || !host.contains(btn)) return;
     e.preventDefault();
     e.stopPropagation();
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    toast(host, "Kamu sudah keluar.", "ok");
     router.push(btn.getAttribute("data-logout") || "/");
+    router.refresh();
   };
   host.addEventListener("click", onClick, true);
   return () => host.removeEventListener("click", onClick, true);
 }
 
-const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search };
+const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile };
 
 export function runEnhancer(id: EnhancerId, host: HTMLElement, env: Env): Cleanup {
   return REGISTRY[id]?.(host, env);

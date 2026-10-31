@@ -32,6 +32,18 @@ export default function DCBoard({ Logic, tpl, css, kind, enhance, ctx }: BoardPr
   // Render awal (juga di server → HTML lengkap untuk SEO & tampil cepat).
   const { comp, first } = useMemo(() => {
     const c = new Logic({});
+    // State awal dari server (mis. preferensi tersimpan) menggantikan nilai contoh desain.
+    if (ctx?.state) {
+      try {
+        const init = JSON.parse(ctx.state) as Record<string, unknown>;
+        const cur = c.state as Record<string, unknown>;
+        for (const [k, v] of Object.entries(init)) {
+          cur[k] = v && typeof v === "object" && !Array.isArray(v) && cur[k] && typeof cur[k] === "object" ? { ...(cur[k] as object), ...(v as object) } : v;
+        }
+      } catch {
+        /* abaikan state rusak */
+      }
+    }
     const r = fill(tpl, c.renderVals());
     fnsRef.current = r.fns;
     return { comp: c, first: r.html };
@@ -62,6 +74,8 @@ export default function DCBoard({ Logic, tpl, css, kind, enhance, ctx }: BoardPr
       const r = fill(tpl, comp.renderVals());
       fnsRef.current = r.fns;
       morph(host, r.html);
+      // Enhancer dapat mengikuti perubahan state desain (mis. menyimpan preferensi).
+      host.dispatchEvent(new CustomEvent("dc:state", { detail: comp.state }));
     };
 
     const dispatch = (type: string) => (e: Event) => {

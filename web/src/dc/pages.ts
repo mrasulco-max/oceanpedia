@@ -9,6 +9,8 @@ import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
 import { bindAccount, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
+import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
+import { getProfile, getSessions } from "@/lib/me";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
@@ -174,6 +176,20 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = board.kind === "app" ? bindSearchApp(html, data) : bindSearchWeb(html, data);
     enhance.push("search");
     title = q ? `Cari “${q}”` : "Cari";
+  } else if (path === "/akun" || path === "/pengaturan") {
+    // Profil & pengaturan: data akun asli (halaman ini wajib masuk).
+    const [pr, sessions] = await Promise.all([getProfile(), path === "/pengaturan" ? getSessions() : Promise.resolve([])]);
+    if (pr) {
+      if (boardId === "app-20") html = bindProfileApp(html, pr.profile);
+      else if (boardId === "web-akun") html = bindProfileWeb(html, pr.profile, pr.alert_limit);
+      else if (boardId === "app-21") {
+        html = bindSettingsApp(html, pr.profile, sessions);
+        ctx.state = settingsState(pr.profile);
+      }
+      enhance.push("profile");
+    }
+    html = bindArticleCards(html, all);
+    title = path === "/akun" ? "Akun" : "Pengaturan";
   } else if (path === "/plus/baca" || path === "/plus/analisis") {
     // Analisis AI lengkap untuk berita (?a=slug) atau instrumen (?symbol=BTCUSD); bawaan: berita utama terbaru.
     const symbol = (search.symbol ?? "").toUpperCase();
@@ -257,7 +273,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
 
   if (user && board.kind !== "admin") html = bindAccount(html, user);
   if (board.kind === "app") html = hideFakeStatusBar(html);
-  html = bindLogout(html);
+  html = bindLogout(html, board.kind !== "admin");
   if (html.includes("data-logout")) enhance.push("logout");
 
   return { board, boardId, html, title, description, enhance, ctx };

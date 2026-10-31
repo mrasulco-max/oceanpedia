@@ -483,6 +483,11 @@ func (s *Server) createAlert(w http.ResponseWriter, r *http.Request) error {
 	if _, err := s.Store.InstrumentBySymbol(r.Context(), a.Symbol); err != nil {
 		errs["symbol"] = "Simbol tidak dikenal."
 	}
+	if !hasPlan(r) {
+		if n, err := s.Store.ActiveAlertCount(r.Context(), uid(r)); err == nil && n >= freeAlertLimit {
+			return httpx.Forbidden("Akun gratis maksimal 3 price alert aktif. Upgrade ke Ocean Pedia Plus untuk tanpa batas.")
+		}
+	}
 	if len(errs) > 0 {
 		return httpx.Validation(errs)
 	}

@@ -271,5 +271,10 @@ export function bindDetail(html: string, kind: "web" | "app", d: DetailData): st
 
 /** Status bar tiruan (9:41) di artboard app disembunyikan di ponsel sungguhan. */
 export function hideFakeStatusBar(html: string): string {
-  return html.replace(/<span>9:41<\/span><span style="(width: 18px; height: 10px;[^"]*)"><\/span>/, '<span style="visibility: hidden">9:41</span><span style="$1; visibility: hidden"></span>');
+  // Status bar tiruan desain (jam 9:41 & baterai) tidak ditampilkan; ruangnya tetap sebagai area aman atas.
+  return html.replace(/<div style="([^"]*)"><span>9:41<\/span>([\s\S]*?)<\/div>/, (_m, st: string, rest: string) =>
+    rest.includes("<img")
+      ? `<div style="${st}"><span style="visibility: hidden" aria-hidden="true">9:41</span>${rest}</div>`
+      : `<div aria-hidden="true" style="${st}; visibility: hidden"><span>9:41</span>${rest}</div>`,
+  );
 }
