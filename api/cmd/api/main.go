@@ -74,6 +74,10 @@ func run(log *slog.Logger) error {
 	srv := &api.Server{Store: &store.PG{DB: db}, Market: provider, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: &store.PG{DB: db}}, Cfg: cfg, Log: log}
 	if cfg.BirdKey != "" {
 		srv.OTP = otp.NewBird(cfg.BirdKey, cfg.BirdURL)
+	}
+	// Kode huruf+angka dari domain sendiri; Bird Verify (angka) jadi cadangan bila email gagal terkirim.
+	if cfg.BirdEmailKey != "" && cfg.OTPEmailFrom != "" {
+		srv.OTP = &otp.Email{Store: &store.PG{DB: db}, Key: cfg.BirdEmailKey, BaseURL: cfg.BirdURL, From: cfg.OTPEmailFrom, Pepper: cfg.JWTSecret, Fallback: srv.OTP}
 	} else if cfg.Env == "development" {
 		srv.OTP = otp.Dev{}
 		log.Warn("BIRD_API_KEY kosong: OTP pengembangan aktif (kode 000000)")

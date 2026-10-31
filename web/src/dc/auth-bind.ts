@@ -102,13 +102,13 @@ export function bindVerify(html: string, o: { email: string; mode: OtpMode; next
   h = h.replace(
     /Masukkan 6 digit kode yang kami kirim lewat SMS ke <strong([^>]*)>[^<]*<\/strong>\./,
     o.email
-      ? `Masukkan 6 digit kode yang kami kirim ke email <strong$1 data-otp-target>${esc(maskEmail(o.email))}</strong>. Periksa juga folder spam.`
-      : `Masukkan email akun kamu, lalu kami kirim 6 digit kode.</p><label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #0B0B0F; margin-top: 12px">Email<span style="${fieldStyle}"><input type="email" data-otp-email-input autocomplete="email" inputmode="email" placeholder="nama@email.com" value="" style="${inputStyle}"><button type="button" data-otp-send style="border: 0; background: none; color: #2F74EB; font-size: 14px; font-weight: 500; padding: 4px">Kirim kode</button></span></label><p style="display: none">`,
+      ? `Masukkan 6 karakter kode (huruf &amp; angka) yang kami kirim ke email <strong$1 data-otp-target>${esc(maskEmail(o.email))}</strong>. Periksa juga folder spam.`
+      : `Masukkan email akun kamu, lalu kami kirim 6 karakter kode (huruf &amp; angka).</p><label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #0B0B0F; margin-top: 12px">Email<span style="${fieldStyle}"><input type="email" data-otp-email-input autocomplete="email" inputmode="email" placeholder="nama@email.com" value="" style="${inputStyle}"><button type="button" data-otp-send style="border: 0; background: none; color: #2F74EB; font-size: 14px; font-weight: 500; padding: 4px">Kirim kode</button></span></label><p style="display: none">`,
   );
   // Kotak kode + input asli (dukung ketik, tempel, dan isi otomatis kode dari email/SMS).
   h = h.replace(
     /<div role="group" aria-label="Kode OTP" style="([^"]*)">/,
-    `<div role="group" aria-label="Kode OTP" data-otp data-otp-email="${esc(o.email)}" data-otp-mode="${o.mode}" data-otp-next="${esc(o.next)}" style="$1; position: relative"><input data-otp-input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="Kode verifikasi 6 digit" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; z-index: 1; border: 0; background: transparent; color: transparent; caret-color: transparent">`,
+    `<div role="group" aria-label="Kode OTP" data-otp data-otp-email="${esc(o.email)}" data-otp-mode="${o.mode}" data-otp-next="${esc(o.next)}" style="$1; position: relative"><input data-otp-input type="text" inputmode="text" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="one-time-code" maxlength="6" pattern="[A-Za-z0-9]*" aria-label="Kode verifikasi 6 karakter (huruf dan angka)"${o.email ? " autofocus" : ""} style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; z-index: 1; border: 0; background: transparent; color: transparent; caret-color: transparent">`,
   );
   h = h.replace(/<span aria-label="Digit (\d)" style="height: 60px; border-radius: 16px; border: [^;]*; background: #[0-9A-F]{6};([^"]*)">[\s\S]*?(?=<span aria-label="Digit|<\/div>)/g, (_m, n: string, rest: string) =>
     `<span aria-label="Digit ${n}" data-otp-box style="height: 60px; border-radius: 16px; border: 1px solid #E3EAF4; background: #FFFFFF;${rest}"></span>`,
@@ -126,9 +126,9 @@ export function bindVerify(html: string, o: { email: string; mode: OtpMode; next
   }
   h = h.replace(/<a href="\/" class="ob-anim"([^>]*)>Verifikasi<\/a>/, `<a href="#" data-otp-submit class="ob-anim"$1>${o.mode === "reset" ? "Simpan kata sandi" : o.mode === "login" ? "Masuk" : "Verifikasi"}</a>`);
   h = h.replace(/href="\/daftar" aria-label="Kembali"/, `href="${back}" aria-label="Kembali"`);
-  // Papan angka di layar: bisa diketuk.
+  // Papan angka desain disembunyikan: kode berisi huruf & angka, jadi memakai keyboard perangkat.
   h = h.replace(/<div aria-hidden="true" (style="position: absolute; left: 0; right: 0; bottom: 0; background: #EEF1F6;[^"]*")>([\s\S]*?)<\/div>\n?\s*<\/div>\s*$/, (_m, st: string, keys: string) =>
-    `<div data-otp-keypad ${st}>${keys.replace(/<span style="([^"]*)">([0-9⌫]?)<\/span>/g, (_k, s2: string, k: string) => (k ? `<span role="button" tabindex="-1" data-key="${k === "⌫" ? "del" : k}" style="${s2}; cursor: pointer; user-select: none">${k}</span>` : `<span style="${s2}"></span>`))}</div>\n  </div>`,
+    `<div data-otp-keypad ${st.replace("display: grid", "display: none")}>${keys.replace(/<span style="([^"]*)">([0-9⌫]?)<\/span>/g, (_k, s2: string, k: string) => (k ? `<span role="button" tabindex="-1" data-key="${k === "⌫" ? "del" : k}" style="${s2}; cursor: pointer; user-select: none">${k}</span>` : `<span style="${s2}"></span>`))}</div>\n  </div>`,
   );
   return h;
 }

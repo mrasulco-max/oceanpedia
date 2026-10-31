@@ -25,6 +25,8 @@ type Config struct {
 	GeminiKey       string
 	BirdKey         string
 	BirdURL         string
+	BirdEmailKey    string
+	OTPEmailFrom    string
 	GeminiModels    []string
 	MarketCacheTTL  time.Duration
 	QuoteTTL        time.Duration
@@ -49,6 +51,8 @@ func Load() (Config, error) {
 		GeminiKey:       os.Getenv("GEMINI_API_KEY"),
 		BirdKey:         os.Getenv("BIRD_API_KEY"),
 		BirdURL:         os.Getenv("BIRD_API_URL"),
+		BirdEmailKey:    os.Getenv("BIRD_EMAIL_KEY"),
+		OTPEmailFrom:    os.Getenv("OTP_EMAIL_FROM"),
 		GeminiModels:    splitList(os.Getenv("GEMINI_MODELS")),
 		MarketCacheTTL:  dur("TWELVEDATA_CACHE_TTL", time.Minute),
 		QuoteTTL:        dur("TWELVEDATA_QUOTE_TTL", 15*time.Minute),
