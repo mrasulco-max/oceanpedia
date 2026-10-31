@@ -2,6 +2,12 @@ import "server-only";
 import type { Profile, Session } from "@/lib/me";
 import { esc, initials, relTime } from "./bind";
 
+const API_PUBLIC = (process.env.API_PUBLIC_URL ?? process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
+/** URL foto profil (endpoint media publik API), atau null. */
+export const avatarUrl = (p: { avatar_id?: string | null }) => (p.avatar_id && /^[0-9a-f-]{36}$/i.test(p.avatar_id) ? `${API_PUBLIC}/v1/media/${p.avatar_id}` : null);
+const avatarImg = (url: string, name: string) =>
+  `<img src="${esc(url)}" alt="Foto profil ${esc(name)}" style="position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 999px; object-fit: cover">`;
+
 /**
  * Binder halaman profil (app-20, web-akun) dan pengaturan (app-21) dengan data akun asli:
  * profil, ringkasan aktivitas, preferensi tersimpan, ganti kata sandi, dan perangkat yang masuk.
@@ -22,7 +28,11 @@ const topicsText = (p: Profile) => (p.topics.length ? p.topics.slice(0, 3).map((
 export function bindProfileApp(html: string, p: Profile): string {
   let h = html;
   const ini = esc(initials(p.full_name).slice(0, 1) || "?");
-  h = h.replace(/(font-size: 26px; font-weight: 500">)N(\s*<span aria-label="Ubah foto")/, `$1${ini}$2`);
+  const av = avatarUrl(p);
+  h = h.replace(/(font-size: 26px; font-weight: 500">)N(\s*)<span aria-label="Ubah foto" style="/, (_m, a: string, sp: string) =>
+    `${a}${ini}${av ? avatarImg(av, p.full_name) : ""}${sp}<span role="button" tabindex="0" data-avatar-pick aria-label="Ubah foto" title="Ubah foto profil" style="cursor: pointer; `);
+  // Ketuk lingkaran foto juga membuka pemilih foto.
+  h = h.replace('<span style="position: relative; flex: none; width: 76px; height: 76px; border-radius: 999px;', '<span data-avatar-pick style="cursor: pointer; position: relative; flex: none; width: 76px; height: 76px; border-radius: 999px;');
   // Kelengkapan profil.
   const pct = completeness(p);
   h = h.replace('aria-valuenow="40"', `aria-valuenow="${pct}"`).replace("width: 40%; border-radius: 999px; background: #FFD45C", `width: ${pct}%; border-radius: 999px; background: #FFD45C`);
@@ -57,8 +67,12 @@ export function bindProfileWeb(html: string, p: Profile, alertLimit: number): st
     return to ? `<a href="${to}"${attrs}>${icon ?? ""}${label}</a>` : whole;
   });
   h = h.replace(/color: \[[\d, ]+\]; (font-size: 14px; font-weight: 500">(?:<svg[\s\S]*?<\/svg>)?Keluar)/, "color: #DC2626; $1");
-  h = h.replace(/(font-size: 30px; font-weight: 700">)N(<\/span>)/, `$1${esc(initials(p.full_name).slice(0, 1) || "?")}$2`);
-  h = h.replace(/<a href="#"([^>]*>(?:<svg[\s\S]*?<\/svg>)?)Ubah foto<\/a>/, '<a href="#" data-soon="Ubah foto profil belum tersedia."$1Ubah foto</a>');
+  const av = avatarUrl(p);
+  h = h.replace(/<span class="ob-anim" style="(width: 76px; height: 76px; border-radius: 999px;[^"]*font-size: 30px; font-weight: 700)">N<\/span>/, (_m, st: string) =>
+    `<span data-avatar-pick class="ob-anim" title="Ubah foto profil" style="position: relative; cursor: pointer; flex: none; ${st}">${esc(initials(p.full_name).slice(0, 1) || "?")}${av ? avatarImg(av, p.full_name) : ""}</span>`);
+  h = h.replace(/<a href="#"([^>]*>(?:<svg[\s\S]*?<\/svg>)?)Ubah foto<\/a>/, (_m, rest: string) =>
+    `<a href="#" data-avatar-pick${rest}Ubah foto</a>` +
+    (av ? `<a href="#" data-avatar-remove style="height: 42px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 500; color: #DC2626">Hapus foto</a>` : ""));
   if (p.plan) {
     h = h.replace(">Paket kamu: Gratis<", ">Paket kamu: Ocean Pedia Plus<").replace(">Upgrade ke Ocean Pedia Plus untuk Analisis AI, tanpa iklan, dan price alert tanpa batas.<", ">Analisis AI, tanpa iklan, dan price alert tanpa batas sudah aktif.<");
   }

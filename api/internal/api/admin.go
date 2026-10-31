@@ -368,27 +368,36 @@ const maxUpload = 4 << 20
 var allowedMime = map[string]bool{"image/jpeg": true, "image/png": true, "image/webp": true, "image/gif": true}
 
 // POST /v1/admin/media (multipart/form-data, field "file")
-func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) error {
+// readImage membaca field multipart "file" dan memastikan isinya foto yang diizinkan.
+func readImage(w http.ResponseWriter, r *http.Request) ([]byte, string, error) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload+64<<10)
 	f, _, err := r.FormFile("file")
 	if err != nil {
 		var mbe *http.MaxBytesError
 		if errors.As(err, &mbe) {
-			return httpx.BadRequest("Ukuran foto maksimal 4 MB.")
+			return nil, "", httpx.BadRequest("Ukuran foto maksimal 4 MB.")
 		}
-		return httpx.BadRequest("Sertakan berkas foto pada field \"file\".")
+		return nil, "", httpx.BadRequest("Sertakan berkas foto pada field \"file\".")
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, maxUpload+1))
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	if len(data) == 0 || len(data) > maxUpload {
-		return httpx.BadRequest("Ukuran foto maksimal 4 MB.")
+		return nil, "", httpx.BadRequest("Ukuran foto maksimal 4 MB.")
 	}
 	mime := http.DetectContentType(data)
 	if !allowedMime[mime] {
-		return httpx.BadRequest("Format foto harus JPG, PNG, WebP, atau GIF.")
+		return nil, "", httpx.BadRequest("Format foto harus JPG, PNG, WebP, atau GIF.")
+	}
+	return data, mime, nil
+}
+
+func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) error {
+	data, mime, err := readImage(w, r)
+	if err != nil {
+		return err
 	}
 	id, err := s.Store.CreateMedia(r.Context(), claims(r).Sub, mime, data)
 	if err != nil {

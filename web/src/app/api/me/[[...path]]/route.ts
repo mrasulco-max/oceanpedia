@@ -14,6 +14,11 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path?: st
   const token = jar.get("ob_at")?.value;
   if (!token) return NextResponse.json({ type: "about:blank", title: "Perlu masuk", status: 401, detail: "Sesi berakhir. Silakan masuk lagi." }, { status: 401 });
   const hasBody = req.method !== "GET" && req.method !== "HEAD" && req.method !== "DELETE";
+  // Unggahan foto (multipart) diteruskan apa adanya; selain itu JSON.
+  const ctype = req.headers.get("content-type") ?? "";
+  const multipart = hasBody && ctype.startsWith("multipart/form-data");
+  if (multipart && Number(req.headers.get("content-length") ?? 0) > 4_400_000)
+    return NextResponse.json({ title: "Terlalu besar", status: 413, detail: "Ukuran foto maksimal 4 MB." }, { status: 413 });
   const res = await fetch(`${API_BASE}/v1/me${path.length ? `/${path.join("/")}` : ""}${req.nextUrl.search}`, {
     method: req.method,
     headers: {
@@ -22,9 +27,9 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path?: st
       "X-Session-Hash": sessionHash(jar.get("ob_rt")?.value),
       "User-Agent": req.headers.get("user-agent") ?? "",
       "X-Forwarded-For": req.headers.get("x-forwarded-for") ?? "",
-      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...(hasBody ? { "Content-Type": multipart ? ctype : "application/json" } : {}),
     },
-    body: hasBody ? await req.text() : undefined,
+    body: hasBody ? (multipart ? await req.arrayBuffer() : await req.text()) : undefined,
     cache: "no-store",
   });
   if (res.status === 204) return new NextResponse(null, { status: 204 });

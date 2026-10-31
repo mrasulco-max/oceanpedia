@@ -112,6 +112,7 @@ type User struct {
 	// EmailVerified: akun baru wajib konfirmasi OTP sebelum bisa masuk.
 	EmailVerified bool    `json:"email_verified"`
 	Phone         *string `json:"phone,omitempty"`
+	AvatarID      *string `json:"avatar_id"` // foto profil: GET /v1/media/{avatar_id}
 }
 
 // SearchResult adalah hasil pencarian gabungan (aset, berita, penulis, topik).
@@ -211,6 +212,8 @@ type Store interface {
 	FollowTopic(ctx context.Context, userID, slug string) error
 	UnfollowTopic(ctx context.Context, userID, slug string) error
 	ActiveAlertCount(ctx context.Context, userID string) (int, error)
+	SetAvatar(ctx context.Context, userID, mime string, data []byte) (string, error)
+	RemoveAvatar(ctx context.Context, userID string) error
 	UserByEmail(ctx context.Context, email string) (User, error)
 	UserByID(ctx context.Context, id string) (User, error)
 	SaveRefreshToken(ctx context.Context, userID string, hash []byte, ua, ip string, exp time.Time) error

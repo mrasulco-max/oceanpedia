@@ -244,6 +244,28 @@ func TestPGStore(t *testing.T) {
 	if err := s.Audit(ctx, u.ID, "article.publish", "article", art.ID, map[string]string{"title": art.Title}); err != nil {
 		t.Fatal(err)
 	}
+	// Foto profil: unggah, ganti (foto lama terhapus), hapus.
+	png := []byte("\x89PNG\r\n\x1a\nfoto")
+	av1, err := s.SetAvatar(ctx, u.ID, "image/png", png)
+	if err != nil {
+		t.Fatal(err)
+	}
+	av2, err := s.SetAvatar(ctx, u.ID, "image/png", png)
+	if err != nil || av2 == av1 {
+		t.Fatalf("ganti foto: %v", err)
+	}
+	if u5, _ := s.UserByID(ctx, u.ID); u5.AvatarID == nil || *u5.AvatarID != av2 {
+		t.Fatalf("avatar_id: %v", u5.AvatarID)
+	}
+	if _, _, err := s.Media(ctx, av1); err == nil {
+		t.Fatal("foto lama harus terhapus")
+	}
+	if err := s.RemoveAvatar(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if u6, _ := s.UserByID(ctx, u.ID); u6.AvatarID != nil {
+		t.Fatal("avatar harus kosong")
+	}
 	// Cache data pasar bersama.
 	if err := s.MarketCachePut(ctx, "q:TEST", []byte(`{"price":1}`), ""); err != nil {
 		t.Fatal(err)

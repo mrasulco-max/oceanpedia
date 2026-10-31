@@ -41,6 +41,21 @@ function prefsFromState(st: { u?: Record<string, boolean[]>; o?: Record<string, 
   return out;
 }
 
+/** Kecilkan foto ke persegi maks. 512px (potong tengah), JPEG ~85%. */
+async function squareJpeg(file: File, size = 512): Promise<Blob> {
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height);
+  const out = Math.min(size, side);
+  const c = document.createElement("canvas");
+  c.width = c.height = out;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#FFFFFF";
+  g.fillRect(0, 0, out, out);
+  g.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, out, out);
+  bmp.close();
+  return new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("canvas"))), "image/jpeg", 0.85));
+}
+
 export function profile(host: HTMLElement, { router }: Env): Cleanup {
   const offs: (() => void)[] = [];
   const $ = <T extends Element = HTMLInputElement>(sel: string) => host.querySelector<T>(sel);
@@ -77,6 +92,49 @@ export function profile(host: HTMLElement, { router }: Env): Cleanup {
       e.stopPropagation();
     };
     let el: HTMLElement | null;
+    if ((el = hit("[data-avatar-pick]"))) {
+      stop();
+      if (busy) return;
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/jpeg,image/png,image/webp,image/heic,image/heif";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith("image/")) return toast(host, "Pilih berkas foto (JPG, PNG, atau WebP).");
+        if (file.size > 20 * 1024 * 1024) return toast(host, "Foto terlalu besar (maks. 20 MB sebelum dikecilkan).");
+        busy = true;
+        toast(host, "Mengunggah foto…");
+        try {
+          const blob = await squareJpeg(file).catch(() => null);
+          if (!blob) return toast(host, "Foto tidak dapat dibaca. Coba format JPG atau PNG.");
+          const fd = new FormData();
+          fd.append("file", blob, "avatar.jpg");
+          const res = await fetch("/api/me/avatar", { method: "POST", body: fd });
+          const data = (await res.json().catch(() => ({}))) as Res["data"];
+          if (!res.ok) return toast(host, msg({ ok: false, status: res.status, data }, "Foto gagal diunggah."));
+          toast(host, "Foto profil diperbarui.");
+          router.refresh();
+        } catch {
+          toast(host, "Koneksi bermasalah. Foto belum terunggah.");
+        } finally {
+          busy = false;
+        }
+      };
+      input.click();
+      return;
+    }
+    if ((el = hit("[data-avatar-remove]"))) {
+      stop();
+      if (busy) return;
+      busy = true;
+      const r = await call("DELETE", "/api/me/avatar").catch(() => null);
+      busy = false;
+      if (!r?.ok) return toast(host, r ? msg(r, "Foto gagal dihapus.") : "Koneksi bermasalah.");
+      toast(host, "Foto profil dihapus.");
+      router.refresh();
+      return;
+    }
     if ((el = hit("[data-soon]"))) {
       stop();
       toast(host, el.dataset.soon || "Fitur ini segera hadir.");
