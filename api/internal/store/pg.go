@@ -336,7 +336,7 @@ func scanUser(s scanner) (User, error) {
 	return u, notFound(err)
 }
 
-const qCreateUser = `INSERT INTO users (email, full_name, password_hash, phone_e164) VALUES ($1, $2, $3, nullif($4, '')) RETURNING id`
+const qCreateUser = `INSERT INTO users (email, full_name, password_hash, phone_e164) VALUES ($1, $2, $3, nullif($4::text, '')) RETURNING id`
 
 // CreateUser membuat akun baru yang belum terverifikasi (email_verified_at kosong).
 func (p *PG) CreateUser(ctx context.Context, email, name, hash, phone string) (User, error) {
@@ -350,7 +350,7 @@ func (p *PG) CreateUser(ctx context.Context, email, name, hash, phone string) (U
 	return p.UserByID(ctx, id)
 }
 
-const qUpdatePendingUser = `UPDATE users SET full_name = $2, password_hash = $3, phone_e164 = nullif($4, ''), updated_at = now()
+const qUpdatePendingUser = `UPDATE users SET full_name = $2, password_hash = $3, phone_e164 = nullif($4::text, ''), updated_at = now()
 WHERE id = $1 AND email_verified_at IS NULL AND deleted_at IS NULL`
 
 // UpdatePendingUser: pendaftaran ulang untuk akun yang belum menyelesaikan OTP.
@@ -658,32 +658,32 @@ func AllQueries() map[string]string {
 const qSearchInstruments = `
 SELECT i.symbol, i.name, i.exchange, i.asset_class, i.currency, i.provider_symbol, i.sector
 FROM instruments i
-WHERE i.active AND (i.symbol ILIKE $1 || '%' OR i.name ILIKE '%' || $1 || '%' OR replace(i.provider_symbol, '/', '') ILIKE $1 || '%')
-ORDER BY (upper(i.symbol) = upper($1)) DESC, (i.symbol ILIKE $1 || '%') DESC, i.symbol
-LIMIT $2`
+WHERE i.active AND (i.symbol ILIKE $1::text || '%' OR i.name ILIKE '%' || $1::text || '%' OR replace(i.provider_symbol, '/', '') ILIKE $1::text || '%')
+ORDER BY (upper(i.symbol) = upper($1::text)) DESC, (i.symbol ILIKE $1::text || '%') DESC, i.symbol
+LIMIT $2::int`
 
 const qSearchArticles = `SELECT ` + cardCols + cardFrom + `
-  AND (a.search @@ websearch_to_tsquery('simple', $1) OR a.title ILIKE '%' || $1 || '%' OR a.excerpt ILIKE '%' || $1 || '%'
-       OR EXISTS (SELECT 1 FROM article_instruments ai WHERE ai.article_id = a.id AND ai.symbol ILIKE $1))
-ORDER BY (a.title ILIKE '%' || $1 || '%') DESC, a.published_at DESC
-LIMIT $2`
+  AND (a.search @@ websearch_to_tsquery('simple', $1::text) OR a.title ILIKE '%' || $1::text || '%' OR a.excerpt ILIKE '%' || $1::text || '%'
+       OR EXISTS (SELECT 1 FROM article_instruments ai WHERE ai.article_id = a.id AND ai.symbol ILIKE $1::text))
+ORDER BY (a.title ILIKE '%' || $1::text || '%') DESC, a.published_at DESC
+LIMIT $2::int`
 
 const qSearchAuthors = `
 SELECT au.id, au.slug, au.name, coalesce(au.title, ''), au.avatar_url, au.verified,
        (SELECT count(*) FROM articles a WHERE a.author_id = au.id AND a.status = 'published')
 FROM authors au
-WHERE au.name ILIKE '%' || $1 || '%' OR au.title ILIKE '%' || $1 || '%'
-   OR EXISTS (SELECT 1 FROM articles a WHERE a.author_id = au.id AND a.status = 'published' AND a.title ILIKE '%' || $1 || '%')
-ORDER BY (au.name ILIKE '%' || $1 || '%') DESC, au.name
-LIMIT $2`
+WHERE au.name ILIKE '%' || $1::text || '%' OR au.title ILIKE '%' || $1::text || '%'
+   OR EXISTS (SELECT 1 FROM articles a WHERE a.author_id = au.id AND a.status = 'published' AND a.title ILIKE '%' || $1::text || '%')
+ORDER BY (au.name ILIKE '%' || $1::text || '%') DESC, au.name
+LIMIT $2::int`
 
 const qSearchTags = `
 SELECT t.slug, t.name FROM tags t
-WHERE t.name ILIKE '%' || $1 || '%' OR t.slug ILIKE '%' || $1 || '%'
+WHERE t.name ILIKE '%' || $1::text || '%' OR t.slug ILIKE '%' || $1::text || '%'
    OR EXISTS (SELECT 1 FROM article_tags at JOIN articles a ON a.id = at.article_id
-              WHERE at.tag_id = t.id AND a.status = 'published' AND a.title ILIKE '%' || $1 || '%')
+              WHERE at.tag_id = t.id AND a.status = 'published' AND a.title ILIKE '%' || $1::text || '%')
 ORDER BY t.name
-LIMIT $2`
+LIMIT $2::int`
 
 // Search mencari aset, berita, penulis, dan topik sekaligus.
 func (p *PG) Search(ctx context.Context, q string, limit int) (SearchResult, error) {
