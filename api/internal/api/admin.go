@@ -207,7 +207,7 @@ func (s *Server) adminArticles(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	counts, err := s.Store.AdminCounts(r.Context())
+	counts, err := s.Store.AdminCounts(r.Context(), f.Mine)
 	if err != nil {
 		return err
 	}
@@ -360,6 +360,38 @@ func (s *Server) articleStatus(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	httpx.JSON(w, 200, a)
+	return nil
+}
+
+// DELETE /v1/admin/articles/{id}
+// Penulis: hanya draf/revisi/review miliknya. Editor/admin: semua kecuali yang sedang tayang
+// (tarik ke draf atau arsipkan dulu supaya tautan publik tidak tiba-tiba hilang).
+func (s *Server) deleteArticle(w http.ResponseWriter, r *http.Request) error {
+	c := claims(r)
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	cur, err := s.Store.AdminArticle(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	live := cur.Status == "published" && cur.PublishedAt != nil && !cur.PublishedAt.After(s.Now())
+	if !canPublish(c.Role) {
+		if !cur.OwnedBy(c.Sub) {
+			return httpx.NotFound("Artikel tidak ditemukan.")
+		}
+		if cur.Status != "draft" && cur.Status != "review" {
+			return httpx.Forbidden("Artikel yang sudah dijadwalkan atau terbit hanya bisa dihapus editor.")
+		}
+	} else if live {
+		return httpx.Conflict("Artikel sedang tayang. Tarik ke draf atau arsipkan dulu sebelum menghapus.")
+	}
+	if err := s.Store.DeleteArticle(r.Context(), id); err != nil {
+		return err
+	}
+	s.audit(r, "article.delete", id, map[string]any{"title": cur.Title, "status": cur.Status})
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 

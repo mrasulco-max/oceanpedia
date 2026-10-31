@@ -1,5 +1,6 @@
 import "server-only";
 import type { Article, ArticleCard } from "@/lib/types";
+import { richParagraph } from "./richtext";
 
 /**
  * Binder: mengisi template desain dengan data nyata di server, tanpa mengubah tata letaknya.
@@ -76,12 +77,12 @@ export function bindArticleDetail(html: string, a: Article): string {
         first = false;
         return `${o}${esc(a.excerpt)}${c}`;
       }
-      if (pi < paras.length) return `${o}${esc(paras[pi++]!)}${c}`;
+      if (pi < paras.length) return `${o}${richParagraph(paras[pi++]!)}${c}`;
       return ""; // desain punya paragraf lebih banyak dari artikel → sembunyikan sisanya
     });
     // Isi lebih panjang dari jumlah paragraf desain → tambahkan setelah paragraf terakhir yang terisi.
     if (pi < paras.length) {
-      const rest = paras.slice(pi).map((p) => `<p style="margin: 0 0 16px">${esc(p)}</p>`).join("");
+      const rest = paras.slice(pi).map((p) => `<p style="margin: 0 0 16px">${richParagraph(p)}</p>`).join("");
       const lastP = mid.lastIndexOf("</p>");
       if (lastP >= 0) mid = mid.slice(0, lastP + 4) + rest + mid.slice(lastP + 4);
     }

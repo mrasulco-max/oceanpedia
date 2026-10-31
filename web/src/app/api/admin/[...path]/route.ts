@@ -23,13 +23,15 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) headers["X-Forwarded-For"] = fwd;
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
+  const mutates = hasBody;
   const res = await fetch(url, {
     method: req.method,
     headers,
-    body: hasBody ? await req.arrayBuffer() : undefined,
+    body: hasBody && req.method !== "DELETE" ? await req.arrayBuffer() : undefined,
     cache: "no-store",
   });
-  if (hasBody && res.ok) revalidateTag("api");
+  if (mutates && res.ok) revalidateTag("api");
+  if (res.status === 204) return new NextResponse(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   const body = await res.arrayBuffer();
   return new NextResponse(body, {
     status: res.status,
@@ -37,4 +39,4 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
   });
 }
 
-export { proxy as GET, proxy as POST, proxy as PUT };
+export { proxy as GET, proxy as POST, proxy as PUT, proxy as DELETE };

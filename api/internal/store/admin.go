@@ -163,12 +163,14 @@ const qAdminCounts = `SELECT
   count(*) FILTER (WHERE status = 'published' AND published_at > now())::int,
   count(*) FILTER (WHERE status = 'published' AND published_at <= now())::int,
   count(*) FILTER (WHERE status = 'archived')::int
-FROM articles`
+FROM articles a
+WHERE $1::text = '' OR a.created_by::text = $1::text
+   OR a.author_id IN (SELECT id FROM authors WHERE user_id::text = $1::text)`
 
-// AdminCounts menghitung artikel per status untuk tab "Konten".
-func (p *PG) AdminCounts(ctx context.Context) (map[string]int, error) {
+// AdminCounts menghitung artikel per status untuk tab "Konten" (mine ≠ "" → hanya milik pengguna itu).
+func (p *PG) AdminCounts(ctx context.Context, mine string) (map[string]int, error) {
 	var d, rev, brk, r, s, pub, arc int
-	if err := p.DB.QueryRowContext(ctx, qAdminCounts).Scan(&d, &rev, &brk, &r, &s, &pub, &arc); err != nil {
+	if err := p.DB.QueryRowContext(ctx, qAdminCounts, mine).Scan(&d, &rev, &brk, &r, &s, &pub, &arc); err != nil {
 		return nil, err
 	}
 	return map[string]int{"draft": d, "revision": rev, "breaking": brk, "review": r, "scheduled": s, "published": pub,
@@ -333,6 +335,20 @@ func (p *PG) SetArticleStatus(ctx context.Context, id, status string, publishedA
 	return nil
 }
 
+const qDeleteArticle = `DELETE FROM articles WHERE id = $1`
+
+// DeleteArticle menghapus artikel beserta ticker, tag, komentar, reaksi & bookmark-nya (ON DELETE CASCADE).
+func (p *PG) DeleteArticle(ctx context.Context, id string) error {
+	res, err := p.DB.ExecContext(ctx, qDeleteArticle, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return httpx.ErrNotFound
+	}
+	return nil
+}
+
 const qCreateMedia = `INSERT INTO media (mime, size, bytes, uploaded_by) VALUES ($1, $2, $3, $4) RETURNING id`
 const qMedia = `SELECT mime, bytes FROM media WHERE id = $1`
 
@@ -370,6 +386,6 @@ func adminQueries() map[string]string {
 		"admin_articles": q, "admin_articles_sched": q2, "admin_article": qAdminArticle, "admin_counts": qAdminCounts,
 		"author_for_user": qAuthorForUser, "create_author_for_user": qCreateAuthorForUser, "category_id": qCategoryID,
 		"symbols_known": qSymbolsKnown, "clear_symbols": qClearSymbols, "add_symbols": qAddSymbols, "insert_article": qInsertArticle,
-		"update_article": qUpdateArticle, "set_status": qSetStatus, "create_media": qCreateMedia, "media": qMedia, "audit": qAudit,
+		"update_article": qUpdateArticle, "set_status": qSetStatus, "delete_article": qDeleteArticle, "create_media": qCreateMedia, "media": qMedia, "audit": qAudit,
 	}
 }

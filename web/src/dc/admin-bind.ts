@@ -24,6 +24,12 @@ export function canPublish(role: string): boolean {
   return role === "admin" || role === "editor";
 }
 
+/** Sama dengan aturan API: penulis menghapus draf/review miliknya; editor/admin semua yang tidak sedang tayang. */
+export function canDelete(a: AdminArticle, role: string, now = Date.now()): boolean {
+  const live = a.status === "published" && !!a.published_at && new Date(a.published_at).getTime() <= now;
+  return canPublish(role) ? !live : a.status === "draft" || a.status === "review";
+}
+
 function must(html: string, needle: string | RegExp, where: string): void {
   const ok = typeof needle === "string" ? html.includes(needle) : needle.test(html);
   if (!ok) throw new Error(`admin-bind: elemen desain tidak ditemukan (${where})`);
@@ -80,6 +86,23 @@ export function bindEditor(
       : `<a href="#" data-ed-action="preview" aria-disabled="true"${attrs.replace('style="', 'style="opacity: .5; ')}>${svg}Pratinjau</a>`,
   );
 
+  // Hapus artikel (bila diizinkan) di samping Pratinjau.
+  if (a && canDelete(a, role)) {
+    h = h.replace(/(<a href="#"([^>]*)>(<svg[\s\S]*?<\/svg>)?Riwayat versi<\/a>)/, (_m, whole: string, attrs: string) =>
+      `${whole}<a href="#" data-ed-action="delete"${attrs.replace(/color: #0B0B0F/, "color: #B3261E")}>Hapus</a>`,
+    );
+  }
+
+  // Alur 5 langkah mengikuti keadaan artikel.
+  h = bindSteps(h, a, role);
+
+  // Toolbar format isi.
+  const tools: Record<string, string> = { Tebal: "bold", Daftar: "list", Kutipan: "quote", Tautan: "link", Gambar: "image", "Sisipkan widget harga": "widget" };
+  for (const [label, key] of Object.entries(tools)) {
+    h = h.replace(`<button aria-label="${label}" style="`, `<button type="button" data-ed-tool="${key}" aria-label="${label}" title="${label}" style="cursor: pointer; `);
+  }
+  h = h.replace('<input value="Rekap sesi 1', '<input type="file" accept="image/*" data-ed="image-file" hidden><input value="Rekap sesi 1');
+
   // Toolbar: status simpan.
   must(h, ">Tersimpan otomatis 12:24<", "status simpan");
   h = h.replace(">Tersimpan otomatis 12:24<", ` data-ed="saved">${a ? `Terakhir disimpan ${fmtTime(a.updated_at)}` : "Belum disimpan"}<`);
@@ -88,7 +111,7 @@ export function bindEditor(
   const titleRe = /<input value="Rekap sesi 1: IHSG naik 0,6% ditopang saham bank" aria-label="Judul"/;
   must(h, titleRe, "judul");
   const title = a?.title ?? "";
-  h = h.replace(titleRe, `<input value="${esc(title)}" data-ed="title" maxlength="200" placeholder="Tulis judul artikel" aria-label="Judul"`);
+  h = h.replace(titleRe, `<input value="${esc(title)}" data-ed="title" maxlength="200" placeholder="Tulis judul artikel" aria-label="Judul" enterkeyhint="next"`);
   h = h.replace(">48/90 karakter<", ` data-ed="count">${[...title].length}/90 karakter<`);
 
   // Dek.
@@ -101,7 +124,7 @@ export function bindEditor(
   must(h, coverRe, "foto sampul");
   const bg = a?.cover_url ? `url(&quot;${esc(a.cover_url)}&quot;) center / cover no-repeat, ` : "";
   h = h.replace(coverRe, `<span data-ed="cover" data-url="${esc(a?.cover_url ?? "")}" style="position: relative; display: block; height: 220px; border-radius: 20px; background: ${bg}linear-gradient(150deg, #2C3A63, #1B2235)">`);
-  h = h.replace(/<a href="#"([^>]*)>(<svg[\s\S]*?<\/svg>)Ganti foto<\/a>/, `<a href="#" data-ed="cover-btn"$1>$2${a?.cover_url ? "Ganti foto" : "Unggah foto"}</a><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-ed="cover-file" hidden>`);
+  h = h.replace(/<a href="#"([^>]*)>(<svg[\s\S]*?<\/svg>)Ganti foto<\/a>/, `<a href="#" data-ed="cover-btn"$1>$2${a?.cover_url ? "Ganti foto" : "Unggah foto"}</a><input type="file" accept="image/*" data-ed="cover-file" hidden>`);
   h = h.replace(">Lisensi belum diisi<", ` data-ed="cover-note">${a?.cover_url ? "Foto terpasang" : "Belum ada foto"}<`);
 
   // Isi artikel: paragraf contoh + widget → satu area tulis bergaya paragraf desain.
@@ -111,7 +134,7 @@ export function bindEditor(
   if (bodyStart < 0 || bodyEnd < bodyStart) throw new Error("admin-bind: isi artikel tidak ditemukan");
   h =
     h.slice(0, bodyStart) +
-    `<textarea data-ed="body" aria-label="Isi artikel" placeholder="Tulis isi artikel di sini…&#10;&#10;Pisahkan paragraf dengan satu baris kosong." style="margin: 0; font-size: 16px; line-height: 1.75; border: 0; outline: none; resize: vertical; min-height: 380px; width: 100%; box-sizing: border-box; padding: 0; font-family: inherit; color: #0B0B0F; background: transparent">${esc(a?.body ?? "")}</textarea>` +
+    `<textarea data-ed="body" aria-label="Isi artikel" placeholder="Tulis isi artikel di sini…&#10;&#10;Pisahkan paragraf dengan satu baris kosong. Pakai toolbar di atas untuk tebal, daftar, kutipan, tautan, dan gambar." style="margin: 0; font-size: 16px; line-height: 1.75; border: 0; outline: none; resize: vertical; min-height: 380px; width: 100%; box-sizing: border-box; padding: 0; font-family: inherit; color: #0B0B0F; background: transparent">${esc(a?.body ?? "")}</textarea>` +
     h.slice(bodyEnd + bodyEndMark.length);
 
   // Kategori & tipe → <select> bergaya kotak desain.
@@ -171,8 +194,9 @@ export function bindEditor(
   dateBox("Tanggal", "22 Okt 2026", `<input type="date" data-ed="date" value="${when.date}" style="STYLE">`);
   dateBox("Jam", "12:30 WIB", `<input type="time" data-ed="time" value="${when.time}" style="STYLE">`);
 
-  // Tombol aksi.
+  // Tombol aksi (di HP menempel di bawah layar).
   must(h, ">Simpan draf</a>", "simpan draf");
+  h = h.replace(/<div style="display: flex; gap: 10px">(<a href="\/admin\/konten"[^>]*>Simpan draf<\/a>)/, '<div data-ed-actions style="display: flex; gap: 10px">$1');
   h = h.replace(/<a href="\/admin\/konten"([^>]*)>Simpan draf<\/a>/, `<a href="#" data-ed-action="draft"$1>Simpan draf</a>`);
   h = h.replace(/<a href="\/admin\/konten"( class=ob-anim[^>]*)>(<svg[\s\S]*?<\/svg>)Kirim ke review<\/a>/, (_m, attrs: string, svg: string) =>
     canPublish(role) ? `<a href="#" data-ed-action="publish"${attrs}>${svg}Terbitkan</a>` : `<a href="#" data-ed-action="review"${attrs}>${svg}Kirim ke review</a>`,
@@ -183,6 +207,54 @@ export function bindEditor(
   h = h.replace(/<a href="#"([^>]*)>Batal<\/a>/, `<a href="#" data-ed-action="cancel"$1>Batal</a>`);
   h = h.replace(/<a href="\/admin\/konten"( class=ob-anim[^>]*)>(<svg[\s\S]*?<\/svg>)Ya, terbitkan<\/a>/, `<a href="#" data-ed-action="confirm"$1>$2Ya, terbitkan</a>`);
   return h;
+}
+
+// ---------------------------------------------------------------------------
+// Alur 5 langkah di editor
+// ---------------------------------------------------------------------------
+type StepState = "done" | "current" | "todo";
+
+function bindSteps(html: string, a: AdminArticle | null, role: string): string {
+  const listRe = /(<div role="list" aria-label="Alur"[^>]*>)([\s\S]*?)(<\/div><\/div>)(?=<div style="display: flex; flex-wrap: wrap; gap: 20px)/;
+  const m = listRe.exec(html);
+  if (!m) return html;
+  const items = m[0].match(/<div role="listitem"[\s\S]*?<\/a><\/div>/g);
+  if (!items || items.length !== 5) return html;
+  const circle = (it: string) => /<span style="flex: none; width: 34px; height: 34px;[^"]*">(?:<svg[\s\S]*?<\/svg>)?<\/span>/.exec(it)![0];
+  const look: Record<StepState, { circle: string; border: string }> = {
+    done: { circle: circle(items[0]!), border: "#E3EBF7" },
+    current: { circle: circle(items[2]!), border: "#84CC16" },
+    todo: { circle: circle(items[3]!), border: "#E3EBF7" },
+  };
+  const ds = a ? displayStatus(a) : "draft";
+  const live = ds === "published";
+  const out = ds === "published" || ds === "scheduled";
+  const wrote = !!a && a.title.trim().length >= 10 && a.body.trim().length >= 50;
+  const meta = !!a && !!a.category_slug && a.symbols.length > 0;
+  const steps: [StepState, string, string][] = [
+    [wrote ? "done" : "current", "Tulis", wrote ? "Judul, dek, isi" : "Judul, dek, isi"],
+    [meta ? "done" : wrote ? "current" : "todo", "Metadata", a?.cover_url ? "Kategori, ticker, foto ✓" : "Kategori, ticker, foto"],
+    [
+      out ? "done" : ds === "review" || ds === "revision" ? "current" : "todo",
+      "Review editor",
+      out ? "Disetujui" : ds === "review" ? "Menunggu editor" : ds === "revision" ? "Perlu revisi" : canPublish(role) ? "Bisa langsung terbit" : "Belum dikirim",
+    ],
+    [out ? "done" : "todo", "Jadwal & notifikasi", ds === "scheduled" ? `Terjadwal ${fmtTime(a!.published_at)}` : "Push, newsletter"],
+    [live ? "done" : ds === "scheduled" ? "current" : "todo", "Terbit", live ? `Tayang ${fmtTime(a!.published_at)}` : ds === "archived" ? "Diarsipkan" : "Web + aplikasi"],
+  ];
+  const built = items
+    .map((it, i) => {
+      const [st, title, sub] = steps[i]!;
+      return it
+        .replace('<a href="#" style="', '<span style="')
+        .replace(/<\/a><\/div>$/, "</span></div>")
+        .replace(circle(it), look[st].circle)
+        .replace(/border: 1px solid #(?:E3EBF7|84CC16)">/, `border: 1px solid ${look[st].border}"${st === "current" ? ' aria-current="step"' : ""}>`)
+        .replace(/(<strong style="font-size: 13px; font-weight: 700">)[^<]*(<\/strong>)/, `$1${esc(title)}$2`)
+        .replace(/(text-overflow: ellipsis">)[^<]*(<\/span>)/, `$1${esc(sub)}$2`);
+    })
+    .join("");
+  return html.replace(m[0], `${m[1]}${built}</div>`);
 }
 
 // ---------------------------------------------------------------------------
@@ -274,6 +346,7 @@ export function bindContent(html: string, opts: { list: AdminList; status: strin
   const body = list.data.length
     ? list.data.map(rowFor).join("")
     : `<div style="padding: 40px 18px; text-align: center; font-size: 14px; color: #5F6B7D">Belum ada artikel di tahap ini. <a href="/admin/tulis" style="color: #2F74EB">Tulis artikel</a></div>`;
+  h = h.replace('<div style="min-width: 780px"><div style="display: grid;', '<div data-cnt-table style="min-width: 780px"><div data-cnt-head style="display: grid;');
   const first = h.indexOf(rows[0]!);
   const lastRow = rows[rows.length - 1]!;
   const end = h.indexOf(lastRow) + lastRow.length;
@@ -284,6 +357,7 @@ export function bindContent(html: string, opts: { list: AdminList; status: strin
   h = h.replace(/Menampilkan 1–6 dari 1\.284 artikel/, list.data.length ? `Menampilkan 1–${list.data.length} dari ${nf.format(c[status] ?? list.data.length)} artikel` : "Tidak ada artikel");
 
   // Panel review.
+  h = h.replace('<div class="" style="flex: 1 1 380px', '<div data-cnt-panel class="" style="flex: 1 1 380px');
   h = h.replace(/<section style="[^"]*border-style: dashed"><span style="[^"]*">STATE · SETELAH "MINTA REVISI"[\s\S]*?<\/section>/, "");
   if (!selected) {
     return h.replace(
@@ -335,7 +409,8 @@ export function bindContent(html: string, opts: { list: AdminList; status: strin
   h = h.replace(/<textarea rows="3"([^>]*)>Tambahkan lisensi foto dari tim foto\.<\/textarea>/, `<textarea rows="3" data-cnt="note" placeholder="Tulis catatan bila meminta revisi"$1>${esc(s.review_note)}</textarea>`);
   const actRe = /<a href="\/admin\/konten"([^>]*)>(<svg[\s\S]*?<\/svg>)Minta revisi<\/a><a href="\/admin\/tulis"( class=ob-anim[^>]*)>(<svg[\s\S]*?<\/svg>)Setujui (?:&amp;|&) jadwalkan<\/a>/;
   must(h, actRe, "tombol review");
-  h = h.replace(actRe, (_m, secAttrs: string, secSvg: string, priAttrs: string, priSvg: string) => {
+  const MARK = "\u0001ob-actions\u0001";
+  const actions = (secAttrs: string, secSvg: string, priAttrs: string, priSvg: string): string => {
     const edit = `<a href="/admin/tulis?id=${s.id}"${secAttrs}>Edit</a>`;
     if (!canPublish(role)) return edit;
     const future = s.published_at && new Date(s.published_at).getTime() > Date.now();
@@ -344,6 +419,17 @@ export function bindContent(html: string, opts: { list: AdminList; status: strin
     }
     if (ds === "archived") return `${edit}<a href="#" data-cnt-action="publish" data-id="${s.id}"${priAttrs}>${priSvg}Terbitkan lagi</a>`;
     return `<a href="#" data-cnt-action="reject" data-id="${s.id}"${secAttrs}>${secSvg}Minta revisi</a>${edit}<a href="#" data-cnt-action="publish" data-id="${s.id}"${priAttrs}>${priSvg}${future ? "Setujui & jadwalkan" : "Setujui & terbitkan"}</a>`;
-  });
+  };
+  h = h.replace(actRe, (_m, a1: string, a2: string, a3: string, a4: string) => actions(a1, a2, a3, a4) + MARK);
+  // Arsipkan (yang sedang tayang) & hapus (yang boleh dihapus).
+  const extra: string[] = [];
+  if (canPublish(role) && ds === "published") extra.push(`<a href="#" data-cnt-action="archive" data-id="${s.id}" style="font-size: 14px; color: #5F6B7D; text-decoration: underline">Arsipkan</a>`);
+  if (canDelete(s, role)) extra.push(`<a href="#" data-cnt-action="delete" data-id="${s.id}" style="font-size: 14px; color: #B3261E; text-decoration: underline">Hapus artikel</a>`);
+  const at = h.indexOf(MARK);
+  h = h.replace(MARK, "");
+  const close = at >= 0 ? h.indexOf("</div>", at) : -1;
+  if (extra.length && close >= 0) {
+    h = h.slice(0, close + 6) + `<div style="display: flex; gap: 18px; justify-content: flex-end; padding-top: 4px">${extra.join("")}</div>` + h.slice(close + 6);
+  }
   return h;
 }

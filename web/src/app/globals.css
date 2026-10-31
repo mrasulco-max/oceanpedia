@@ -57,9 +57,79 @@ svg {
   height: 100%;
 }
 
-/* Panel admin: dokumen biasa yang menggulir. */
+/* Panel admin: dokumen biasa yang menggulir, responsif sampai layar HP. */
 .dc-admin {
   min-height: 100vh;
+  overflow-x: hidden;
+}
+.dc-admin [data-ed="title"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+@media (max-width: 767px) {
+  /* Tulis artikel: kolom bertumpuk, input ≥16px (iOS tidak memperbesar), tombol simpan menempel di bawah. */
+  .dc-admin main {
+    padding-bottom: 104px !important;
+  }
+  .dc-admin [aria-label="Alur"] [role="listitem"] > span {
+    width: 172px !important;
+  }
+  .dc-admin [data-ed="body"],
+  .dc-admin [data-ed="excerpt"],
+  .dc-admin [data-ed="symbol-input"],
+  .dc-admin input[type="date"],
+  .dc-admin input[type="time"],
+  .dc-admin select,
+  .dc-admin textarea {
+    font-size: 16px !important;
+  }
+  .dc-admin [data-ed="body"] {
+    min-height: 260px !important;
+  }
+  .dc-admin section {
+    padding: 16px !important;
+    border-radius: 20px !important;
+  }
+  .dc-admin [data-ed="cover"] {
+    height: 180px !important;
+  }
+  .dc-admin [data-ed-actions] {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom)) !important;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 -1px 0 #e3ebf7, 0 -10px 30px rgba(11, 11, 15, 0.06);
+  }
+  .dc-admin [data-ed="confirm"]:not([hidden]) {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    z-index: 61;
+    box-shadow: 0 18px 40px rgba(11, 11, 15, 0.18);
+  }
+  /* Konten: tabel jadi daftar kartu (judul + status). */
+  .dc-admin [data-cnt-table] {
+    min-width: 0 !important;
+  }
+  .dc-admin [data-cnt-head] {
+    display: none !important;
+  }
+  .dc-admin [data-row] {
+    grid-template-columns: minmax(0, 1fr) auto 36px !important;
+    padding: 12px 14px !important;
+  }
+  .dc-admin [data-row] > span:nth-child(1),
+  .dc-admin [data-row] > span:nth-child(3),
+  .dc-admin [data-row] > span:nth-child(4),
+  .dc-admin [data-row] > span:nth-child(5) {
+    display: none !important;
+  }
 }
 
 /* Notifikasi dari enhancer (mis. gagal masuk). */
@@ -138,4 +208,10 @@ svg {
 [aria-busy="true"][data-otp-submit] {
   opacity: 0.6;
   pointer-events: none;
+}
+/* Di HP, notifikasi di atas bar tombol editor yang menempel. */
+@media (max-width: 767px) {
+  body:has([data-ed-actions]) .dc-flash {
+    bottom: calc(96px + env(safe-area-inset-bottom));
+  }
 }

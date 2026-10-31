@@ -238,7 +238,8 @@ type Store interface {
 	// Redaksi (panel admin)
 	AdminArticles(ctx context.Context, f AdminArticleFilter) ([]AdminArticle, error)
 	AdminArticle(ctx context.Context, id string) (AdminArticle, error)
-	AdminCounts(ctx context.Context) (map[string]int, error)
+	AdminCounts(ctx context.Context, mine string) (map[string]int, error)
+	DeleteArticle(ctx context.Context, id string) error
 	CreateArticle(ctx context.Context, userID, authorSlug string, in ArticleInput, slugFn func(i int) string) (AdminArticle, error)
 	UpdateArticle(ctx context.Context, id string, in ArticleInput) (AdminArticle, error)
 	SetArticleStatus(ctx context.Context, id, status string, publishedAt *time.Time, note string) error

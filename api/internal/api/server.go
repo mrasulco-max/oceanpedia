@@ -107,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	staff("GET /v1/admin/articles/{id}", s.adminArticle)
 	staff("PUT /v1/admin/articles/{id}", s.updateArticle)
 	staff("POST /v1/admin/articles/{id}/status", s.articleStatus)
+	staff("DELETE /v1/admin/articles/{id}", s.deleteArticle)
 	staff("POST /v1/admin/media", s.uploadMedia)
 	h("GET /v1/media/{id}", s.media)
 
