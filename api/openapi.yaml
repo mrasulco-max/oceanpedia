@@ -152,7 +152,16 @@ paths:
     post: { summary: Masuk, tags: [Auth], requestBody: { content: { application/json: { schema: { type: object, required: [email, password], properties: { email: { type: string }, password: { type: string } } } } } }, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenResponse' } } } }, '401': { $ref: '#/components/responses/Problem' }, '403': { description: "Akun baru belum konfirmasi OTP (type …/verification-required); kode dikirim ulang" } } }
   /v1/auth/refresh: { post: { summary: Tukar refresh token (rotasi), tags: [Auth], responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Problem' } } } }
   /v1/auth/logout: { post: { summary: Cabut refresh token, tags: [Auth], responses: { '204': { description: OK } } } }
-  /v1/me: { get: { summary: Profil saya, tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Problem' } } } }
+  /v1/me:
+    get: { summary: Profil saya, tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Problem' } } }
+    patch: { summary: "Ubah nama, nama tampilan, nomor HP, dan preferensi (digabung)", tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: Profil terbaru }, '422': { description: Validasi } } }
+  /v1/me/profile: { get: { summary: "Profil, preferensi, ringkasan aktivitas, topik diikuti, batas alert", tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK } } } }
+  /v1/me/password: { post: { summary: "Ganti kata sandi (sandi lama wajib); semua sesi lain dicabut, sesi baru diterbitkan", tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: Token baru }, '422': { description: Validasi } } } }
+  /v1/me/sessions: { get: { summary: "Perangkat yang sedang masuk (header X-Session-Hash menandai perangkat ini)", tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK } } } }
+  /v1/me/sessions/{id}: { delete: { summary: "Keluarkan satu perangkat", tags: [Akun], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: OK } } } }
+  /v1/me/topics/{slug}:
+    put: { summary: "Ikuti topik", tags: [Akun], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK }, '404': { description: Topik tidak ada } } }
+    delete: { summary: "Berhenti mengikuti topik", tags: [Akun], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK } } }
   /v1/me/watchlist:
     get: { summary: Watchlist, tags: [Akun], security: [{ bearer: [] }], responses: { '200': { description: OK } } }
     post: { summary: Tambah simbol, tags: [Akun], security: [{ bearer: [] }], requestBody: { content: { application/json: { schema: { type: object, required: [symbol], properties: { symbol: { type: string } } } } } }, responses: { '200': { description: OK }, '422': { $ref: '#/components/responses/Problem' } } }

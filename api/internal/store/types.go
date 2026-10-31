@@ -204,6 +204,13 @@ type Store interface {
 	SetPassword(ctx context.Context, id, passwordHash string) error
 	RevokeUserTokens(ctx context.Context, id string) error
 	Search(ctx context.Context, q string, limit int) (SearchResult, error)
+	Profile(ctx context.Context, id string) (Profile, error)
+	UpdateProfile(ctx context.Context, id string, in ProfileUpdate) error
+	Sessions(ctx context.Context, userID string) ([]Session, error)
+	RevokeSession(ctx context.Context, userID, sessionID string) error
+	FollowTopic(ctx context.Context, userID, slug string) error
+	UnfollowTopic(ctx context.Context, userID, slug string) error
+	ActiveAlertCount(ctx context.Context, userID string) (int, error)
 	UserByEmail(ctx context.Context, email string) (User, error)
 	UserByID(ctx context.Context, id string) (User, error)
 	SaveRefreshToken(ctx context.Context, userID string, hash []byte, ua, ip string, exp time.Time) error

@@ -105,6 +105,11 @@ jobs:
           curl -sf -X POST localhost:8080/v1/auth/verify -H 'Content-Type: application/json' -d '{"email":"ci@example.com","code":"000000"}' | jq -e '.access_token | length > 20'
           curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -e '.user.email_verified == true'
           curl -sf "localhost:8080/v1/search?q=bbca" | jq -e '.result.instruments[0].symbol == "BBCA"'
+          # Profil: baca, ubah data & preferensi, perangkat aktif.
+          TOKEN=$(curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -r .access_token)
+          curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/profile | jq -e '.profile.stats.watchlist == 0 and .alert_limit == 3'
+          curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"full_name":"CI Bot 2","preferences":{"breaking":false,"theme":"dark"}}' | jq -e '.profile.full_name == "CI Bot 2" and .profile.preferences.breaking == false'
+          curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/sessions | jq -e '.data | length >= 1'
       - name: Jalankan web
         run: |
           mkdir -p /tmp/web && tar -xzf /tmp/web-build.tgz -C /tmp/web

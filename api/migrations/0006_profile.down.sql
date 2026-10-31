@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS user_topics;
+ALTER TABLE users DROP COLUMN IF EXISTS preferences;
+ALTER TABLE users DROP COLUMN IF EXISTS display_name;

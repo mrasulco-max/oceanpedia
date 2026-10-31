@@ -649,6 +649,9 @@ func AllQueries() map[string]string {
 		"react": qReact, "reactions": qReactions, "comments": qComments, "add_comment": qAddComment, "create_invoice": qCreateInvoice,
 	}
 	out["market_cache_get"], out["market_cache_put"] = qMarketCacheGet, qMarketCachePut
+	for k, v := range profileQueries() {
+		out[k] = v
+	}
 	for k, v := range adminQueries() {
 		out[k] = v
 	}
