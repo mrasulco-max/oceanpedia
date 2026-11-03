@@ -55,6 +55,7 @@ func build() {
 	// Kode huruf+angka dari domain sendiri; Bird Verify (angka) jadi cadangan bila email gagal terkirim.
 	if cfg.BirdEmailKey != "" && cfg.OTPEmailFrom != "" {
 		srv.OTP = &otp.Email{Store: &store.PG{DB: db}, Key: cfg.BirdEmailKey, BaseURL: cfg.BirdURL, From: cfg.OTPEmailFrom, Pepper: cfg.JWTSecret, Fallback: srv.OTP}
+		srv.Mail = srv.OTP.(*otp.Email)
 	}
 	h = srv.Handler()
 }

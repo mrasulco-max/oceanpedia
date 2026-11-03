@@ -13,9 +13,9 @@ import { search } from "./search";
 import { profile } from "./profile";
 import { rbac } from "./rbac";
 import { activity, catform, medialib, moderation, taxonomy } from "./cms";
-import { ops } from "./ops";
+import { ops, twofa } from "./ops";
 
-export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile" | "rbac" | "taxonomy" | "catform" | "moderation" | "medialib" | "activity" | "ops";
+export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile" | "rbac" | "taxonomy" | "catform" | "moderation" | "medialib" | "activity" | "ops" | "twofa";
 
 export interface Env {
   router: ReturnType<typeof useRouter>;
@@ -53,6 +53,18 @@ function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
         // Akun baru yang belum konfirmasi OTP: kode sudah dikirim, lanjut ke verifikasi.
         toast(host, data.detail ?? "Konfirmasi akun dengan kode yang dikirim ke email.", "ok");
         router.push(verifyUrl(data.errors?.email ?? email, "signup", ctx.next));
+        return;
+      }
+      if (res.status === 403 && data.type?.includes("two-factor-required")) {
+        // Staf: verifikasi 2 langkah — kode dikirim ke email, challenge disimpan untuk langkah berikutnya.
+        try {
+          sessionStorage.setItem("ob_2fa", data.errors?.challenge ?? "");
+        } catch {
+          /* penyimpanan diblokir */
+        }
+        toast(host, data.detail ?? "Kode verifikasi dikirim ke email Anda.", "ok");
+        const nx = ctx.next?.startsWith("/admin") ? ctx.next : "/admin";
+        router.push(`/admin/masuk/verifikasi?email=${encodeURIComponent(data.errors?.email ?? email)}&next=${encodeURIComponent(nx)}`);
         return;
       }
       if (!res.ok) {
@@ -106,7 +118,7 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
   return () => host.removeEventListener("click", onClick, true);
 }
 
-const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile, rbac, taxonomy, catform, moderation, medialib, activity, ops };
+const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile, rbac, taxonomy, catform, moderation, medialib, activity, ops, twofa };
 
 export function runEnhancer(id: EnhancerId, host: HTMLElement, env: Env): Cleanup {
   return REGISTRY[id]?.(host, env);

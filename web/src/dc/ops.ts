@@ -292,3 +292,100 @@ export function ops(host: HTMLElement, { router }: Env): Cleanup {
     window.clearTimeout(timer);
   };
 }
+
+/** Enhancer "twofa": isi kode email (6 karakter), kirim bersama challenge dari langkah kata sandi. */
+export function twofa(host: HTMLElement, { router }: Env): Cleanup {
+  const digits = [...host.querySelectorAll<HTMLInputElement>("[data-tf-digit]")];
+  const submit = host.querySelector<HTMLElement>('[data-tf="submit"]');
+  const email = submit?.dataset.email ?? "";
+  const next = submit?.dataset.next ?? "/admin";
+  let challenge = "";
+  try {
+    challenge = sessionStorage.getItem("ob_2fa") ?? "";
+  } catch {
+    /* penyimpanan diblokir */
+  }
+  if (!challenge) {
+    toast(host, "Sesi verifikasi berakhir. Masuk lagi dengan kata sandi.");
+    router.replace(`/admin/masuk?next=${encodeURIComponent(next)}`);
+    return;
+  }
+  let busy = false;
+  const code = () => digits.map((d) => d.value.trim().toUpperCase()).join("");
+  const send = async () => {
+    if (busy) return;
+    const c = code();
+    if (c.length < 6) {
+      digits.find((d) => !d.value)?.focus();
+      return toast(host, "Masukkan 6 karakter kode dari email.");
+    }
+    busy = true;
+    submit?.setAttribute("aria-busy", "true");
+    try {
+      const remember = !!host.querySelector<HTMLInputElement>('[data-tf="remember"]')?.checked;
+      const res = await fetch("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, code: c, challenge, remember }) });
+      const data = (await res.json().catch(() => ({}))) as { detail?: string; errors?: Record<string, string>; user?: { is_staff?: boolean } };
+      if (!res.ok) {
+        digits.forEach((d) => (d.value = ""));
+        digits[0]?.focus();
+        if (res.status === 403) {
+          toast(host, data.detail ?? "Verifikasi kedaluwarsa. Masuk lagi.");
+          router.replace(`/admin/masuk?next=${encodeURIComponent(next)}`);
+          return;
+        }
+        return toast(host, (data.errors && Object.values(data.errors)[0]) || data.detail || "Kode salah atau kedaluwarsa.");
+      }
+      try {
+        sessionStorage.removeItem("ob_2fa");
+      } catch {
+        /* abaikan */
+      }
+      toast(host, "Berhasil masuk.", "ok");
+      router.push(data.user?.is_staff ? next : "/");
+    } finally {
+      busy = false;
+      submit?.removeAttribute("aria-busy");
+    }
+  };
+  const onInput = (e: Event) => {
+    const el = e.target as HTMLInputElement;
+    if (!el.matches("[data-tf-digit]")) return;
+    const v = el.value.replace(/[^0-9a-z]/gi, "").toUpperCase();
+    const i = Number(el.dataset.tfDigit);
+    if (v.length > 1) {
+      // Tempel seluruh kode.
+      [...v.slice(0, 6)].forEach((ch, k) => digits[i + k] && (digits[i + k]!.value = ch));
+      digits[Math.min(5, i + v.length)]?.focus();
+    } else {
+      el.value = v;
+      if (v) digits[i + 1]?.focus();
+    }
+    if (code().length === 6) void send();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    const el = e.target as HTMLInputElement;
+    if (!el.matches?.("[data-tf-digit]")) return;
+    const i = Number(el.dataset.tfDigit);
+    if (e.key === "Backspace" && !el.value) digits[i - 1]?.focus();
+    if (e.key === "Enter") void send();
+  };
+  const off = onCapture(host, async (t, e) => {
+    if (t.closest('[data-tf="submit"]')) {
+      stop(e);
+      await send();
+    } else if (t.closest('[data-tf="resend"]')) {
+      stop(e);
+      const r = await fetch("/api/auth/otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const d = (await r.json().catch(() => ({}))) as { detail?: string };
+      toast(host, r.ok ? "Kode baru dikirim ke email Anda." : d.detail ?? "Belum bisa mengirim ulang.", r.ok ? "ok" : "error");
+    }
+  });
+  host.addEventListener("input", onInput);
+  host.addEventListener("keydown", onKey);
+  digits[0]?.focus();
+  return () => {
+    off();
+    host.removeEventListener("input", onInput);
+    host.removeEventListener("keydown", onKey);
+  };
+}

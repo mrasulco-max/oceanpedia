@@ -172,7 +172,14 @@ export function rbac(host: HTMLElement, { router }: Env): Cleanup {
       void run(act, async () => {
         const r = await call("POST", "rbac/invitations", { email, role, categories });
         if (!r.ok) return toast(host, msg(r.data, "Undangan gagal dikirim."));
-        done(`Undangan untuk ${email} dibuat. Role berlaku saat ia masuk/daftar dalam 48 jam.`);
+        if (r.data.email_sent) return done(`Email undangan terkirim ke ${email}. Role berlaku saat ia masuk/daftar dalam 48 jam.`);
+        const link = String(r.data.invite_url ?? "");
+        try {
+          await navigator.clipboard.writeText(link);
+          done(`Undangan dibuat, tapi email belum bisa dikirim. Tautan pendaftaran disalin — kirim ke ${email}.`);
+        } catch {
+          done(`Undangan dibuat. Kirim tautan ini ke ${email}: ${link}`);
+        }
       });
     }
   };

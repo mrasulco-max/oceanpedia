@@ -117,7 +117,7 @@ jobs:
             curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d "{\"email\":\"$who@example.com\",\"password\":\"Sandi-rahasia1\",\"full_name\":\"CI $who\"}" > /dev/null
             curl -sf -X POST localhost:8080/v1/auth/verify -H 'Content-Type: application/json' -d "{\"email\":\"$who@example.com\",\"code\":\"000000\"}" > /dev/null
           done
-          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -c "UPDATE users SET role='author' WHERE email='penulis@example.com'; UPDATE users SET role='editor' WHERE email='editor@example.com';"
+          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -c "UPDATE users SET role='author' WHERE email='penulis@example.com'; UPDATE users SET role='editor' WHERE email='editor@example.com'; UPDATE users SET two_factor=false WHERE email IN ('penulis@example.com','editor@example.com');"
           tok() { curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"$1@example.com\",\"password\":\"Sandi-rahasia1\"}" | jq -r .access_token; }
           AU="Authorization: Bearer $(tok penulis)"; ED="Authorization: Bearer $(tok editor)"
           ART='{"title":"Uji CI: IHSG menguat di sesi pertama","excerpt":"Ringkasan uji CI.","body":"JAKARTA — IHSG ditutup menguat pada sesi pertama ditopang **saham bank** besar.\n\n- Poin satu\n- Poin dua\n\nParagraf ketiga uji.","category":"saham","symbols":["BBCA"],"action":"review"}'
@@ -148,7 +148,7 @@ jobs:
           # RBAC dari database: Super Admin mengubah matriks, mengundang, mengganti role, memblokir.
           curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d '{"email":"super@example.com","password":"Sandi-rahasia1","full_name":"CI Super"}' > /dev/null
           curl -sf -X POST localhost:8080/v1/auth/verify -H 'Content-Type: application/json' -d '{"email":"super@example.com","code":"000000"}' > /dev/null
-          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -c "UPDATE users SET role='superadmin' WHERE email='super@example.com';"
+          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -c "UPDATE users SET role='superadmin' WHERE email='super@example.com'; UPDATE users SET two_factor=false WHERE email='super@example.com';"
           SU="Authorization: Bearer $(tok super)"
           curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"super@example.com","password":"Sandi-rahasia1"}' | jq -e '.user.is_staff and (.user.permissions | index("rbac.manage")) != null and .user.role_name == "Super Admin"'
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "$ED" localhost:8080/v1/admin/rbac); test "$code" = 403
@@ -244,6 +244,18 @@ jobs:
           curl -sf -X PUT -H "$SU" -H "$J" localhost:8080/v1/admin/market/alerts -d '{"latency":false,"rate_limit":true,"quota":true,"ws_drop":true}' | jq -e '.ws_drop'
           curl -sf -X POST -H "$SU" -H "$J" localhost:8080/v1/admin/market/test -d '{"symbol":"BBCA"}' | jq -e 'has("ok") and has("latency_ms")'
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "$AU" localhost:8080/v1/admin/market); test "$code" = 403
+          # Verifikasi 2 langkah staf: kata sandi → kode email + challenge → sesi; perangkat tepercaya 30 hari.
+          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -c "UPDATE users SET two_factor=true WHERE email='editor@example.com';"
+          TF=$(curl -s -X POST localhost:8080/v1/auth/login -H "$J" -d '{"email":"editor@example.com","password":"Sandi-rahasia1"}')
+          echo "$TF" | jq -e '.status == 403 and (.type | contains("two-factor")) and (.errors.challenge | length > 20)'
+          CH=$(echo "$TF" | jq -r .errors.challenge)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/auth/verify -H "$J" -d '{"email":"editor@example.com","code":"000000"}'); test "$code" = 403
+          DEV=$(curl -sf -X POST localhost:8080/v1/auth/verify -H "$J" -d "{\"email\":\"editor@example.com\",\"code\":\"000000\",\"challenge\":\"$CH\",\"remember\":true}" | jq -r .device_token)
+          test "${#DEV}" -gt 20
+          curl -sf -X POST localhost:8080/v1/auth/login -H "$J" -d "{\"email\":\"editor@example.com\",\"password\":\"Sandi-rahasia1\",\"device\":\"$DEV\"}" | jq -e '.user.is_staff'
+          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -c "UPDATE users SET two_factor=false WHERE email='editor@example.com';"
+          # Undangan staf: tautan pendaftaran dikembalikan (email bila Bird Email aktif).
+          curl -sf -X POST -H "$SU" -H "$J" localhost:8080/v1/admin/rbac/invitations -d '{"email":"undangan2@example.com","role":"author","categories":[]}' | jq -e '(.invite_url | contains("/daftar?email=undangan2%40example.com")) and (.email_sent == false)'
           echo "$ART" > /tmp/art.json
       - name: Jalankan web
         run: |
@@ -303,6 +315,8 @@ jobs:
           curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/pasar | grep -q 'data-mk-alert="quota"'
           curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/simbol?s=BTCUSD" | grep -q 'data-lw="BTCUSD"'
           curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/simbol?new=1" | grep -q 'data-sy="symbol"'
+          # Halaman verifikasi 2 langkah admin.
+          curl -sf -A "$DESK" "localhost:3000/admin/masuk/verifikasi?email=editor%40example.com" | grep -q 'data-tf="submit"'
           # Penulis di HP: masuk lewat web, Tulis artikel & Konten tampil responsif, simpan → tampil di Konten.
           curl -sf -c /tmp/jar -A "$MOB" -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"penulis@example.com","password":"Sandi-rahasia1"}' > /dev/null
           ED_HTML=$(curl -sf -b /tmp/jar -A "$MOB" localhost:3000/admin/tulis)

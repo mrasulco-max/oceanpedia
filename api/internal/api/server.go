@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -23,6 +24,13 @@ type Server struct {
 	Cfg    config.Config
 	Log    *slog.Logger
 	Now    func() time.Time
+	// Mail (opsional): email transaksional, mis. undangan staf.
+	Mail Mailer
+}
+
+// Mailer mengirim email transaksional.
+type Mailer interface {
+	SendMessage(ctx context.Context, to, subject, text, html string) error
 }
 
 // Handler mengembalikan router lengkap dengan middleware.

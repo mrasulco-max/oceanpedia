@@ -10,7 +10,7 @@ import { bindContent, bindEditor, bindStaffHeader, type Staff } from "./admin-bi
 import { bindRoles } from "./rbac-bind";
 import { bindCategories, bindCategoryForm, catIcons } from "./cms-bind";
 import { bindActivity, bindComments, bindMedia } from "./mod-bind";
-import { bindAds, bindUsers, bindMarket, bindSymbol, MARKET_TABS, type FeedStatus } from "./ops-bind";
+import { bindAds, bindTwoFactor, bindUsers, bindMarket, bindSymbol, MARKET_TABS, type FeedStatus } from "./ops-bind";
 import { bindAccount, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
@@ -244,6 +244,12 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = bindVerify(html, { email: /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(email) ? email : "", mode, next: nextUrl });
     enhance.push("auth");
     title = mode === "reset" ? "Atur ulang kata sandi" : "Verifikasi kode";
+  } else if (boardId === "admin-login-2-f-a") {
+    const email = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(search.email ?? "") ? search.email! : "";
+    if (!email) redirect("/admin/masuk");
+    html = bindTwoFactor(html, { email, next: search.next?.startsWith("/admin") ? search.next : "/admin" });
+    enhance.push("twofa");
+    title = "Verifikasi 2 langkah";
   } else if (boardId === "admin-login") {
     html = bindLogin(html, "andi@oceanbird.id", "Lanjut");
     enhance.push("login");

@@ -61,6 +61,8 @@ type TokenResponse struct {
 	ExpiresIn    int      `json:"expires_in"`
 	RefreshToken string   `json:"refresh_token"`
 	User         UserView `json:"user"`
+	// DeviceToken: perangkat tepercaya 30 hari (verifikasi 2 langkah tidak diminta lagi).
+	DeviceToken string `json:"device_token,omitempty"`
 }
 
 // UserView: data akun + peran & izin terkini (RBAC dari database) untuk FE.
@@ -120,7 +122,7 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request, u store.User, sta
 		return err
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.JSON(w, status, TokenResponse{AccessToken: at, TokenType: "Bearer", ExpiresIn: int(s.Cfg.AccessTokenTTL.Seconds()), RefreshToken: rt, User: v})
+	httpx.JSON(w, status, TokenResponse{AccessToken: at, TokenType: "Bearer", ExpiresIn: int(s.Cfg.AccessTokenTTL.Seconds()), RefreshToken: rt, User: v, DeviceToken: deviceFrom(r)})
 	return nil
 }
 
@@ -244,6 +246,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) error {
 	var in struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Device   string `json:"device"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
@@ -260,6 +263,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) error {
 		_ = s.sendOTP(r.Context(), u.Email)
 		return &httpx.Problem{Type: verificationType, Title: "Verifikasi diperlukan", Status: http.StatusForbidden,
 			Detail: "Akun belum dikonfirmasi. Kami mengirim kode verifikasi ke " + maskEmail(u.Email) + ".", Errors: map[string]string{"email": u.Email}}
+	}
+	if need, err := s.needsTwoFactor(r, u, in.Device); err != nil {
+		return err
+	} else if need {
+		return s.startTwoFactor(r, u)
 	}
 	return s.issue(w, r, u, http.StatusOK)
 }
@@ -298,8 +306,10 @@ func (s *Server) checkCode(ctx context.Context, email, code string) (store.User,
 // POST /v1/auth/verify {email, code} — konfirmasi OTP (akun baru, atau masuk dengan kode), lalu masuk.
 func (s *Server) verifyOTP(w http.ResponseWriter, r *http.Request) error {
 	var in struct {
-		Email string `json:"email"`
-		Code  string `json:"code"`
+		Email     string `json:"email"`
+		Code      string `json:"code"`
+		Challenge string `json:"challenge"`
+		Remember  bool   `json:"remember"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
@@ -307,6 +317,20 @@ func (s *Server) verifyOTP(w http.ResponseWriter, r *http.Request) error {
 	u, err := s.checkCode(r.Context(), in.Email, in.Code)
 	if err != nil {
 		return err
+	}
+	// Staf dengan verifikasi 2 langkah: kode email saja tidak cukup — harus didahului kata sandi.
+	if u.EmailVerified {
+		if need, err := s.needsTwoFactor(r, u, ""); err != nil {
+			return err
+		} else if need {
+			if !s.checkToken(in.Challenge, "2fa", u.ID) {
+				return httpx.Forbidden("Akun staf wajib masuk dengan kata sandi, lalu kode verifikasi.")
+			}
+			s.audit2(r, u.ID, "auth.2fa", map[string]any{"remember": in.Remember})
+			if in.Remember {
+				r = withDevice(r, s.signToken("td", u.ID, 30*24*time.Hour))
+			}
+		}
 	}
 	if !u.EmailVerified {
 		if err := s.Store.MarkEmailVerified(r.Context(), u.ID); err != nil {
