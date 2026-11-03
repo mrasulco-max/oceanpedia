@@ -112,6 +112,23 @@ jobs:
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/profile | jq -e '.profile.stats.watchlist == 0 and .alert_limit == 3'
           curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"full_name":"CI Bot 2","preferences":{"breaking":false,"theme":"dark"}}' | jq -e '.profile.full_name == "CI Bot 2" and .profile.preferences.breaking == false'
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/sessions | jq -e '.data | length >= 1'
+          # Fitur pembaca: topik, notifikasi, pengingat kalender, price alert yang terpicu.
+          curl -sf localhost:8080/v1/topics/ihsg | jq -e '.topic.slug == "ihsg" and .topic.following == false and (.articles | type == "array")'
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/v1/topics/tidak-ada); test "$code" = 404
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/topics/ihsg); test "$code" = 204
+          curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/topics/ihsg | jq -e '.topic.following == true and .topic.followers >= 1'
+          EV=$(curl -sf "localhost:8080/v1/events?days=7" | jq -r '.data[0].id')
+          if [ "$EV" != "null" ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $TOKEN" "localhost:8080/v1/me/reminders/$EV"); test "$code" = 204
+            curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/reminders | jq -e --arg ev "$EV" '.data | index($ev) != null'
+          fi
+          SYM=$(curl -sf localhost:8080/v1/market/instruments | jq -r '[.data[].symbol | select(. != "BBCA" and . != "BTCUSD")][0]')
+          curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me/alerts -d "{\"symbol\":\"$SYM\",\"condition\":\"price_above\",\"threshold\":0.0001,\"channels\":[\"in_app\"]}" | jq -e '.id | length > 10'
+          curl -sf "localhost:8080/v1/market/quotes?symbols=$SYM" > /dev/null
+          curl -sf -H "Authorization: Bearer $TOKEN" "localhost:8080/v1/me/notifications?kind=price_alert" | jq -e --arg s "$SYM" '(.data | length >= 1) and .data[0].symbol == $s and .unread >= 1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me/notifications/read -d '{}'); test "$code" = 204
+          curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/notifications | jq -e '.unread == 0'
+          curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/alerts | jq -e '[.data[] | select(.active == false)] | length >= 1'
           # Redaksi: penulis & editor — CRUD artikel lengkap.
           for who in penulis editor; do
             curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d "{\"email\":\"$who@example.com\",\"password\":\"Sandi-rahasia1\",\"full_name\":\"CI $who\"}" > /dev/null

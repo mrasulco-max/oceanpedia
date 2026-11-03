@@ -65,6 +65,7 @@ type ArticleFilter struct {
 	Tag      string
 	Author   string
 	Query    string
+	Symbols  []string   // artikel yang menautkan salah satu simbol
 	Before   *time.Time // cursor: published_at artikel terakhir
 	Limit    int
 }
@@ -288,6 +289,19 @@ type Store interface {
 	StaffMembers(ctx context.Context) ([]StaffMember, error)
 	SetUserRole(ctx context.Context, userID, role string) error
 	SetBlocked(ctx context.Context, userID string, blocked bool) error
+	// Pembaca: notifikasi, price alert, iklan.
+	Notifications(ctx context.Context, uid, kind string, limit int) ([]Notification, map[string]int, int, error)
+	MarkNotificationsRead(ctx context.Context, uid string, ids []string) error
+	Notify(ctx context.Context, uid string, n NotifyInput) error
+	NotifyArticle(ctx context.Context, articleID string) (int, error)
+	ActiveAlerts(ctx context.Context, symbols []string) ([]AlertJob, error)
+	AlertSeen(ctx context.Context, id string, price float64, fired bool) error
+	AdImpression(ctx context.Context, id string) error
+	Reminders(ctx context.Context, uid string) ([]string, error)
+	SetReminder(ctx context.Context, uid, eventID string, on bool) error
+	DispatchReminders(ctx context.Context) (int, error)
+	TopicBySlug(ctx context.Context, slug, uid string) (Topic, error)
+	AdClick(ctx context.Context, id string) (string, error)
 	// Operasional admin: pengguna, iklan, data pasar.
 	AdminUsers(ctx context.Context, tab, q string, limit int) ([]AdminUser, UserStats, error)
 	AdminUser(ctx context.Context, id string) (AdminUser, error)

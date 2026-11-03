@@ -39,6 +39,13 @@ func (s *Server) categories(w http.ResponseWriter, r *http.Request) error {
 func (s *Server) listArticles(w http.ResponseWriter, r *http.Request) error {
 	q := r.URL.Query()
 	f := store.ArticleFilter{Category: q.Get("category"), Tag: q.Get("tag"), Author: q.Get("author"), Query: strings.TrimSpace(q.Get("q")), Limit: limitParam(r, 20, 50)}
+	if v := q.Get("symbols"); v != "" {
+		for _, x := range strings.Split(strings.ToUpper(v), ",") {
+			if x = strings.TrimSpace(x); x != "" && len(f.Symbols) < 30 {
+				f.Symbols = append(f.Symbols, x)
+			}
+		}
+	}
 	if len(f.Query) > 120 {
 		return httpx.BadRequest("Kata kunci terlalu panjang (maks. 120 karakter).")
 	}

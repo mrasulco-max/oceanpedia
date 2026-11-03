@@ -117,6 +117,9 @@ func BuildArticlesQuery(f ArticleFilter) (string, []any) {
 	if f.Tag != "" {
 		add("EXISTS (SELECT 1 FROM article_tags at JOIN tags t ON t.id = at.tag_id WHERE at.article_id = a.id AND t.slug = $%d)", f.Tag)
 	}
+	if len(f.Symbols) > 0 {
+		add("EXISTS (SELECT 1 FROM article_instruments ai WHERE ai.article_id = a.id AND ai.symbol = ANY($%d::text[]))", pgTextArray(f.Symbols))
+	}
 	if f.Query != "" {
 		add("a.search @@ websearch_to_tsquery('simple', $%d)", f.Query)
 	}
@@ -657,6 +660,9 @@ func AllQueries() map[string]string {
 	}
 	out["market_cache_get"], out["market_cache_put"] = qMarketCacheGet, qMarketCachePut
 	for k, v := range profileQueries() {
+		out[k] = v
+	}
+	for k, v := range readerQueries() {
 		out[k] = v
 	}
 	for k, v := range opsQueries() {

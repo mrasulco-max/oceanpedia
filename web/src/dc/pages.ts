@@ -14,7 +14,8 @@ import { bindAds, bindTwoFactor, bindUsers, bindMarket, bindSymbol, MARKET_TABS,
 import { bindAccount, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
-import { getProfile, getSessions } from "@/lib/me";
+import { getAlerts, getBookmarks, getNotifications, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
+import { bindAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
@@ -127,8 +128,58 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = bindArticleDetail(html, a);
     if (!ai) enhance.push("ai");
     html = bindArticleCards(html, dedupe([...related.data, ...all]).filter((x) => x.slug !== a.slug));
+    {
+      const [cm, rx, bms] = await Promise.all([
+        safe(api.comments(a.slug), { data: [] }),
+        safe(api.reactions(a.slug), { data: [] }),
+        user ? getBookmarks() : Promise.resolve(null),
+      ]);
+      const reactions: Record<string, number> = {};
+      for (const r of rx.data) reactions[r.kind] = r.count;
+      const social = { loggedIn: !!user, me: user ? { name: user.full_name, email: user.email } : null, comments: cm.data, reactions, bookmarked: !!bms?.some((b) => b.slug === a.slug), slug: a.slug };
+      html = board.kind === "app" ? bindArticleSocialApp(html, social) : bindArticleSocialWeb(html, social);
+      if (board.kind === "app" && social.bookmarked) ctx.state = JSON.stringify({ u: { u1: [true] } });
+      enhance.push("reader");
+    }
     title = a.title;
     description = a.excerpt;
+  } else if (path === "/penulis/[slug]") {
+    let r: Awaited<ReturnType<typeof api.author>>;
+    try {
+      r = await api.author(m.params.slug!);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) notFound();
+      throw e;
+    }
+    html = bindAuthor(html, { author: r.author, articles: r.articles });
+    title = r.author.name;
+    description = r.author.bio || `${r.author.name} · ${r.author.title}`;
+  } else if (path === "/topik/[slug]") {
+    let r: Awaited<ReturnType<typeof api.topic>>;
+    try {
+      r = await api.topic(m.params.slug!);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) notFound();
+      throw e;
+    }
+    const syms = r.topic.symbols ?? [];
+    const [ins, qs, pr] = await Promise.all([
+      syms.length ? safe(api.instruments(), { data: [] }) : Promise.resolve({ data: [] }),
+      syms.length ? safe(api.quotes(syms), { data: [] }) : Promise.resolve({ data: [] }),
+      user ? getProfile() : Promise.resolve(null),
+    ]);
+    const following = !!pr?.profile.topics.some((t) => t.slug === r.topic.slug);
+    html = bindTopic(html, {
+      topic: { ...r.topic, following },
+      articles: r.articles,
+      quotes: syms.map((sym) => ({ inst: ins.data.find((i) => i.symbol === sym) ?? qs.data.find((q) => q.instrument.symbol === sym)?.instrument, quote: qs.data.find((q) => q.instrument.symbol === sym)?.quote ?? null })).filter((x): x is { inst: NonNullable<typeof x.inst>; quote: typeof x.quote } => !!x.inst),
+      related: r.topic.related ?? [],
+      loggedIn: !!user,
+    });
+    if (board.kind === "app") ctx.state = JSON.stringify({ u: { u7: [following] } });
+    enhance.push("reader");
+    title = `#${r.topic.name}`;
+    description = `Berita dan analisis terbaru seputar ${r.topic.name}.`;
   } else if (path === "/kategori/[slug]") {
     const cats = await safe(api.categories(), { data: [] });
     const cat = cats.data.find((c) => c.slug === m.params.slug);
@@ -219,6 +270,75 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     }
     if (path === "/plus/baca") html = bindArticleCards(html, all);
     enhance.push("ai");
+  } else if (path === "/watchlist") {
+    const items = user ? (await getWatchlist()) ?? [] : [];
+    const [alerts, pr, qs, news, sparks] = await Promise.all([
+      user ? getAlerts() : Promise.resolve([]),
+      user ? getProfile() : Promise.resolve(null),
+      items.length ? safe(api.quotes(items.map((i) => i.symbol)), { data: [] }) : Promise.resolve({ data: [] }),
+      items.length ? safe(api.articles({ symbols: items.map((i) => i.symbol).join(","), limit: 6 }), { data: [] }) : Promise.resolve({ data: [] }),
+      Promise.all(items.slice(0, 20).map(async (i) => [i.symbol, (await safe(api.candles(i.symbol, "1day", 8), { symbol: i.symbol, interval: "1day", data: [] })).data.map((c) => c.c)] as [string, number[]])),
+    ]);
+    const qm = new Map(quotes);
+    for (const it of qs.data) if (it.quote) qm.set(it.instrument.symbol, it.quote);
+    const d = { loggedIn: !!user, items, quotes: qm, alerts: alerts ?? [], sparks: new Map(sparks), news: news.data, alertLimit: pr?.alert_limit ?? 3 };
+    html = board.kind === "app" ? bindWatchlistApp(html, d) : bindWatchlistWeb(html, d);
+    enhance.push("reader");
+    title = "Watchlist";
+  } else if (path === "/alert") {
+    const ins = await safe(api.instruments(), { data: [] });
+    const wl = user ? (await getWatchlist()) ?? [] : [];
+    const want = (search.symbol ?? wl[0]?.symbol ?? "BBCA").toUpperCase();
+    const inst = ins.data.find((i) => i.symbol === want) ?? ins.data.find((i) => i.symbol === "BBCA") ?? ins.data[0];
+    if (!inst) notFound();
+    const [qs, cs, alerts, pr] = await Promise.all([
+      safe(api.quotes([inst.symbol]), { data: [] }),
+      safe(api.candles(inst.symbol, "1day", 30), { symbol: inst.symbol, interval: "1day", data: [] }),
+      user ? getAlerts() : Promise.resolve([]),
+      user ? getProfile() : Promise.resolve(null),
+    ]);
+    html = bindAlert(html, {
+      loggedIn: !!user,
+      inst,
+      quote: qs.data[0]?.quote ?? quotes.get(inst.symbol) ?? null,
+      closes: cs.data.map((c) => c.c),
+      alerts: alerts ?? [],
+      limit: pr?.alert_limit ?? 3,
+      email: pr?.profile.email ?? "",
+      phone: pr?.profile.phone ?? null,
+      plan: !!pr?.profile.plan,
+      instruments: ins.data,
+    });
+    enhance.push("reader");
+    title = `Price alert ${inst.symbol}`;
+  } else if (path === "/tersimpan") {
+    html = bindSaved(html, { loggedIn: !!user, items: user ? (await getBookmarks()) ?? [] : [] });
+    enhance.push("reader");
+    title = "Tersimpan";
+  } else if (path === "/notifikasi") {
+    const n = user ? await getNotifications() : null;
+    html = bindNotifications(html, { loggedIn: !!user, list: n?.data ?? [], counts: n?.counts ?? {} });
+    if (n && !n.unread) ctx.state = JSON.stringify({ read: true });
+    enhance.push("reader");
+    title = "Notifikasi";
+  } else if (path === "/kalender") {
+    const wib = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
+    const today = wib(new Date());
+    const sel = /^\d{4}-\d{2}-\d{2}$/.test(search.d ?? "") ? search.d! : today;
+    const selDate = new Date(`${sel}T12:00:00+07:00`);
+    const dow = (selDate.getUTCDay() + 6) % 7;
+    const week = Array.from({ length: 7 }, (_, i) => wib(new Date(selDate.getTime() + (i - dow) * 86400000)));
+    const [ev, rem] = await Promise.all([safe(api.eventsWeek(week[0]!), { data: [] }), user ? meGetJSON<{ data: string[] }>("/v1/me/reminders") : Promise.resolve(null)]);
+    const d = { week, selected: sel, events: ev.data, reminders: new Set(rem?.data ?? []), loggedIn: !!user, country: ["ID", "US", "CN", "high"].includes(search.negara ?? "") ? search.negara! : "" };
+    if (board.kind === "app") {
+      html = bindCalendarApp(html, d);
+      const idx = week.indexOf(sel);
+      ctx.state = JSON.stringify({ u: { u1: week.map((_, i) => i === idx) } });
+    } else {
+      html = bindCalendarWeb(html, { ...d, prevWeek: wib(new Date(selDate.getTime() - 7 * 86400000)), nextWeek: wib(new Date(selDate.getTime() + 7 * 86400000)) });
+    }
+    enhance.push("reader");
+    title = "Kalender Ekonomi";
   } else {
     html = bindArticleCards(html, all);
   }
@@ -226,6 +346,12 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   html = bindQuotes(html, quotes);
   html = bindCryptoVolume(html, quotes);
   html = bindDataCredits(html);
+  if (board.kind !== "admin" && html.includes('role="complementary" aria-label="Iklan ')) {
+    const pageKey = path === "/" ? "home" : path.startsWith("/berita/") ? "article" : path.startsWith("/kategori/") ? "category" : path === "/legal" ? "legal" : "other";
+    const slots = await safe(api.ads(board.kind === "app" ? "app" : "web", pageKey), { data: [] });
+    html = bindAdSlots(html, slots.data);
+    if (html.includes("data-ad-imp") && !enhance.includes("reader")) enhance.push("reader");
+  }
 
   // Form masuk memanggil API sungguhan.
   const nextUrl = safeNext(search.next);

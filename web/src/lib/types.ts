@@ -95,6 +95,7 @@ export interface EconomicEvent {
   actual: string | null;
   forecast: string | null;
   previous: string | null;
+  related_symbols: string[];
 }
 
 export interface AdSlot {
@@ -103,6 +104,10 @@ export interface AdSlot {
   placement: string;
   width: number;
   height: number;
+  campaign_id: string | null;
+  advertiser: string | null;
+  creative_url: string | null;
+  target_url: string | null;
 }
 
 export type Layout = "web" | "app";
@@ -129,6 +134,16 @@ export interface Author {
   bio?: string;
   avatar_url: string | null;
   verified: boolean;
+}
+
+export interface TopicInfo {
+  slug: string;
+  name: string;
+  article_count: number;
+  followers: number;
+  following: boolean;
+  symbols: string[];
+  related: { slug: string; name: string }[];
 }
 
 export interface Tag {

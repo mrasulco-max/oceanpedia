@@ -368,3 +368,10 @@ func TestQuotesUnknownSymbolParam(t *testing.T) {
 		t.Fatalf("%d", w.Code)
 	}
 }
+
+func (f *fake) ActiveAlerts(context.Context, []string) ([]store.AlertJob, error) { return nil, nil }
+func (f *fake) NotifyArticle(context.Context, string) (int, error)               { return 0, nil }
+func (f *fake) DispatchReminders(context.Context) (int, error)                   { return 0, nil }
+func (f *fake) TopicBySlug(_ context.Context, slug, _ string) (store.Topic, error) {
+	return store.Topic{}, httpx.ErrNotFound
+}
