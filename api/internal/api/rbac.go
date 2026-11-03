@@ -304,3 +304,14 @@ func (s *Server) blockUser(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
+
+// GET /v1/admin/staff — daftar staf (nama & peran) untuk pilihan penanggung jawab; tanpa rbac.manage.
+func (s *Server) staffList(w http.ResponseWriter, r *http.Request) error {
+	staff, err := s.Store.StaffMembers(r.Context())
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	httpx.JSON(w, 200, map[string]any{"data": staff})
+	return nil
+}

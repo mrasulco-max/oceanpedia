@@ -8,6 +8,8 @@ import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replac
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader, type Staff } from "./admin-bind";
 import { bindRoles } from "./rbac-bind";
+import { bindCategories, bindCategoryForm, catIcons } from "./cms-bind";
+import { bindActivity, bindComments, bindMedia } from "./mod-bind";
 import { bindAccount, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
@@ -275,6 +277,59 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     if (!rbac) notFound();
     html = bindRoles(html, { rbac, categories: cats.data });
     enhance.push("rbac");
+  } else if (boardId === "admin-categories") {
+    const [data, recent] = await Promise.all([adminApi.categories(search.q ?? ""), adminApi.articles("published")]);
+    if (!data) notFound();
+    const tab = search.tab === "tag" || search.tab === "sub" ? search.tab : "kategori";
+    const selected = (search.id && data.categories.find((c) => c.id === search.id)) || data.categories.find((c) => !c.parent_id) || null;
+    const icons = catIcons((await loadBoard("admin-category-form")).html);
+    // Ikon lama (sebelum pilihan ilustrasi) → ilustrasi terdekat.
+    const ALIAS: Record<string, string> = { chart: "candle", flag: "globe", bolt: "drop", doc: "reader", pen: "reader", shield: "coin" };
+    for (const [k, v] of Object.entries(ALIAS)) if (icons[v]) icons[k] = icons[v]!;
+    html = bindCategories(html, {
+      data,
+      tab,
+      selected,
+      recent: (recent?.data ?? []).filter((a) => a.category_slug === selected?.slug).slice(0, 4),
+      icons,
+      canManage: who.perms.has("taxonomy.manage"),
+    });
+    enhance.push("taxonomy");
+    title = "Kategori & tag";
+  } else if (boardId === "admin-category-form") {
+    const [data, staff] = await Promise.all([adminApi.categories(), adminApi.staff()]);
+    if (!data) notFound();
+    const cat = search.id && UUID.test(search.id) ? data.categories.find((c) => c.id === search.id) ?? null : null;
+    if (search.id && !cat) notFound();
+    const parentId = search.parent && UUID.test(search.parent) ? search.parent : "";
+    html = bindCategoryForm(html, { cat, all: data.categories, staff: staff?.data ?? [], parentId, canManage: who.perms.has("taxonomy.manage") });
+    enhance.push("catform");
+    if (cat) ctx.id = cat.id;
+    title = cat ? `Edit kategori: ${cat.name}` : "Kategori baru";
+  } else if (boardId === "admin-comments") {
+    const status = ["queue", "flagged", "pending", "visible", "hidden"].includes(search.status ?? "") ? search.status! : "queue";
+    const st = await adminApi.comments(status);
+    if (!st) notFound();
+    html = bindComments(html, { st, status, canBlock: who.perms.has("users.ban") });
+    enhance.push("moderation");
+    title = "Moderasi komentar";
+  } else if (boardId === "admin-media") {
+    const filter = ["all", "unlicensed", "expiring", "video"].includes(search.filter ?? "") ? search.filter! : "all";
+    const lib = await adminApi.media(filter, search.q ?? "");
+    if (!lib) notFound();
+    const selected = (search.id && lib.data.find((m) => m.id === search.id)) || lib.data[0] || null;
+    html = bindMedia(html, { lib, filter, selected, canManage: who.perms.has("media.manage") });
+    enhance.push("medialib");
+    title = "Pustaka media";
+  } else if (boardId === "admin-activity") {
+    const group = ["all", "content", "access", "ads", "system"].includes(search.group ?? "") ? search.group! : "all";
+    const days = [1, 7, 30, 90].includes(Number(search.days)) ? Number(search.days) : 7;
+    const page = await adminApi.audit(group, days, /^\d+$/.test(search.before ?? "") ? search.before! : "");
+    if (!page) notFound();
+    const selected = (search.id && page.data.find((e) => String(e.id) === search.id)) || page.data[0] || null;
+    html = bindActivity(html, { page, group, selected, canExport: true });
+    enhance.push("activity");
+    title = "Log aktivitas";
   }
 
   if (user && board.kind !== "admin") html = bindAccount(html, user);

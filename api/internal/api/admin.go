@@ -1,11 +1,17 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -447,38 +453,57 @@ var allowedMime = map[string]bool{"image/jpeg": true, "image/png": true, "image/
 // POST /v1/admin/media (multipart/form-data, field "file")
 // readImage membaca field multipart "file" dan memastikan isinya foto yang diizinkan.
 func readImage(w http.ResponseWriter, r *http.Request) ([]byte, string, error) {
+	data, mime, _, err := readImageNamed(w, r)
+	return data, mime, err
+}
+
+// readImageNamed seperti readImage, sekaligus mengembalikan nama berkas asli.
+func readImageNamed(w http.ResponseWriter, r *http.Request) ([]byte, string, string, error) {
+	data, mime, name, err := readImageRaw(w, r)
+	return data, mime, name, err
+}
+
+func readImageRaw(w http.ResponseWriter, r *http.Request) ([]byte, string, string, error) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload+64<<10)
-	f, _, err := r.FormFile("file")
+	f, hdr, err := r.FormFile("file")
 	if err != nil {
 		var mbe *http.MaxBytesError
 		if errors.As(err, &mbe) {
-			return nil, "", httpx.BadRequest("Ukuran foto maksimal 4 MB.")
+			return nil, "", "", httpx.BadRequest("Ukuran foto maksimal 4 MB.")
 		}
-		return nil, "", httpx.BadRequest("Sertakan berkas foto pada field \"file\".")
+		return nil, "", "", httpx.BadRequest("Sertakan berkas foto pada field \"file\".")
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, maxUpload+1))
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if len(data) == 0 || len(data) > maxUpload {
-		return nil, "", httpx.BadRequest("Ukuran foto maksimal 4 MB.")
+		return nil, "", "", httpx.BadRequest("Ukuran foto maksimal 4 MB.")
 	}
 	mime := http.DetectContentType(data)
 	if !allowedMime[mime] {
-		return nil, "", httpx.BadRequest("Format foto harus JPG, PNG, WebP, atau GIF.")
+		return nil, "", "", httpx.BadRequest("Format foto harus JPG, PNG, WebP, atau GIF.")
 	}
-	return data, mime, nil
+	return data, mime, hdr.Filename, nil
 }
 
 func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) error {
-	data, mime, err := readImage(w, r)
+	data, mime, name, err := readImageNamed(w, r)
 	if err != nil {
 		return err
 	}
 	id, err := s.Store.CreateMedia(r.Context(), claims(r).Sub, mime, data)
 	if err != nil {
 		return err
+	}
+	kind := r.FormValue("kind")
+	if !mediaKinds[kind] {
+		kind = "photo"
+	}
+	wd, ht := imageSize(data)
+	if err := s.Store.SetMediaFile(r.Context(), id, filepath.Base(name), kind, wd, ht); err != nil {
+		s.Log.Warn("metadata media gagal", "err", err)
 	}
 	url := publicBase(r) + "/v1/media/" + id
 	s.audit(r, "media.upload", id, map[string]any{"mime": mime, "size": len(data)})
@@ -533,7 +558,25 @@ func actionVerb(status string) string {
 
 func (s *Server) audit(r *http.Request, action, id string, data map[string]any) {
 	entity := strings.SplitN(action, ".", 2)[0]
+	if data == nil {
+		data = map[string]any{}
+	}
+	data["_ip"] = httpx.ClientIP(r)
+	if ua := r.UserAgent(); len(ua) > 300 {
+		data["_ua"] = ua[:300]
+	} else {
+		data["_ua"] = ua
+	}
 	if err := s.Store.Audit(r.Context(), claims(r).Sub, action, entity, id, data); err != nil {
 		s.Log.Warn("audit gagal", "action", action, "err", err)
 	}
+}
+
+// imageSize membaca ukuran gambar (JPEG/PNG/GIF); 0 bila tidak diketahui (mis. WebP).
+func imageSize(b []byte) (int, int) {
+	c, _, err := image.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		return 0, 0
+	}
+	return c.Width, c.Height
 }
