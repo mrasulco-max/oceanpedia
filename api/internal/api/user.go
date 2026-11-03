@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"regexp"
@@ -548,9 +549,12 @@ func (s *Server) createAlert(w http.ResponseWriter, r *http.Request) error {
 	if _, err := s.Store.InstrumentBySymbol(r.Context(), a.Symbol); err != nil {
 		errs["symbol"] = "Simbol tidak dikenal."
 	}
-	if !hasPlan(r) {
-		if n, err := s.Store.ActiveAlertCount(r.Context(), uid(r)); err == nil && n >= freeAlertLimit {
-			return httpx.Forbidden("Akun gratis maksimal 3 price alert aktif. Upgrade ke Ocean Pedia Plus untuk tanpa batas.")
+	if lim := alertLimit(claims(r).Plan); lim > 0 {
+		if n, err := s.Store.ActiveAlertCount(r.Context(), uid(r)); err == nil && n >= lim {
+			if lim == freeAlertLimit {
+				return httpx.Forbidden("Akun gratis maksimal 3 price alert aktif. Upgrade ke Ocean Pedia Plus untuk tanpa batas.")
+			}
+			return httpx.Forbidden(fmt.Sprintf("Paket Student maksimal %d price alert aktif. Upgrade ke Essential untuk tanpa batas.", lim))
 		}
 	}
 	if len(errs) > 0 {

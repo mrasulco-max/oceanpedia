@@ -23,8 +23,13 @@ function timeWIB(iso: string): string {
 }
 
 /** Kartu Analisis AI di halaman berita (web-berita, app-06). */
-export function bindArticleAI(html: string, a: Article, ai: AIAnalysis | null): string {
+export function bindArticleAI(html: string, a: Article, ai: AIAnalysis | null, locked = false): string {
   let h = html;
+  if (locked) {
+    // Akun gratis: kartu tetap tampil sebagai ajakan berlangganan, tanpa isi analisis.
+    h = h.split(SAMPLE_INTI).join(LOCKED_TEXT);
+    return h.split('href="/plus/analisis"').join('href="/plus"');
+  }
   const href = `/plus/analisis?a=${encodeURIComponent(a.slug)}`;
   if (ai) h = h.split(SAMPLE_INTI).join(`<span data-ai-text>${esc(ai.inti)}</span>`);
   else h = h.split(SAMPLE_INTI).join(`<span data-ai-fill="article:${esc(a.slug)}">Analisis AI sedang disiapkan…</span>`);
@@ -35,6 +40,8 @@ export function bindArticleAI(html: string, a: Article, ai: AIAnalysis | null): 
 }
 
 /** Halaman baca Plus (app-26): kalimat inti, sentimen, dan tautan analisis lengkap. */
+const LOCKED_TEXT = "Ringkasan AI, sentimen, dan level penting artikel ini khusus pelanggan Ocean Pedia Plus.";
+
 export function bindPlusReadAI(html: string, a: Article, ai: AIAnalysis | null): string {
   let h = bindArticleAI(html, a, ai);
   if (ai) {
@@ -47,10 +54,14 @@ export function bindPlusReadAI(html: string, a: Article, ai: AIAnalysis | null):
 }
 
 /** Kartu "Analisis AI <simbol>" di Detail Market (app-09). */
-export function bindMarketAICard(html: string, symbol: string, ai: AIAnalysis | null): string {
-  let h = html.split('href="/plus/analisis"').join(`href="/plus/analisis?symbol=${encodeURIComponent(symbol)}"`);
+export function bindMarketAICard(html: string, symbol: string, ai: AIAnalysis | null, locked = false): string {
   const sub = "Ringkasan berita, sentimen &amp; level penting hari ini";
   const subRaw = "Ringkasan berita, sentimen & level penting hari ini";
+  if (locked) {
+    const t = `Analisis AI ${esc(symbol)} khusus pelanggan Ocean Pedia Plus.`;
+    return html.split('href="/plus/analisis"').join('href="/plus"').split(sub).join(t).split(subRaw).join(t);
+  }
+  let h = html.split('href="/plus/analisis"').join(`href="/plus/analisis?symbol=${encodeURIComponent(symbol)}"`);
   const text = ai ? esc(ai.inti) : `<span data-ai-fill="market:${esc(symbol)}">Analisis AI sedang disiapkan…</span>`;
   h = h.split(sub).join(text).split(subRaw).join(text);
   return h;

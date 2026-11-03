@@ -766,3 +766,14 @@ export function bindTopic(html: string, d: TopicPage): string {
   h = h.replace(/<a[^>]*>(?:(?!<\/a>)[\s\S])*?Iklan in-feed tampil seperti berita di daftar(?:(?!<\/a>)[\s\S])*?<\/a>/, "");
   return articleRows(h, d.articles, at, "Belum ada artikel di topik ini.");
 }
+
+/** Pelanggan Plus: blok iklan (beserta labelnya) dihapus dari halaman. */
+export function removeAdSlots(html: string): string {
+  let h = html;
+  for (let guard = 0; guard < 20; guard++) {
+    const i = h.indexOf('<div role="complementary" aria-label="Iklan ');
+    if (i < 0) break;
+    h = h.slice(0, i) + h.slice(closeOf(h, i));
+  }
+  return h;
+}
