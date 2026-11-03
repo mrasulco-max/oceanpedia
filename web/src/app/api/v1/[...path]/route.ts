@@ -16,7 +16,10 @@ const ALLOW: [string, RegExp][] = [
   ["GET", /^billing\/(invoices|subscription|invoices\/[0-9a-f-]{36})$/],
   ["POST", /^billing\/(subscription\/cancel|invoices\/[0-9a-f-]{36}\/(refresh|resend))$/],
   ["POST", /^newsletter\/(subscribe|unsubscribe)$/],
-  ["POST", /^shorts\/[0-9a-f-]{36}\/view$/],
+  ["POST", /^shorts\/[0-9a-f-]{36}\/(view|share|like|save|comments)$/],
+  ["DELETE", /^shorts\/[0-9a-f-]{36}\/(like|save)$/],
+  ["DELETE", /^shorts\/[0-9a-f-]{36}\/comments\/[0-9a-f-]{36}$/],
+  ["GET", /^shorts\/[0-9a-f-]{36}\/comments$/],
 ];
 
 async function proxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {

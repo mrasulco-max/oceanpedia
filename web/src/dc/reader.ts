@@ -98,7 +98,7 @@ export function reader(host: HTMLElement, { router }: Env): Cleanup {
       });
     }
     // Tersimpan.
-    for (const r of $$("[data-bm-row]")) if (![...gone].some((g) => r.matches(g))) show(r, bmTab === "all" || (bmTab === "premium" && r.dataset.bmKind === "premium"));
+    for (const r of $$("[data-bm-row]")) if (![...gone].some((g) => r.matches(g))) show(r, bmTab === "all" || (bmTab === "premium" && r.dataset.bmKind === "premium") || (bmTab === "video" && r.dataset.bmKind === "video"));
     // Notifikasi.
     for (const r of $$("[data-nt-row]")) {
       show(r, ntTab === "all" || r.dataset.ntKind === ntTab);
@@ -325,7 +325,7 @@ export function reader(host: HTMLElement, { router }: Env): Cleanup {
       stop();
       const slug = bmr.dataset.bmRemove!;
       void run(async () => {
-        const r = await api("DELETE", `/api/me/bookmarks/${encodeURIComponent(slug)}`);
+        const r = slug.startsWith("short:") ? await api("DELETE", `/api/v1/shorts/${encodeURIComponent(slug.slice(6))}/save`) : await api("DELETE", `/api/me/bookmarks/${encodeURIComponent(slug)}`);
         if (needLogin(r)) return;
         if (!r.ok && r.status !== 404) return toast(host, why(r, "Gagal menghapus."));
         gone.add(`[data-bm-row="${CSS.escape(slug)}"]`);

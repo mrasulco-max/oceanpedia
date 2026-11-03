@@ -325,7 +325,15 @@ type Store interface {
 	AddLivePost(ctx context.Context, blogID, body, kind, symbol string, pinned bool, uid string) (string, error)
 	PinLivePost(ctx context.Context, id string, pinned bool) error
 	DeleteLivePost(ctx context.Context, id string) error
-	Shorts(ctx context.Context, all bool, limit int) ([]Short, error)
+	Shorts(ctx context.Context, all bool, limit int, uid string) ([]Short, error)
+	SavedShorts(ctx context.Context, uid string, limit int) ([]Short, error)
+	ShortToggle(ctx context.Context, kind, id, uid string, on bool) (int64, error)
+	ShortShare(ctx context.Context, id string) (int64, error)
+	ShortComments(ctx context.Context, id, uid string, limit int) ([]ShortComment, error)
+	AddShortComment(ctx context.Context, id, uid, body, status, reason string) (ShortComment, error)
+	DeleteShortComment(ctx context.Context, shortID, id, uid string, moderator bool) error
+	AdminShortComments(ctx context.Context, status string, limit int) ([]ShortComment, error)
+	SetShortCommentStatus(ctx context.Context, id, status, by string) error
 	CreateShort(ctx context.Context, s Short, uid string) (string, error)
 	SetShortStatus(ctx context.Context, id, status string) error
 	ShortView(ctx context.Context, id string) error

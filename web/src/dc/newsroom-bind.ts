@@ -512,15 +512,55 @@ export interface ShortRow {
   cover_url: string | null;
   symbol: string | null;
   category: string | null;
+  status?: string;
   views: number;
   duration_s: number;
   created_at: string;
+  likes: number;
+  comments: number;
+  saves: number;
+  shares: number;
+  liked: boolean;
+  saved: boolean;
+}
+export interface ShortComment {
+  id: string;
+  short_id: string;
+  short_title?: string;
+  user_name: string;
+  user_email?: string;
+  body: string;
+  status: string;
+  flag_reason?: string | null;
+  mine: boolean;
+  created_at: string;
+}
+export interface ShortCtx {
+  loggedIn: boolean;
+  me: string; // nama pengguna (untuk avatar kolom komentar)
+  comments: ShortComment[];
+  siteUrl: string;
 }
 const dur = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-export function bindShorts(html: string, list: ShortRow[], sel: string, app: boolean): string {
+const SVGX = "(?:<svg(?:(?!<\\/svg>)[\\s\\S])*<\\/svg>)?";
+
+/** Baris komentar short (dirender server; enhancer "shorts" menangani kirim/hapus). */
+function shortCommentRows(list: ShortComment[], dark: boolean): string {
+  if (!list.length) return `<p data-sh-empty style="margin: 0; font-size: 14px; color: #5F6B7D">Belum ada komentar. Jadilah yang pertama.</p>`;
+  return list
+    .map(
+      (c) =>
+        `<div data-sh-comment="${esc(c.id)}" style="display: flex; gap: 10px; align-items: flex-start"><span style="flex: none; width: 32px; height: 32px; border-radius: 999px; background: ${dark ? "#E5ECFF" : "#E5ECFF"}; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">${esc(initials(c.user_name))}</span><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px"><span style="display: flex; gap: 6px; align-items: baseline; font-size: 13px"><strong style="font-weight: 500">${esc(c.user_name)}</strong><span style="color: #5F6B7D">· ${esc(ago(c.created_at))}</span>${c.mine ? `<button type="button" data-sh="comment-del" data-cid="${esc(c.id)}" style="margin-left: auto; border: 0; background: transparent; color: #B42318; font-size: 12px; cursor: pointer">Hapus</button>` : ""}</span><p style="margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word">${esc(c.body)}</p></div></div>`,
+    )
+    .join("");
+}
+
+export function bindShorts(html: string, list: ShortRow[], sel: string, app: boolean, sc: ShortCtx = { loggedIn: false, me: "", comments: [], siteUrl: "" }): string {
   let h = html;
   const cur = list.find((x) => x.id === sel) ?? list[0];
   const T = "3 saham bank paling diburu asing pekan ini";
+  const url = cur ? `${sc.siteUrl}/short?v=${cur.id}` : `${sc.siteUrl}/short`;
+  const login = `/masuk?next=${encodeURIComponent(cur ? `/short?v=${cur.id}` : "/short")}`;
   if (!cur) {
     h = h.split(`>${T}<`).join(">Belum ada video<");
     h = h.replace(/>(Asing beli bersih[^<]*)</g, ">Video singkat seputar pasar akan tampil di sini.<");
@@ -530,17 +570,31 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     h = h.replace(/>(Asing beli bersih[^<]*)</g, `>${esc(cur.caption || cur.title)}<`);
     h = h.replace(/>28 Okt 2026 · 12,4 rb ditonton</, `>${esc(fmtDate(cur.created_at))} · ${compact(cur.views)} ditonton<`);
     h = h.replace(/>0:23 \/ 0:58</, `>${dur(cur.duration_s)}<`);
+    h = h.replace(/>Saham(<\/span><span style="font-size: 13px; color: #5F6B7D">)/, `>${esc(cur.category || "Ocean Short")}$1`);
     if (cur.video_url) {
       const vid = `<video data-short="${cur.id}" src="${esc(cur.video_url)}"${cur.cover_url ? ` poster="${esc(cur.cover_url)}"` : ""} controls playsinline preload="metadata" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #0B0B0F; z-index: 1"></video>`;
       h = h.replace(/<span style="position: absolute; left: 50%; top: 45%; transform: translate\(-50%, -50%\);[^"]*">▶<\/span>/, vid);
     } else if (cur.cover_url) h = h.replace(/src="\/img\/news-1\.jpg"/, `src="${esc(cur.cover_url)}"`);
   }
-  // Angka contoh yang tidak dilacak → label netral.
-  h = h.replace(/>Suka 1,2 rb</, ">Suka<").replace(/>1,2 rb</, ">Suka<");
-  h = h.replace(/(<\/svg><\/span>)86(<\/button>)/, "$1Komentar$2").replace(/>86</g, ">Komentar<");
+  const id = cur?.id ?? "";
+  const n = (k: "likes" | "comments", v: number) => `<span data-sh-n="${k}">${compact(v)}</span>`;
+  const meta = `<span data-sh-meta hidden data-id="${esc(id)}" data-url="${esc(url)}" data-title="${esc(cur?.title ?? "Ocean Short")}" data-logged="${sc.loggedIn ? 1 : 0}" data-login="${esc(login)}" data-liked="${cur?.liked ? 1 : 0}" data-saved="${cur?.saved ? 1 : 0}" data-likes="${cur?.likes ?? 0}" data-comments="${cur?.comments ?? 0}"></span>`;
   h = h.replace(/>Maya Lestari</g, ">Redaksi OceanBird<").replace(/>ML</, ">OB<").replace(/>Analis Saham</, ">Ocean Short<");
   const rest = list.filter((x) => x.id !== cur?.id);
   if (!app) {
+    // Aksi: suka, komentar, bagikan, simpan.
+    h = h.replace(rx(`<a href="#"( style="[^"]*">${SVGX})Suka 1,2 rb</a>`), (_m, a: string) => `<a href="#" data-sh="like" aria-pressed="${cur?.liked ? "true" : "false"}"${a}Suka ${n("likes", cur?.likes ?? 0)}</a>`);
+    h = h.replace(rx(`<a href="#"( style="[^"]*">${SVGX})86</a>`), (_m, a: string) => `<a href="#komentar" data-sh="goto-comments"${a}${n("comments", cur?.comments ?? 0)}</a>`);
+    h = h.replace(rx(`<a href="#"( style="[^"]*">${SVGX})Bagikan</a>`), (_m, a: string) => `<a href="#" data-sh="share"${a}Bagikan</a>`);
+    h = h.replace(rx(`<a href="#"( style="[^"]*">${SVGX})Simpan</a>(</div>)`), (_m, a: string, close: string) => {
+      const form = sc.loggedIn
+        ? `<form data-sh="comment-form" style="display: flex; gap: 8px"><input data-sh="comment" maxlength="1000" placeholder="Tulis komentar…" autocomplete="off" style="flex: 1; min-width: 0; min-height: 44px; border-radius: 999px; border: 1px solid #E3EAF4; padding: 0 16px; font-size: 14px; font-family: inherit"><button type="submit" data-sh="comment-send" style="flex: none; min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: #2F74EB; color: #FFFFFF; font-size: 14px; font-weight: 500; cursor: pointer">Kirim</button></form>`
+        : `<a href="${esc(login)}" style="display: inline-flex; align-self: flex-start; min-height: 44px; align-items: center; padding: 0 18px; border-radius: 999px; border: 1px solid #E3EAF4; color: #2F74EB; font-size: 14px; font-weight: 500">Masuk untuk berkomentar</a>`;
+      return `<a href="#" data-sh="save" aria-pressed="${cur?.saved ? "true" : "false"}"${a}<span data-sh-t="save">${cur?.saved ? "Tersimpan" : "Simpan"}</span></a>${close}${cur ? `<section id="komentar" style="display: flex; flex-direction: column; gap: 14px; padding-top: 6px"><h3 style="margin: 0; font-size: 18px; font-weight: 700">Komentar <span style="color: #5F6B7D; font-weight: 400">${n("comments", cur.comments)}</span></h3>${form}<div data-sh-list style="display: flex; flex-direction: column; gap: 16px">${shortCommentRows(sc.comments, false)}</div></section>` : ""}`;
+    });
+    // Penulis contoh → tanpa tombol ikuti; chip harga contoh → simbol short ini.
+    h = h.replace(rx(`<a href="#" class="ob-anim"[^>]*>${SVGX}Ikuti</a>`), "");
+    h = h.replace(/<div style="[^"]*"><a href="\/market\/BBCA"[\s\S]*?<\/a><a href="\/market\/BBCA"[\s\S]*?<\/a><\/div>/, cur?.symbol ? `<div style="display: flex; gap: 8px"><a href="/market/${encodeURIComponent(cur.symbol)}" style="padding: 8px 14px; border-radius: 999px; border: 1px solid #E3EAF4; font-size: 14px; font-weight: 500">${esc(cur.symbol)} · lihat harga</a></div>` : "");
     const nx = blocks(h, '<a href="#" style="display: flex; gap: 12px; align-items: center">', "a");
     if (nx.length) {
       const tpl = nx[0]!.html;
@@ -555,12 +609,63 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
       if (!built) h = h.replace(/<h2([^>]*)>Lainnya<\/h2>/, "<h2$1></h2>");
     }
   } else {
-    // Komentar contoh di lembar komentar → kosong (komentar short belum dibuka).
-    h = h.replace(/(<div class="ob-scroll" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 4px 0">)[\s\S]*?(<\/div><div[^>]*>\s*<span[^>]*>NA<\/span>)/, `$1<p style="margin: 0; font-size: 14px; color: #5F6B7D">Komentar untuk Short segera hadir.</p>$2`);
+    // Aksi aplikasi: suka & simpan (status awal lewat ctx.state), jumlah nyata.
+    h = h.replace(rx(`(<button onClick="\\{\\{ u6\\.m0\\.pick \\}\\}"[^>]*aria-label="Suka")([^>]*>(?:<span[^>]*>${SVGX}</span>))1,2 rb</button>`), (_m, a: string, b: string) => `${a} data-sh="like"${b}${n("likes", cur?.likes ?? 0)}</button>`);
+    h = h.replace(rx(`(<button aria-haspopup="dialog" onClick="\\{\\{ open_comment \\}\\}" aria-label="Komentar"[^>]*>(?:<span[^>]*>${SVGX}</span>))86</button>`), (_m, a: string) => `${a}${n("comments", cur?.comments ?? 0)}</button>`);
+    h = h.replace(/(<button onClick="\{\{ u7\.m0\.pick \}\}"[^>]*aria-label="Simpan")/, '$1 data-sh="save"');
+    // Lembar bagikan: kanal nyata + tautan short ini.
+    ([["f1", "wa"], ["f2", "tg"], ["f3", "x"], ["f4", "copy"]] as const).forEach(([f, ch]) => (h = h.replace(`<button onClick="{{ ${f} }}"`, `<button onClick="{{ ${f} }}" data-sh-share="${ch}"`)));
+    h = h.replace(/>oceanpedia\.id\/berita\/ihsg-menguat-perbankan</, `>${esc(url.replace(/^https?:\/\//, ""))}<`);
+    // Lembar komentar: komentar nyata, kirim lewat API.
+    h = h.replace(/aria-label="Komentar 86"/, 'aria-label="Komentar"');
+    h = h.replace(/(<h2[^>]*>Komentar <span[^>]*>)86(<\/span>)/, (_m, a: string, b: string) => `${a}${n("comments", cur?.comments ?? 0)}${b}`);
+    h = h.replace(/(<div class="ob-scroll" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 4px 0">)[\s\S]*?(<\/div><div[^>]*>\s*<span[^>]*>)NA(<\/span>)/, (_m, a: string, b: string, c: string) => `${a.replace("<div ", "<div data-sh-list ")}${shortCommentRows(sc.comments, true)}${b}${esc(sc.me ? initials(sc.me) : "?")}${c}`);
+    h = h.replace(/<input type="text" placeholder="Tulis komentar…"/, `<input type="text" data-sh="comment" maxlength="1000"${sc.loggedIn ? "" : ` data-login="${esc(login)}" readonly`} placeholder="${sc.loggedIn ? "Tulis komentar…" : "Masuk untuk berkomentar"}"`);
+    h = h.replace(/<button aria-label="Kirim komentar" onClick="\{\{ f5 \}\}"/, '<button aria-label="Kirim komentar" data-sh="comment-send" onClick="{{ f5 }}"');
     h = h.replace(/<a href="\/penulis\/maya-lestari"[^>]*>[\s\S]*?<\/a>/, "");
     h = h.replace(/<span style="display: flex; gap: 8px"><a href="\/market\/BBCA"[\s\S]*?<\/span>/, cur?.symbol ? `<span style="display: flex; gap: 8px"><a href="/market/${encodeURIComponent(cur.symbol)}" style="padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 12px; font-weight: 500">${esc(cur.symbol)}</a></span>` : "");
   }
-  return h;
+  return meta + h;
+}
+
+// ======================================================================= admin: Ocean Short
+export function shortsAdminPanel(list: ShortRow[], comments: ShortComment[], filter: string): string {
+  const sum = (k: "views" | "likes" | "comments" | "saves" | "shares") => list.reduce((a, s) => a + (s[k] ?? 0), 0);
+  const card = (t: string, v: string, sub: string) => `<section style="flex: 1 1 150px; background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 13px; color: #5F6B7D">${esc(t)}</span><strong style="font-size: 24px; font-weight: 500">${esc(v)}</strong><span style="font-size: 12px; color: #5F6B7D">${esc(sub)}</span></section>`;
+  const inp = (k: string, label: string, ph = "", extra = "") => `<label style="flex: 1 1 220px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #5F6B7D">${label}<input data-shf="${k}" placeholder="${esc(ph)}" ${extra} style="min-height: 44px; border-radius: 14px; border: 1px solid #E3EBF7; padding: 0 12px; font-size: 14px; color: #0B0B0F"></label>`;
+  const btn = (act: string, id: string, label: string, tone: "blue" | "gray" | "red" = "gray") =>
+    `<button type="button" data-sha="${act}" data-id="${esc(id)}" style="border: 1px solid ${tone === "red" ? "#F5C2C2" : tone === "blue" ? "#2F74EB" : "#E3EBF7"}; background: ${tone === "blue" ? "#2F74EB" : "#FFFFFF"}; color: ${tone === "red" ? "#991B1B" : tone === "blue" ? "#FFFFFF" : "#0B0B0F"}; border-radius: 999px; padding: 6px 12px; font-size: 12px; cursor: pointer">${label}</button>`;
+  const ST: Record<string, [string, "green" | "gray" | "orange"]> = { published: ["Tayang", "green"], draft: ["Draf", "orange"], archived: ["Arsip", "gray"] };
+  const rows = list.length
+    ? list
+        .map((s) => {
+          const [lab, tone] = ST[s.status ?? "published"] ?? ["—", "gray"];
+          const acts = [s.status !== "published" ? btn("publish", s.id, "Tayangkan", "blue") : "", s.status === "published" ? btn("draft", s.id, "Jadikan draf") : "", s.status !== "archived" ? btn("archive", s.id, "Arsipkan", "red") : ""].join("");
+          return `<div style="display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid #E3EBF7; flex-wrap: wrap"><span style="flex: none; width: 54px; height: 72px; border-radius: 10px; background: #0B0B0F ${s.cover_url ? `url('${esc(s.cover_url)}') center/cover` : ""}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 16px">${s.cover_url ? "" : "▶"}</span><span style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px"><a href="/short?v=${esc(s.id)}" target="_blank" rel="noopener" style="font-weight: 500; color: #0B0B0F">${esc(s.title)}</a><span style="font-size: 12px; color: #5F6B7D">${esc(fmtDate(s.created_at, true))}${s.symbol ? ` · ${esc(s.symbol)}` : ""} · ${dur(s.duration_s)}${s.video_url ? "" : " · tanpa video"}</span><span style="font-size: 12px; color: #5F6B7D">${compact(s.views)} tayang · ${compact(s.likes)} suka · ${compact(s.comments)} komentar · ${compact(s.saves)} disimpan · ${compact(s.shares)} dibagikan</span></span>${pill(lab, tone)}<span style="display: flex; gap: 6px; flex-wrap: wrap">${acts}</span></div>`;
+        })
+        .join("")
+    : emptyRow("Belum ada Ocean Short. Buat yang pertama di atas.");
+  const CS: Record<string, [string, "green" | "gray" | "orange" | "red"]> = { visible: ["Tampil", "green"], pending: ["Menunggu", "orange"], hidden: ["Disembunyikan", "gray"], flagged: ["Dilaporkan", "red"] };
+  const tabs = [["", "Semua"], ["pending", "Menunggu"], ["visible", "Tampil"], ["hidden", "Disembunyikan"]]
+    .map(([k, l]) => `<a href="/admin/live?tab=short${k ? `&komentar=${k}` : ""}" style="padding: 6px 12px; border-radius: 999px; font-size: 13px; ${filter === k ? "background: #0B0B0F; color: #FFFFFF" : "border: 1px solid #E3EBF7; color: #0B0B0F"}">${l}</a>`)
+    .join("");
+  const crow = comments.length
+    ? comments
+        .map((c) => {
+          const [lab, tone] = CS[c.status] ?? ["—", "gray"];
+          return `<div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid #E3EBF7; flex-wrap: wrap"><span style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #5F6B7D"><strong style="color: #0B0B0F; font-weight: 500">${esc(c.user_name)}</strong> · ${esc(c.user_email ?? "")} · ${esc(fmtDate(c.created_at, true))}</span><span style="font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word">${esc(c.body)}</span><a href="/short?v=${esc(c.short_id)}" target="_blank" rel="noopener" style="font-size: 12px; color: #2F74EB">${esc(c.short_title ?? "Short")}</a>${c.flag_reason ? `<span style="font-size: 12px; color: #854D0E">Alasan: ${esc(c.flag_reason)}</span>` : ""}</span>${pill(lab, tone)}<span style="display: flex; gap: 6px">${c.status !== "visible" ? btn("c-visible", c.id, "Tampilkan", "blue") : ""}${c.status !== "hidden" ? btn("c-hidden", c.id, "Sembunyikan", "red") : ""}</span></div>`;
+        })
+        .join("")
+    : emptyRow("Tidak ada komentar di filter ini.");
+  return `<div data-sh-admin style="display: flex; flex-direction: column; gap: 18px; padding: 4px 0 24px">
+<div style="display: flex; flex-wrap: wrap; gap: 12px">${card("Video", num(list.length), `${list.filter((s) => s.status === "published").length} tayang`)}${card("Tayangan", compact(sum("views")), "Total semua video")}${card("Suka", compact(sum("likes")), `${compact(sum("saves"))} disimpan`)}${card("Komentar", compact(sum("comments")), `${comments.filter((c) => c.status === "pending").length} menunggu moderasi`)}${card("Dibagikan", compact(sum("shares")), "WhatsApp, Telegram, X, salin tautan")}</div>
+<section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 12px"><h2 style="margin: 0; font-size: 18px; font-weight: 700">Short baru</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 12px">${inp("title", "Judul", "IHSG dalam 60 detik", 'maxlength="140"')}${inp("symbol", "Simbol (opsional)", "BBCA")}${inp("duration", "Durasi (detik)", "58", 'inputmode="numeric"')}</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #5F6B7D">Keterangan<textarea data-shf="caption" rows="2" maxlength="500" style="border-radius: 14px; border: 1px solid #E3EBF7; padding: 10px 12px; font-size: 14px; font-family: inherit"></textarea></label>
+<div style="display: flex; flex-wrap: wrap; gap: 12px">${inp("video", "URL video (https, MP4/WebM)", "https://cdn.contoh.com/short.mp4")}${inp("cover", "URL sampul", "https://… atau unggah")}<label style="flex: 0 0 auto; align-self: flex-end; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; border: 1px solid #E3EBF7; font-size: 14px; cursor: pointer">Unggah sampul<input type="file" data-shf="cover-file" accept="image/png,image/jpeg,image/webp" hidden></label></div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap"><button type="button" data-sha="create" data-status="draft" style="min-height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid #E3EBF7; background: #FFFFFF; font-size: 14px">Simpan draf</button><button type="button" data-sha="create" data-status="published" class="ob-anim" style="min-height: 46px; padding: 0 20px; border-radius: 999px; border: 0; background: linear-gradient(110deg, #2563EB 0%, #4285F4 35%, #63A4FA 55%, #4285F4 75%, #2563EB 100%); color: #FFFFFF; font-size: 14px">Tayangkan</button></div></section>
+<section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px"><h2 style="margin: 0 0 6px; font-size: 18px; font-weight: 700">Semua Short</h2>${rows}</section>
+<section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 8px"><span style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center"><h2 style="margin: 0; font-size: 18px; font-weight: 700; flex: 1">Komentar Short</h2>${tabs}</span>${crow}</section></div>`;
 }
 
 export function bindNewsletterPublic(html: string, d: { email: string; status: string | null }): string {

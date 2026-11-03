@@ -419,12 +419,173 @@ func (s *Server) publicLive(w http.ResponseWriter, r *http.Request) error {
 
 // GET /v1/shorts
 func (s *Server) shorts(w http.ResponseWriter, r *http.Request) error {
-	l, err := s.Store.Shorts(r.Context(), false, limitParam(r, 20, 50))
+	me := uid(r)
+	l, err := s.Store.Shorts(r.Context(), false, limitParam(r, 20, 50), me)
 	if err != nil {
 		return err
 	}
-	cacheFor(w, time.Minute)
+	if me == "" {
+		cacheFor(w, time.Minute)
+	} else {
+		w.Header().Set("Cache-Control", "private, no-store")
+	}
 	httpx.JSON(w, 200, Page[store.Short]{Data: l})
+	return nil
+}
+
+// POST|DELETE /v1/shorts/{id}/like dan /save — suka / simpan (perlu masuk).
+func (s *Server) shortToggle(kind string) func(http.ResponseWriter, *http.Request) error {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		id, err := pathID(r)
+		if err != nil {
+			return err
+		}
+		on := r.Method == http.MethodPost
+		n, err := s.Store.ShortToggle(r.Context(), kind, id, uid(r), on)
+		if err != nil {
+			return err
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		if kind == "like" {
+			httpx.JSON(w, 200, map[string]any{"liked": on, "likes": n})
+		} else {
+			httpx.JSON(w, 200, map[string]any{"saved": on, "saves": n})
+		}
+		return nil
+	}
+}
+
+// POST /v1/shorts/{id}/share {channel} — hitung bagikan (publik).
+func (s *Server) shortShare(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	n, err := s.Store.ShortShare(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, 200, map[string]any{"shares": n})
+	return nil
+}
+
+// GET /v1/shorts/{id}/comments
+func (s *Server) shortComments(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	l, err := s.Store.ShortComments(r.Context(), id, uid(r), limitParam(r, 30, 100))
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	httpx.JSON(w, 200, Page[store.ShortComment]{Data: l})
+	return nil
+}
+
+// POST /v1/shorts/{id}/comments {body} — disaring otomatis seperti komentar artikel.
+func (s *Server) addShortComment(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	var in struct {
+		Body string `json:"body"`
+	}
+	if err := httpx.Decode(r, &in); err != nil {
+		return err
+	}
+	in.Body = strings.TrimSpace(in.Body)
+	if n := utf8.RuneCountInString(in.Body); n < 1 || n > 1000 {
+		return httpx.Validation(map[string]string{"body": "Komentar 1–1000 karakter."})
+	}
+	u, err := s.Store.UserByID(r.Context(), uid(r))
+	if err != nil {
+		return err
+	}
+	status, reason := s.screenComment(r, in.Body, s.Now().Sub(u.CreatedAt))
+	if status != "visible" && status != "pending" && status != "flagged" && status != "hidden" {
+		status = "visible"
+	}
+	c, err := s.Store.AddShortComment(r.Context(), id, uid(r), in.Body, status, reason)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, http.StatusCreated, c)
+	return nil
+}
+
+// DELETE /v1/shorts/{id}/comments/{cid} — pemilik atau moderator.
+func (s *Server) deleteShortComment(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	cid := r.PathValue("cid")
+	if !uuidRe.MatchString(cid) {
+		return httpx.NotFound("Komentar tidak ditemukan.")
+	}
+	mod := claims(r).Role != "" && claims(r).Role != "reader" && acc(r).Has("comments.moderate")
+	if err := s.Store.DeleteShortComment(r.Context(), id, cid, uid(r), mod); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// GET /v1/me/shorts/saved
+func (s *Server) savedShorts(w http.ResponseWriter, r *http.Request) error {
+	l, err := s.Store.SavedShorts(r.Context(), uid(r), limitParam(r, 50, 100))
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	httpx.JSON(w, 200, Page[store.Short]{Data: l})
+	return nil
+}
+
+// GET /v1/admin/short-comments?status=
+func (s *Server) adminShortComments(w http.ResponseWriter, r *http.Request) error {
+	if err := need(r, "comments.moderate"); err != nil {
+		return err
+	}
+	st := r.URL.Query().Get("status")
+	if st != "" && !slices.Contains([]string{"visible", "hidden", "pending", "flagged"}, st) {
+		st = ""
+	}
+	l, err := s.Store.AdminShortComments(r.Context(), st, limitParam(r, 50, 200))
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	httpx.JSON(w, 200, Page[store.ShortComment]{Data: l})
+	return nil
+}
+
+// POST /v1/admin/short-comments/{id}/status {status}
+func (s *Server) shortCommentStatus(w http.ResponseWriter, r *http.Request) error {
+	if err := need(r, "comments.moderate"); err != nil {
+		return err
+	}
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	var in struct {
+		Status string `json:"status"`
+	}
+	if err := httpx.Decode(r, &in); err != nil {
+		return err
+	}
+	if !slices.Contains([]string{"visible", "hidden"}, in.Status) {
+		return httpx.Validation(map[string]string{"status": "Status tidak dikenal."})
+	}
+	if err := s.Store.SetShortCommentStatus(r.Context(), id, in.Status, claims(r).Sub); err != nil {
+		return err
+	}
+	s.audit(r, "short_comment."+in.Status, id, nil)
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 
@@ -443,7 +604,7 @@ func (s *Server) shortView(w http.ResponseWriter, r *http.Request) error {
 
 // GET /v1/admin/shorts
 func (s *Server) adminShorts(w http.ResponseWriter, r *http.Request) error {
-	l, err := s.Store.Shorts(r.Context(), true, 100)
+	l, err := s.Store.Shorts(r.Context(), true, 100, "")
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS short_comments;
+DROP TABLE IF EXISTS short_saves;
+DROP TABLE IF EXISTS short_likes;
+ALTER TABLE shorts DROP COLUMN IF EXISTS shares;

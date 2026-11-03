@@ -309,10 +309,11 @@ export function bindAlert(html: string, d: AlertPage): string {
 }
 
 // ======================================================================= tersimpan (aplikasi)
-export function bindSaved(html: string, d: { loggedIn: boolean; items: ArticleCard[] }): string {
+export function bindSaved(html: string, d: { loggedIn: boolean; items: ArticleCard[]; shorts?: import("./newsroom-bind").ShortRow[] }): string {
+  const vids = d.shorts ?? [];
   let h = html;
   const prem = d.items.filter((a) => a.is_premium).length;
-  const counts = [d.items.length, 0, prem, 0];
+  const counts = [d.items.length + vids.length, vids.length, prem, 0];
   const labels = ["Artikel", "Video", "Analisis", "Offline"];
   for (let i = 0; i < 4; i++) h = h.replace(rx(`(<button onClick="\\{\\{ u1\\.m${i}\\.pick \\}\\}"[^>]*>)[^<]*(<span style="opacity: .8">)\\d+(</span>)`), (_m, a: string, b: string, c: string) => `${a.replace("<button ", `<button data-bm-tab="${["all", "video", "premium", "offline"][i]}" `)}${labels[i]} ${b}${counts[i]}${c}`);
   h = h.replace(/(<span style="font-size: 13px; color: #5F6B7D">)\d+ artikel · urut terbaru(<\/span>)/, `$1${d.items.length} artikel · urut terbaru$2`);
@@ -336,8 +337,28 @@ export function bindSaved(html: string, d: { loggedIn: boolean; items: ArticleCa
                 .replace(/<button onClick="\{\{ f\d+ \}\}" aria-label="Hapus dari tersimpan"/, `<button type="button" data-bm-remove="${esc(a.slug)}" aria-label="Hapus dari tersimpan"`),
             )
             .join("")
-        : emptyRow("Belum ada artikel tersimpan. Ketuk ikon simpan di artikel mana pun.");
-    h = h.slice(0, rows[0]!.start) + built + h.slice(rows[rows.length - 1]!.end);
+        : vids.length
+          ? ""
+          : emptyRow("Belum ada artikel tersimpan. Ketuk ikon simpan di artikel mana pun.");
+    // Ocean Short yang disimpan (tab "Video").
+    const vrows = !d.loggedIn
+      ? ""
+      : vids
+          .map((v) =>
+            tpl
+              .replace(/\{\{ gone\.i\d+ \}\}/, "")
+              .replace("<div ", `<div data-bm-row="short:${esc(v.id)}" data-bm-kind="video" `)
+              .replace('href="/berita/ihsg-menguat-ditopang-saham-perbankan"', `href="/short?v=${encodeURIComponent(v.id)}"`)
+              .replace(/src="\/img\/news-\d\.jpg"/, v.cover_url ? `src="${esc(v.cover_url)}"` : "$&")
+              .replace(/(<span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 500; color: #1E40AF; background: #E5ECFF;[^"]*">)[^<]*(<\/span>)/, "$1▶ Short$2")
+              .replace(rx(`<span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 500; color: #166534; background: #DCF5E4;[^"]*">(?:${SVG})?Offline</span>`), "")
+              .replace(/(<strong style="font-size: 14px; line-height: 1.35; font-weight: 500">)[^<]*(<\/strong>)/, `$1${esc(v.title)}$2`)
+              .replace(/(<span style="font-size: 11px; color: #5F6B7D">)[^<]*(<\/span>)/, `$1Ocean Short · ${Math.floor(v.duration_s / 60)}:${String(v.duration_s % 60).padStart(2, "0")} · ${esc(ago(v.created_at))}$2`)
+              .replace(/<span style="display: flex; align-items: center; gap: 8px">\s*<span style="flex: 1; height: 4px;[\s\S]*?<\/span>\s*<\/span>\s*<span style="font-size: 11px; color: #5F6B7D">[^<]*<\/span>\s*<\/span>/, "")
+              .replace(/<button onClick="\{\{ f\d+ \}\}" aria-label="Hapus dari tersimpan"/, `<button type="button" data-bm-remove="short:${esc(v.id)}" aria-label="Hapus dari tersimpan"`),
+          )
+          .join("");
+    h = h.slice(0, rows[0]!.start) + built + vrows + h.slice(rows[rows.length - 1]!.end);
   }
   return h;
 }

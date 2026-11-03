@@ -3,7 +3,7 @@
  * Semua lewat BFF /api/admin/* (izin diperiksa API).
  */
 import type { Cleanup, Env } from "./enhancers";
-import { armed, call, msg, onCapture, stop } from "./cms";
+import { armed, call, msg, onCapture, shrink, stop } from "./cms";
 import { toast } from "./toast";
 
 export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
@@ -105,6 +105,39 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
       });
       return;
     }
+    // ------------------------------------------------------------ Ocean Short (admin)
+    const sa = t.closest<HTMLElement>("[data-sha]");
+    if (sa) {
+      stop(e);
+      const id = sa.dataset.id ?? "";
+      await run(async () => {
+        switch (sa.dataset.sha) {
+          case "create": {
+            const v = (k: string) => (host.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-shf="${k}"]`)?.value ?? "").trim();
+            const title = v("title");
+            if (title.length < 4) return toast(host, "Judul minimal 4 karakter.");
+            const status = sa.dataset.status === "draft" ? "draft" : "published";
+            const r = await call("POST", "shorts", { title, caption: v("caption"), video_url: v("video"), cover_url: v("cover"), symbol: v("symbol").toUpperCase(), duration_s: Math.max(0, Math.round(Number(v("duration")) || 0)), status });
+            return done(r.ok, r.data, (r.data as { status?: string }).status === "draft" ? "Short disimpan sebagai draf." : "Short ditayangkan.", "Gagal menyimpan short.");
+          }
+          case "publish":
+          case "draft":
+          case "archive": {
+            const status = sa.dataset.sha === "archive" ? "archived" : sa.dataset.sha === "draft" ? "draft" : "published";
+            if (status === "archived" && !armed(sa, "Yakin?")) return;
+            const r = await call("POST", `shorts/${id}/status`, { status });
+            return done(r.ok, r.data, status === "published" ? "Short ditayangkan." : status === "draft" ? "Short dijadikan draf." : "Short diarsipkan.", "Gagal mengubah status.");
+          }
+          case "c-visible":
+          case "c-hidden": {
+            const status = sa.dataset.sha === "c-visible" ? "visible" : "hidden";
+            const r = await call("POST", `short-comments/${id}/status`, { status });
+            return done(r.ok, r.data, status === "visible" ? "Komentar ditampilkan." : "Komentar disembunyikan.", "Gagal memoderasi komentar.");
+          }
+        }
+      });
+      return;
+    }
     // ------------------------------------------------------------ newsletter
     const nl = t.closest<HTMLElement>("[data-nl]");
     if (nl && (nl.dataset.nl === "save" || nl.dataset.nl === "save-send" || nl.dataset.nl === "send")) {
@@ -124,5 +157,24 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
       });
     }
   });
-  return off;
+  // Unggah sampul short → isi URL sampul.
+  const onChange = async (e: Event) => {
+    const f = e.target instanceof HTMLInputElement && e.target.matches('[data-shf="cover-file"]') ? e.target : null;
+    const file = f?.files?.[0];
+    if (!f || !file) return;
+    toast(host, "Mengunggah sampul…");
+    const fd = new FormData();
+    fd.append("file", await shrink(file), file.name);
+    const r = await call("POST", "media", fd);
+    f.value = "";
+    if (!r.ok) return toast(host, msg(r.data, "Gagal mengunggah sampul."));
+    const inp = host.querySelector<HTMLInputElement>('[data-shf="cover"]');
+    if (inp) inp.value = String(r.data.url ?? "");
+    toast(host, "Sampul terunggah.", "ok");
+  };
+  host.addEventListener("change", onChange);
+  return () => {
+    off();
+    host.removeEventListener("change", onChange);
+  };
 }

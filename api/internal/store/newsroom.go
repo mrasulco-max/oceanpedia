@@ -331,27 +331,57 @@ type Short struct {
 	Views     int64     `json:"views"`
 	Duration  int       `json:"duration_s"`
 	CreatedAt time.Time `json:"created_at"`
+	Likes     int64     `json:"likes"`
+	Comments  int64     `json:"comments"`
+	Saves     int64     `json:"saves"`
+	Shares    int64     `json:"shares"`
+	Liked     bool      `json:"liked"`
+	Saved     bool      `json:"saved"`
 }
 
-const qShorts = `SELECT id, title, caption, video_url, cover_url, symbol, category, status, views, duration_s, created_at FROM shorts
-WHERE ($1::bool OR status = 'published') ORDER BY created_at DESC LIMIT $2::int`
+const shortCols = `s.id, s.title, s.caption, s.video_url, s.cover_url, s.symbol, s.category, s.status, s.views, s.duration_s, s.created_at,
+  (SELECT count(*) FROM short_likes l WHERE l.short_id = s.id),
+  (SELECT count(*) FROM short_comments c WHERE c.short_id = s.id AND c.status = 'visible'),
+  (SELECT count(*) FROM short_saves v WHERE v.short_id = s.id),
+  s.shares,
+  EXISTS (SELECT 1 FROM short_likes l WHERE l.short_id = s.id AND l.user_id = NULLIF($3::text, '')::uuid),
+  EXISTS (SELECT 1 FROM short_saves v WHERE v.short_id = s.id AND v.user_id = NULLIF($3::text, '')::uuid)`
 
-// Shorts: daftar terbaru (all = termasuk draf/arsip).
-func (p *PG) Shorts(ctx context.Context, all bool, limit int) ([]Short, error) {
-	rows, err := p.DB.QueryContext(ctx, qShorts, all, limit)
-	if err != nil {
-		return nil, err
-	}
+const qShorts = `SELECT ` + shortCols + ` FROM shorts s
+WHERE ($1::bool OR s.status = 'published') ORDER BY s.created_at DESC LIMIT $2::int`
+
+const qSavedShorts = `SELECT ` + shortCols + ` FROM short_saves sv JOIN shorts s ON s.id = sv.short_id
+WHERE sv.user_id = NULLIF($3::text, '')::uuid AND ($1::bool OR s.status = 'published') ORDER BY sv.created_at DESC LIMIT $2::int`
+
+func scanShorts(rows *sql.Rows) ([]Short, error) {
 	defer rows.Close()
 	out := []Short{}
 	for rows.Next() {
 		var s Short
-		if err := rows.Scan(&s.ID, &s.Title, &s.Caption, &s.VideoURL, &s.CoverURL, &s.Symbol, &s.Category, &s.Status, &s.Views, &s.Duration, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Title, &s.Caption, &s.VideoURL, &s.CoverURL, &s.Symbol, &s.Category, &s.Status, &s.Views, &s.Duration, &s.CreatedAt, &s.Likes, &s.Comments, &s.Saves, &s.Shares, &s.Liked, &s.Saved); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+// SavedShorts: short yang disimpan pengguna (terbaru dulu).
+func (p *PG) SavedShorts(ctx context.Context, uid string, limit int) ([]Short, error) {
+	rows, err := p.DB.QueryContext(ctx, qSavedShorts, false, limit, uid)
+	if err != nil {
+		return nil, err
+	}
+	return scanShorts(rows)
+}
+
+// Shorts: daftar terbaru (all = termasuk draf/arsip). uid (opsional) mengisi liked/saved.
+func (p *PG) Shorts(ctx context.Context, all bool, limit int, uid string) ([]Short, error) {
+	rows, err := p.DB.QueryContext(ctx, qShorts, all, limit, uid)
+	if err != nil {
+		return nil, err
+	}
+	return scanShorts(rows)
 }
 
 const qShortCreate = `INSERT INTO shorts (title, caption, video_url, cover_url, symbol, category, status, duration_s, created_by)
@@ -381,6 +411,130 @@ func (p *PG) SetShortStatus(ctx context.Context, id, status string) error {
 // ShortView menambah hitungan tayang.
 func (p *PG) ShortView(ctx context.Context, id string) error {
 	return affected(p.DB.ExecContext(ctx, qShortView, id))
+}
+
+// ---------------------------------------------------------------- Short: suka, simpan, bagikan, komentar
+
+const qShortLike = `WITH ok AS (SELECT id FROM shorts WHERE id = $1::uuid AND status = 'published'),
+ins AS (INSERT INTO short_likes (short_id, user_id) SELECT id, $2::uuid FROM ok WHERE $3::bool ON CONFLICT DO NOTHING RETURNING 1),
+del AS (DELETE FROM short_likes WHERE NOT $3::bool AND short_id = $1::uuid AND user_id = $2::uuid AND EXISTS (SELECT 1 FROM ok) RETURNING 1)
+SELECT (SELECT count(*) FROM ok), (SELECT count(*) FROM short_likes WHERE short_id = $1::uuid) + (SELECT count(*) FROM ins) - (SELECT count(*) FROM del)`
+
+const qShortSave = `WITH ok AS (SELECT id FROM shorts WHERE id = $1::uuid AND status = 'published'),
+ins AS (INSERT INTO short_saves (short_id, user_id) SELECT id, $2::uuid FROM ok WHERE $3::bool ON CONFLICT DO NOTHING RETURNING 1),
+del AS (DELETE FROM short_saves WHERE NOT $3::bool AND short_id = $1::uuid AND user_id = $2::uuid AND EXISTS (SELECT 1 FROM ok) RETURNING 1)
+SELECT (SELECT count(*) FROM ok), (SELECT count(*) FROM short_saves WHERE short_id = $1::uuid) + (SELECT count(*) FROM ins) - (SELECT count(*) FROM del)`
+
+const qShortShare = `UPDATE shorts SET shares = shares + 1 WHERE id = $1::uuid AND status = 'published' RETURNING shares`
+
+// ShortToggle menyukai/menyimpan (on) atau membatalkan; kind = "like" | "save". Mengembalikan jumlah terbaru.
+func (p *PG) ShortToggle(ctx context.Context, kind, id, uid string, on bool) (int64, error) {
+	q := qShortLike
+	if kind == "save" {
+		q = qShortSave
+	}
+	var found, n int64
+	if err := p.DB.QueryRowContext(ctx, q, id, uid, on).Scan(&found, &n); err != nil {
+		return 0, err
+	}
+	if found == 0 {
+		return 0, httpx.ErrNotFound
+	}
+	return n, nil
+}
+
+// ShortShare menambah hitungan bagikan.
+func (p *PG) ShortShare(ctx context.Context, id string) (int64, error) {
+	var n int64
+	err := p.DB.QueryRowContext(ctx, qShortShare, id).Scan(&n)
+	return n, notFound(err)
+}
+
+// ShortComment komentar pada Ocean Short.
+type ShortComment struct {
+	ID         string    `json:"id"`
+	ShortID    string    `json:"short_id"`
+	ShortTitle string    `json:"short_title,omitempty"`
+	UserName   string    `json:"user_name"`
+	UserEmail  string    `json:"user_email,omitempty"`
+	Body       string    `json:"body"`
+	Status     string    `json:"status"`
+	Reason     *string   `json:"flag_reason,omitempty"`
+	Mine       bool      `json:"mine"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+const qShortComments = `SELECT c.id, c.short_id, u.full_name, c.body, c.status, COALESCE(c.user_id = NULLIF($3::text, '')::uuid, false), c.created_at
+FROM short_comments c JOIN users u ON u.id = c.user_id
+WHERE c.short_id = $1::uuid AND c.status = 'visible' ORDER BY c.created_at DESC LIMIT $2::int`
+
+const qShortCommentAdd = `WITH ins AS (
+  INSERT INTO short_comments (short_id, user_id, body, status, flag_reason)
+  SELECT s.id, $2::uuid, $3::text, $4::text, NULLIF($5::text, '') FROM shorts s WHERE s.id = $1::uuid AND s.status = 'published'
+  RETURNING id, short_id, user_id, body, status, created_at
+)
+SELECT ins.id, ins.short_id, u.full_name, ins.body, ins.status, true, ins.created_at FROM ins JOIN users u ON u.id = ins.user_id`
+
+const qShortCommentDel = `DELETE FROM short_comments WHERE id = $1::uuid AND short_id = $2::uuid AND (user_id = $3::uuid OR $4::bool)`
+
+const qAdminShortComments = `SELECT c.id, c.short_id, s.title, u.full_name, u.email, c.body, c.status, c.flag_reason, c.created_at
+FROM short_comments c JOIN users u ON u.id = c.user_id JOIN shorts s ON s.id = c.short_id
+WHERE ($1::text = '' OR c.status = $1::text) ORDER BY c.created_at DESC LIMIT $2::int`
+
+const qShortCommentStatus = `UPDATE short_comments SET status = $2::text, moderated_by = NULLIF($3::text, '')::uuid, moderated_at = now() WHERE id = $1::uuid`
+
+func scanShortComments(rows *sql.Rows, admin bool) ([]ShortComment, error) {
+	defer rows.Close()
+	out := []ShortComment{}
+	for rows.Next() {
+		var c ShortComment
+		var err error
+		if admin {
+			err = rows.Scan(&c.ID, &c.ShortID, &c.ShortTitle, &c.UserName, &c.UserEmail, &c.Body, &c.Status, &c.Reason, &c.CreatedAt)
+		} else {
+			err = rows.Scan(&c.ID, &c.ShortID, &c.UserName, &c.Body, &c.Status, &c.Mine, &c.CreatedAt)
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ShortComments: komentar tampil sebuah short (terbaru dulu).
+func (p *PG) ShortComments(ctx context.Context, id, uid string, limit int) ([]ShortComment, error) {
+	rows, err := p.DB.QueryContext(ctx, qShortComments, id, limit, uid)
+	if err != nil {
+		return nil, err
+	}
+	return scanShortComments(rows, false)
+}
+
+// AddShortComment menyimpan komentar (status hasil penyaringan otomatis).
+func (p *PG) AddShortComment(ctx context.Context, id, uid, body, status, reason string) (ShortComment, error) {
+	var c ShortComment
+	err := p.DB.QueryRowContext(ctx, qShortCommentAdd, id, uid, body, status, reason).Scan(&c.ID, &c.ShortID, &c.UserName, &c.Body, &c.Status, &c.Mine, &c.CreatedAt)
+	return c, notFound(err)
+}
+
+// DeleteShortComment menghapus komentar milik sendiri (atau siapa pun bila moderator).
+func (p *PG) DeleteShortComment(ctx context.Context, shortID, id, uid string, moderator bool) error {
+	return affected(p.DB.ExecContext(ctx, qShortCommentDel, id, shortID, uid, moderator))
+}
+
+// AdminShortComments: komentar short terbaru untuk moderasi (status kosong = semua).
+func (p *PG) AdminShortComments(ctx context.Context, status string, limit int) ([]ShortComment, error) {
+	rows, err := p.DB.QueryContext(ctx, qAdminShortComments, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanShortComments(rows, true)
+}
+
+// SetShortCommentStatus memoderasi komentar short.
+func (p *PG) SetShortCommentStatus(ctx context.Context, id, status, by string) error {
+	return affected(p.DB.ExecContext(ctx, qShortCommentStatus, id, status, by))
 }
 
 // ======================================================================= newsletter
@@ -773,7 +927,7 @@ func newsroomQueries() map[string]string {
 	return map[string]string{
 		"snapshot": qSnapshot, "versions": qVersions, "restore_version": qRestoreVersion, "breaking": qBreaking, "breaking_extend": qBreakingExtend, "breaking_end": qBreakingEnd,
 		"live_current": qLiveCurrent, "live_posts": qLivePosts, "live_end_all": qLiveEndAll, "live_create": qLiveCreate, "live_end": qLiveEnd, "live_post": qLivePost,
-		"live_pin": qLivePin, "live_del": qLiveDel, "shorts": qShorts, "short_create": qShortCreate, "short_status": qShortStatus, "short_view": qShortView,
+		"live_pin": qLivePin, "live_del": qLiveDel, "shorts": qShorts, "saved_shorts": qSavedShorts, "short_like": qShortLike, "short_save": qShortSave, "short_share": qShortShare, "short_comments": qShortComments, "short_comment_add": qShortCommentAdd, "short_comment_del": qShortCommentDel, "admin_short_comments": qAdminShortComments, "short_comment_status": qShortCommentStatus, "short_create": qShortCreate, "short_status": qShortStatus, "short_view": qShortView,
 		"subscribe": qSubscribe, "unsubscribe": qUnsubscribe, "nl_stats": qNLStats, "nl_subs": qNLSubs, "issues": qIssues, "issue_create": qIssueCreate,
 		"issue_recipients": qIssueRecipients, "issue_sent": qIssueSent, "issue_get": qIssueGet, "articles_by_ids": qArticlesByIDs,
 		"dashboard": qDashboard, "rep_days": qRepDays, "rep_plans": qRepPlans, "rep_top": qRepTop, "rep_ads": qRepAds, "rep_totals": qRepTotals, "admin_search": qAdminSearch,
