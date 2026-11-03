@@ -385,6 +385,30 @@ export function reader(host: HTMLElement, { router }: Env): Cleanup {
       return;
     }
 
+    // Newsletter publik: pilih daftar & langganan.
+    const nls = el("[data-nlp-list]");
+    if (nls) {
+      stop();
+      const on = nls.getAttribute("aria-checked") !== "true";
+      nls.setAttribute("aria-checked", String(on));
+      nls.style.background = on ? "#4285F4" : "#D6DEEA";
+      nls.style.justifyContent = on ? "flex-end" : "flex-start";
+      return;
+    }
+    if (el('[data-nlp="subscribe"]')) {
+      stop();
+      const email = host.querySelector<HTMLInputElement>('input[data-nlp="email"]')?.value.trim() ?? "";
+      const lists = $$("[data-nlp-list]").filter((b) => b.getAttribute("aria-checked") === "true").map((b) => b.dataset.nlpList!);
+      if (!email) return toast(host, "Masukkan email kamu dulu.");
+      if (!lists.length) return toast(host, "Pilih minimal satu newsletter.");
+      void run(async () => {
+        const r = await api("POST", "/api/v1/newsletter/subscribe", { email, lists });
+        if (!r.ok) return toast(host, why(r, "Gagal mendaftar newsletter."));
+        toast(host, (r.data as { new?: boolean }).new ? "Terdaftar! Edisi berikutnya akan masuk ke inbox kamu." : "Langganan kamu diperbarui.", "ok");
+      });
+      return;
+    }
+
     // Topik: ikuti / berhenti mengikuti.
     const tf = el("[data-topic-follow]");
     if (tf) {
@@ -498,6 +522,18 @@ export function reader(host: HTMLElement, { router }: Env): Cleanup {
   };
   host.addEventListener("keydown", onKey);
   offs.push(() => host.removeEventListener("keydown", onKey));
+
+  // Ocean Short: hitung tayang sekali per video saat diputar.
+  const played = new Set<string>();
+  const onPlay = (e: Event) => {
+    const v = e.target instanceof HTMLVideoElement ? e.target : null;
+    const id = v?.dataset.short;
+    if (!id || played.has(id)) return;
+    played.add(id);
+    void api("POST", `/api/v1/shorts/${id}/view`, {});
+  };
+  host.addEventListener("play", onPlay, true);
+  offs.push(() => host.removeEventListener("play", onPlay, true));
 
   const onInput = (e: Event) => {
     if (e.target instanceof HTMLInputElement && e.target.matches('[data-al="target"]')) {

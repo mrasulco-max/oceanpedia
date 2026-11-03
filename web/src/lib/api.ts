@@ -67,6 +67,8 @@ export const api = {
   author: (slug: string) => get<{ author: Author; articles: ArticleCard[] }>(`/v1/authors/${encodeURIComponent(slug)}`, { revalidate: 120 }),
   topic: (slug: string) => get<{ topic: TopicInfo; articles: ArticleCard[] }>(`/v1/topics/${encodeURIComponent(slug)}`, { revalidate: 120 }),
   plans: () => get<{ data: { code: string; name: string; price_amount: number; currency: string; billing_period: "month" | "year"; min_seats: number; features: string[] }[]; tax_rate: number }>("/v1/plans", { revalidate: 300 }),
+  live: () => get<import("@/dc/newsroom-bind").PublicLive>("/v1/live", { revalidate: 15 }),
+  shorts: () => get<Page<import("@/dc/newsroom-bind").ShortRow>>("/v1/shorts?limit=30", { revalidate: 60 }),
   events: () => get<Page<EconomicEvent>>("/v1/events?days=2", { revalidate: 60 }),
   eventsWeek: (from: string) => get<Page<EconomicEvent>>(`/v1/events?from=${from}&days=7`, { revalidate: 60 }),
   ads: (surface: "web" | "app", page: string) => get<Page<AdSlot>>(`/v1/ads?surface=${surface}&page=${page}`, { revalidate: 60 }),

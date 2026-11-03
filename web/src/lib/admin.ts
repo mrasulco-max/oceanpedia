@@ -286,6 +286,14 @@ export interface SymbolState {
 }
 
 export const adminApi = {
+  dashboard: () => adminGet<{ stats: import("@/dc/newsroom-bind").DashStats; review: import("@/dc/newsroom-bind").ReviewItem[]; quota_daily: number }>("/dashboard"),
+  feed: () => adminGet<{ data: import("@/dc/newsroom-bind").FeedItem[]; urgent: number }>("/feed"),
+  reports: () => adminGet<import("@/dc/newsroom-bind").ReportState>("/reports"),
+  search: (q: string) => adminGet<{ query: string; data: import("@/dc/newsroom-bind").AdminHit[] }>(`/search?q=${encodeURIComponent(q)}`),
+  versions: (id: string) => adminGet<{ article: { id: string; title: string; status: string }; data: import("@/dc/newsroom-bind").VersionItem[] }>(`/articles/${encodeURIComponent(id)}/versions`),
+  live: () => adminGet<import("@/dc/newsroom-bind").LiveState>("/live"),
+  newsletter: (q = "") => adminGet<import("@/dc/newsroom-bind").NLState>(`/newsletter?q=${encodeURIComponent(q)}`),
+  settings: () => adminGet<import("@/dc/newsroom-bind").SettingsState>("/settings"),
   staff: () => adminGet<{ data: RbacState["staff"] }>(`/staff`),
   categories: (q = "") => adminGet<{ categories: AdminCategory[]; tags: AdminTag[]; tag_total: number; tag_unused: number }>(`/categories?q=${encodeURIComponent(q)}`),
   comments: (status: string) => adminGet<ModerationState>(`/comments?status=${encodeURIComponent(status)}&limit=100`),

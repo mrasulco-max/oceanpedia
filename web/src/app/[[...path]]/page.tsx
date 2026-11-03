@@ -17,6 +17,10 @@ const PAGE_PERM: Record<string, string | string[]> = {
   "/admin/iklan": ["ads.manage", "revenue.read"],
   "/admin/pasar": ["market.read", "market.manage"],
   "/admin/simbol": ["market.read", "market.manage"],
+  "/admin/laporan": "revenue.read",
+  "/admin/newsletter": "content.publish",
+  "/admin/live": ["content.breaking", "content.write"],
+  "/admin/versi": "content.write",
 };
 
 function flat(sp: Record<string, string | string[] | undefined>): Record<string, string> {
