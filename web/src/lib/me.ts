@@ -100,6 +100,10 @@ export async function getAlerts(): Promise<UserAlert[] | null> {
 export async function getBookmarks(): Promise<ArticleCard[] | null> {
   return (await meGet<{ data: ArticleCard[] }>("/v1/me/bookmarks?limit=100"))?.data ?? null;
 }
+/** Jumlah notifikasi belum dibaca (untuk lencana ikon lonceng). */
+export async function getUnread(): Promise<number> {
+  return (await meGet<{ unread: number }>("/v1/me/notifications?limit=1"))?.unread ?? 0;
+}
 export async function getNotifications(kind = ""): Promise<{ data: UserNotification[]; counts: Record<string, number>; unread: number } | null> {
   return meGet(`/v1/me/notifications?kind=${encodeURIComponent(kind)}&limit=100`);
 }
