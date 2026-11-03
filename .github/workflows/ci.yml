@@ -339,6 +339,8 @@ jobs:
           if curl -sf -A "$MOB" localhost:3000/ | grep -q '>9:41<'; then echo "status bar tiruan masih ada"; exit 1; fi
           # Area konten naik mengikuti header yang dirapatkan (tidak ada celah kosong di bawah ticker).
           curl -sf -A "$MOB" localhost:3000/ | grep -q 'top: calc(108px + env(safe-area-inset-top'
+          # Baris tab & area gulir di bawah header ikut naik (tanpa celah/tumpang tindih).
+          for p in /watchlist /market /notifikasi /tersimpan; do curl -sf -A "$MOB" "localhost:3000$p" | grep -q 'top: calc(70px + env(safe-area-inset-top, 0px)); left: 0; right: 0"' || { echo "GAGAL header $p"; exit 1; }; done
           curl -sf -A "$DESK" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'IHSG Menguat Ditopang Saham Perbankan'
           curl -sf -A "$MOB" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'class="dc-frame-app"'
           curl -sf -A "$MOB" localhost:3000/market/BBCA | grep -q 'class="dc-frame-app"'
