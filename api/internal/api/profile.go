@@ -18,16 +18,28 @@ import (
 // Batas price alert aktif untuk akun gratis (Plus: tanpa batas).
 const freeAlertLimit = 3
 
+// alertLimit: batas price alert aktif per paket (0 = tanpa batas). Student 10, paket Plus lain tanpa batas.
+func alertLimit(plan string) int {
+	switch plan {
+	case "":
+		return freeAlertLimit
+	case "student":
+		return 10
+	}
+	return 0
+}
+
 // GET /v1/me/profile — profil, preferensi, ringkasan aktivitas, dan topik yang diikuti.
 func (s *Server) profile(w http.ResponseWriter, r *http.Request) error {
 	p, err := s.Store.Profile(r.Context(), uid(r))
 	if err != nil {
 		return err
 	}
-	limit := freeAlertLimit
+	plan := ""
 	if p.Plan != nil {
-		limit = 0 // tanpa batas
+		plan = *p.Plan
 	}
+	limit := alertLimit(plan)
 	w.Header().Set("Cache-Control", "private, no-store")
 	httpx.JSON(w, 200, map[string]any{"profile": p, "alert_limit": limit})
 	return nil

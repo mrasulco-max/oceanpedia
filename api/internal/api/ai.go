@@ -24,6 +24,9 @@ func aiUnavailable(err error) error {
 
 // GET /v1/articles/{slug}/ai — Analisis AI sebuah berita (dibuat sekali per versi isi, lalu disimpan).
 func (s *Server) articleAI(w http.ResponseWriter, r *http.Request) error {
+	if err := needPlus(r); err != nil {
+		return err
+	}
 	a, err := s.Store.ArticleBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
 		return err
@@ -35,7 +38,7 @@ func (s *Server) articleAI(w http.ResponseWriter, r *http.Request) error {
 		s.Log.Warn("analisis AI artikel gagal", "slug", a.Slug, "err", err)
 		return aiUnavailable(err)
 	}
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", "private, max-age=300")
 	w.Header().Set("Vercel-CDN-Cache-Control", "no-store")
 	httpx.JSON(w, 200, res)
 	return nil
@@ -58,6 +61,9 @@ func (s *Server) marketAIFor(ctx context.Context, in store.Instrument) (*ai.Anal
 
 // GET /v1/market/instruments/{symbol}/ai — Analisis AI kondisi terkini instrumen (diperbarui tiap ±10 menit).
 func (s *Server) marketAI(w http.ResponseWriter, r *http.Request) error {
+	if err := needPlus(r); err != nil {
+		return err
+	}
 	in, err := s.Store.InstrumentBySymbol(r.Context(), strings.ToUpper(r.PathValue("symbol")))
 	if err != nil {
 		return err
@@ -69,7 +75,7 @@ func (s *Server) marketAI(w http.ResponseWriter, r *http.Request) error {
 		s.Log.Warn("analisis AI pasar gagal", "symbol", in.Symbol, "err", err)
 		return aiUnavailable(err)
 	}
-	w.Header().Set("Cache-Control", "public, max-age=60")
+	w.Header().Set("Cache-Control", "private, max-age=60")
 	w.Header().Set("Vercel-CDN-Cache-Control", "no-store")
 	httpx.JSON(w, 200, res)
 	return nil
@@ -83,6 +89,9 @@ func (s *Server) askAI(w http.ResponseWriter, r *http.Request) error {
 		Question string `json:"question"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
+		return err
+	}
+	if err := needPlus(r); err != nil {
 		return err
 	}
 	in.Question = strings.TrimSpace(in.Question)
@@ -143,4 +152,18 @@ func (s *Server) allowAsk(ctx context.Context, user string) bool {
 	b, _ := json.Marshal(n + 1)
 	_ = s.AI.KV.MarketCachePut(ctx, key, b, "")
 	return true
+}
+
+// needPlus: Analisis AI khusus pelanggan Ocean Pedia Plus (staf redaksi boleh untuk pemeriksaan).
+func needPlus(r *http.Request) error {
+	if hasPlan(r) {
+		return nil
+	}
+	if c := claims(r); c.Role != "" && c.Role != "reader" {
+		return nil
+	}
+	if uid(r) == "" {
+		return httpx.Unauthorized("Masuk dengan akun Ocean Pedia Plus untuk membuka Analisis AI.")
+	}
+	return httpx.Forbidden("Analisis AI khusus pelanggan Ocean Pedia Plus.")
 }

@@ -34,9 +34,11 @@ async function get<T>(path: string, { revalidate = 30, token }: Opts = {}): Prom
 }
 
 /** Analisis AI: menunggu maks. `ms` (pembuatan pertama bisa beberapa detik); null bila belum siap. */
-async function aiGet(path: string, revalidate: number, ms = 9000): Promise<AIAnalysis | null> {
+async function aiGet(path: string, token: string | undefined, ms = 9000): Promise<AIAnalysis | null> {
+  // Analisis AI khusus pelanggan Plus: selalu atas nama pembaca, tidak di-cache bersama.
+  if (!token) return null;
   try {
-    const res = await fetch(BASE + path, { headers: { Accept: "application/json" }, next: { revalidate, tags: ["api"] }, signal: AbortSignal.timeout(ms) });
+    const res = await fetch(BASE + path, { headers: { Accept: "application/json", Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(ms) });
     return res.ok ? ((await res.json()) as AIAnalysis) : null;
   } catch {
     return null;
@@ -45,8 +47,8 @@ async function aiGet(path: string, revalidate: number, ms = 9000): Promise<AIAna
 
 export const api = {
   search: (q: string) => get<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}&limit=6`, { revalidate: 30 }),
-  articleAI: (slug: string) => aiGet(`/v1/articles/${encodeURIComponent(slug)}/ai`, 300),
-  marketAI: (symbol: string) => aiGet(`/v1/market/instruments/${encodeURIComponent(symbol)}/ai`, 60),
+  articleAI: (slug: string, token?: string) => aiGet(`/v1/articles/${encodeURIComponent(slug)}/ai`, token),
+  marketAI: (symbol: string, token?: string) => aiGet(`/v1/market/instruments/${encodeURIComponent(symbol)}/ai`, token),
   home: (o?: Opts) => get<HomeData>("/v1/home", o),
   categories: () => get<Page<Category>>("/v1/categories", { revalidate: 300 }),
   articles: (q: Record<string, string | number | undefined>, o?: Opts) => {

@@ -15,7 +15,7 @@ import { bindAccount, bindStaffExpired, bindStaffForgot, bindStaffReset, bindLog
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
 import { getAlerts, getBookmarks, getNotifications, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
-import { bindAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
+import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
@@ -23,7 +23,7 @@ import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bin
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import type { Candle, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
-import type { SessionUser } from "@/lib/session";
+import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
 
 export interface Match {
   route: RouteDef;
@@ -117,18 +117,20 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   const home = await safe(api.home(), { top_story: null, latest: [], most_read: [], sections: [] });
   const all = dedupe([home.top_story, ...home.latest, ...home.sections.flatMap((s) => s.articles), ...home.most_read]);
 
+  const token = user ? await sessionToken() : undefined;
+  const plus = hasPlus(user);
   if (path === "/berita/[slug]") {
     let a: Article;
     try {
-      a = await api.article(m.params.slug!);
+      a = await api.article(m.params.slug!, token ? { token } : undefined);
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) notFound();
       throw e;
     }
-    const [related, ai] = await Promise.all([safe(api.related(a.slug), { data: [] }), api.articleAI(a.slug)]);
-    html = bindArticleAI(html, a, ai);
+    const [related, ai] = await Promise.all([safe(api.related(a.slug), { data: [] }), plus ? api.articleAI(a.slug, token) : Promise.resolve(null)]);
+    html = bindArticleAI(html, a, ai, !plus);
     html = bindArticleDetail(html, a);
-    if (!ai) enhance.push("ai");
+    if (plus && !ai) enhance.push("ai");
     html = bindArticleCards(html, dedupe([...related.data, ...all]).filter((x) => x.slug !== a.slug));
     {
       const [cm, rx, bms] = await Promise.all([
@@ -206,12 +208,12 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = bindArticleCards(html, dedupe([...info.news, ...all]));
     const [candleRes, mai] = await Promise.all([
       info.quote ? safe(api.candles(sym, "1day", 260), { symbol: sym, interval: "1day", data: [] }) : Promise.resolve({ data: [] as Candle[] }),
-      board.kind === "app" ? api.marketAI(sym) : Promise.resolve(null),
+      board.kind === "app" && plus ? api.marketAI(sym, token) : Promise.resolve(null),
     ]);
     const candles = candleRes.data;
     if (board.kind === "app") {
-      html = bindMarketAICard(html, sym, mai);
-      if (!mai) enhance.push("ai");
+      html = bindMarketAICard(html, sym, mai, !plus);
+      if (plus && !mai) enhance.push("ai");
     }
     if (info.quote) html = bindMarketDetail(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote, candles);
     html = bindDetail(html, board.kind === "app" ? "app" : "web", { inst: info.instrument, quote: info.quote, candles, short });
@@ -308,18 +310,20 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     title = path === "/plus/menunggu-pembayaran" ? "Menunggu pembayaran" : `Invoice ${bill.number}`;
   } else if (path === "/plus/baca" || path === "/plus/analisis") {
     // Analisis AI lengkap untuk berita (?a=slug) atau instrumen (?symbol=BTCUSD); bawaan: berita utama terbaru.
+    // Khusus pelanggan Plus: tamu diminta masuk, akun gratis diarahkan ke halaman paket.
+    if (!plus) redirect(user ? "/plus?fitur=ai" : `/masuk?next=${encodeURIComponent(path + (search.a ? `?a=${search.a}` : search.symbol ? `?symbol=${search.symbol}` : ""))}`);
     const symbol = (search.symbol ?? "").toUpperCase();
     if (path === "/plus/analisis" && /^[A-Z0-9]{2,12}$/.test(symbol)) {
       const info = await safe(api.instrument(symbol), null);
       if (!info) notFound();
-      const ai = await api.marketAI(symbol);
+      const ai = await api.marketAI(symbol, token);
       html = bindAnalysisPage(html, ai, { kind: "market", title: `${info.instrument.symbol} · ${info.instrument.name}`, href: `/market/${symbol}`, symbol });
       title = `Analisis AI ${symbol}`;
     } else {
       const slug = search.a && /^[a-z0-9-]{1,200}$/.test(search.a) ? search.a : (home.top_story ?? all[0])?.slug;
-      const a = slug ? await safe(api.article(slug), null) : null;
+      const a = slug ? await safe(api.article(slug, { token }), null) : null;
       if (a) {
-        const ai = await api.articleAI(a.slug);
+        const ai = await api.articleAI(a.slug, token);
         if (path === "/plus/baca") {
           html = bindPlusReadAI(html, a, ai);
           html = bindArticleDetail(html, a);
@@ -416,7 +420,10 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   html = bindQuotes(html, quotes);
   html = bindCryptoVolume(html, quotes);
   html = bindDataCredits(html);
-  if (board.kind !== "admin" && html.includes('role="complementary" aria-label="Iklan ')) {
+  if (board.kind !== "admin" && plus) {
+    // Pelanggan Plus: tanpa iklan.
+    html = removeAdSlots(html);
+  } else if (board.kind !== "admin" && html.includes('role="complementary" aria-label="Iklan ')) {
     const pageKey = path === "/" ? "home" : path.startsWith("/berita/") ? "article" : path.startsWith("/kategori/") ? "category" : path === "/legal" ? "legal" : "other";
     const slots = await safe(api.ads(board.kind === "app" ? "app" : "web", pageKey), { data: [] });
     html = bindAdSlots(html, slots.data);

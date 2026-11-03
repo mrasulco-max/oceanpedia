@@ -137,6 +137,12 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/billing/checkout -d '{"plan_code":"essential","method":"bitcoin"}'); test "$code" = 422
           curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "localhost:8080/v1/billing/invoices/$INV/simulate" -d '{"outcome":"paid"}' | jq -e '.status == "paid" and .paid_at != null and .period_end != null'
           curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "localhost:8080/v1/billing/invoices/$INV/simulate" -d '{"outcome":"paid"}' | jq -e '.status == "paid"'
+          # Analisis AI & batas alert mengikuti paket (token baru membawa klaim plan).
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "localhost:8080/v1/market/instruments/BBCA/ai"); test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/market/instruments/BBCA/ai"); test "$code" = 401
+          PTOK=$(curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -r .access_token)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PTOK" "localhost:8080/v1/market/instruments/BBCA/ai"); test "$code" != 403 && test "$code" != 401
+          curl -sf -H "Authorization: Bearer $PTOK" localhost:8080/v1/me/profile | jq -e '.alert_limit == 0'
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/billing/subscription | jq -e '.data.plan_code == "essential" and .data.status == "active"'
           curl -sf -H "Authorization: Bearer $TOKEN" "localhost:8080/v1/me/notifications?kind=billing" | jq -e '.data | length == 1'
           curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/billing/subscription/cancel -d '{}' | jq -e '.data.cancel_at_period_end == true'
@@ -413,7 +419,7 @@ jobs:
           EID=$(curl -sf -X POST -H "Authorization: Bearer $(curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"editor@example.com","password":"Sandi-rahasia1"}' | jq -r .access_token)" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(jq -c '.title="Uji CI format isi artikel publik" | .action="publish"' /tmp/art.json)" | jq -r .slug)
           curl -sf -A "$DESK" "localhost:3000/berita/$EID" | grep -q '<strong>saham bank</strong>'
           # Semua rute desain dapat dirender (desktop & ponsel).
-          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/checkout?plan=corporate /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa /admin/masuk/sesi-berakhir /admin/masuk/sandi-baru; do
+          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/checkout /plus/checkout?plan=corporate /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa /admin/masuk/sesi-berakhir /admin/masuk/sandi-baru; do
             for ua in "$DESK" "$MOB"; do
               code=$(curl -s -o /dev/null -w '%{http_code}' -A "$ua" "localhost:3000$p"); test "$code" = 200 || { echo "GAGAL $p ($code)"; exit 1; }
             done
@@ -427,6 +433,15 @@ jobs:
           curl -sf -A "$DESK" localhost:3000/admin/masuk/lupa | grep -q 'data-forgot-submit'
           curl -sf -A "$DESK" "localhost:3000/admin/masuk/sandi-baru?email=a%40b.co" | grep -q 'data-sr="submit"'
           curl -sf -A "$DESK" "localhost:3000/plus/checkout?plan=corporate" | grep -q 'Ocean Pedia Plus Corporate'
+          # Gratis vs Plus: Analisis AI terkunci & iklan tampil untuk tamu; pelanggan Plus (ci@) tanpa iklan & AI terbuka.
+          for p in /plus/baca /plus/analisis; do code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }; done
+          curl -sf -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'khusus pelanggan Ocean Pedia Plus'
+          curl -sf -A "$DESK" localhost:3000/ | grep -q 'role="complementary" aria-label="Iklan '
+          curl -sf -c /tmp/pjar -A "$DESK" -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -e '.user.plan == "essential"'
+          ! curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/ | grep -q 'role="complementary" aria-label="Iklan '
+          ! curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/watchlist | grep -q 'role="complementary" aria-label="Iklan '
+          ! curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'khusus pelanggan Ocean Pedia Plus'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/pjar -A "$MOB" localhost:3000/plus/analisis); test "$code" = 200
           # Halaman tagihan butuh login.
           for p in /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }

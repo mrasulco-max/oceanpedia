@@ -17,6 +17,18 @@ export interface SessionUser {
   phone?: string | null;
   created_at?: string;
   email_verified?: boolean;
+  /** Kode paket Ocean Pedia Plus yang aktif (null = akun gratis). */
+  plan?: string | null;
+}
+
+/** Token sesi (cookie httpOnly) untuk panggilan API atas nama pembaca, atau undefined. */
+export async function sessionToken(): Promise<string | undefined> {
+  return (await cookies()).get("ob_at")?.value;
+}
+
+/** Pelanggan Plus (atau staf redaksi): akses artikel premium, Analisis AI, tanpa iklan. */
+export function hasPlus(u: SessionUser | null): boolean {
+  return !!u && (!!u.plan || (!!u.role && u.role !== "reader"));
 }
 
 /** Pengguna yang sedang masuk (dari cookie httpOnly ob_at), atau null. */

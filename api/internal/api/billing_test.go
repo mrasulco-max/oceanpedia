@@ -2,8 +2,11 @@ package api
 
 import (
 	"crypto/sha512"
+	"time"
+
 	"encoding/hex"
 	"fmt"
+	"github.com/mrasulco-max/oceanpedia/api/internal/auth"
 	"testing"
 
 	"github.com/mrasulco-max/oceanpedia/api/internal/pay"
@@ -57,5 +60,25 @@ func TestMidtransNotify(t *testing.T) {
 func TestOrderID(t *testing.T) {
 	if orderID("INV/OP/2026/11/000123") != "INV-OP-2026-11-000123" {
 		t.Fatal(orderID("INV/OP/2026/11/000123"))
+	}
+}
+
+func TestAIRequiresPlusAndStudentLimit(t *testing.T) {
+	s, h := newTest(t)
+	sign := func(role, plan string) string {
+		tok, _ := auth.Sign(s.Cfg.JWTSecret, auth.Claims{Sub: "u1", Role: role, Plan: plan}, time.Minute, time.Now())
+		return "Bearer " + tok
+	}
+	if w := do(h, "GET", "/v1/articles/premium/ai", ""); w.Code != 401 {
+		t.Fatalf("anonim: %d", w.Code)
+	}
+	if w := do(h, "GET", "/v1/market/instruments/BBCA/ai", "", "Authorization", sign("reader", "")); w.Code != 403 {
+		t.Fatalf("gratis: %d", w.Code)
+	}
+	if w := do(h, "POST", "/v1/ai/ask", `{"slug":"premium","question":"apa?"}`, "Authorization", sign("reader", "")); w.Code != 403 {
+		t.Fatalf("tanya AI gratis: %d", w.Code)
+	}
+	if alertLimit("") != 3 || alertLimit("student") != 10 || alertLimit("essential") != 0 || alertLimit("corporate") != 0 {
+		t.Fatal("batas alert per paket salah")
 	}
 }
