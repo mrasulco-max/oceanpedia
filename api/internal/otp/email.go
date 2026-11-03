@@ -163,18 +163,24 @@ func (e *Email) Check(ctx context.Context, email, code string) (Result, error) {
 }
 
 func (e *Email) sendMail(ctx context.Context, to, code string) error {
+	spaced := code[:3] + " " + code[3:]
+	text := fmt.Sprintf("Kode verifikasi OceanBird kamu: %s\n\nBerlaku 10 menit. Kode terdiri dari huruf dan angka (tidak membedakan huruf besar/kecil).\nJangan bagikan kode ini kepada siapa pun, termasuk yang mengaku dari OceanBird.\n\nJika kamu tidak meminta kode ini, abaikan email ini.\n\nOceanBird — Berita & data pasar\n", code)
+	return e.SendMessage(ctx, to, "Kode verifikasi OceanBird: "+code, text, mailHTML(code, spaced))
+}
+
+// SendMessage mengirim email transaksional (mis. undangan staf) lewat Bird Email dari domain sendiri.
+func (e *Email) SendMessage(ctx context.Context, to, subject, text, htmlBody string) error {
 	if e.Key == "" || e.From == "" {
 		return ErrUnavailable
 	}
-	spaced := code[:3] + " " + code[3:]
 	body := map[string]any{
 		"from":     e.From,
 		"to":       []string{to},
-		"subject":  "Kode verifikasi OceanBird: " + code,
+		"subject":  subject,
 		"category": "transactional",
-		"text":     fmt.Sprintf("Kode verifikasi OceanBird kamu: %s\n\nBerlaku 10 menit. Kode terdiri dari huruf dan angka (tidak membedakan huruf besar/kecil).\nJangan bagikan kode ini kepada siapa pun, termasuk yang mengaku dari OceanBird.\n\nJika kamu tidak meminta kode ini, abaikan email ini.\n\nOceanBird — Berita & data pasar\n", code),
-		"html":     mailHTML(code, spaced),
-		"headers":  map[string]string{"X-Entity-Ref-ID": fmt.Sprintf("otp-%d", e.now().UnixNano())},
+		"text":     text,
+		"html":     htmlBody,
+		"headers":  map[string]string{"X-Entity-Ref-ID": fmt.Sprintf("ob-%d", e.now().UnixNano())},
 	}
 	buf, _ := json.Marshal(body)
 	base := e.BaseURL

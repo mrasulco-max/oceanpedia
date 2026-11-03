@@ -113,6 +113,8 @@ type User struct {
 	EmailVerified bool    `json:"email_verified"`
 	Phone         *string `json:"phone,omitempty"`
 	AvatarID      *string `json:"avatar_id"` // foto profil: GET /v1/media/{avatar_id}
+	// TwoFactor: staf wajib kode email setelah kata sandi (verifikasi 2 langkah).
+	TwoFactor bool `json:"-"`
 }
 
 // SearchResult adalah hasil pencarian gabungan (aset, berita, penulis, topik).
