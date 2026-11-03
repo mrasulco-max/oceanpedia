@@ -82,3 +82,26 @@ func TestAIRequiresPlusAndStudentLimit(t *testing.T) {
 		t.Fatal("batas alert per paket salah")
 	}
 }
+
+func TestMentions(t *testing.T) {
+	btc := store.Instrument{Symbol: "BTCUSD", Name: "Bitcoin / Dolar AS"}
+	gold := store.Instrument{Symbol: "XAUUSD", Name: "Emas / Dolar AS"}
+	bbca := store.Instrument{Symbol: "BBCA", Name: "Bank Central Asia Tbk"}
+	eth := store.Instrument{Symbol: "ETHUSD", Name: "Ethereum / Dolar AS"}
+	for _, c := range []struct {
+		q    string
+		in   store.Instrument
+		want bool
+	}{
+		{"ANALISIS BITCOIN MINGGU INI", btc, true},
+		{"BTC SUPPORT DI MANA?", btc, true},
+		{"HARGA EMAS HARI INI", gold, true},
+		{"BAGAIMANA BBCA?", bbca, true},
+		{"METHOD ANALISIS", eth, false},
+		{"KONDISI PASAR", bbca, false},
+	} {
+		if got := mentions(c.q, c.in); got != c.want {
+			t.Errorf("mentions(%q, %s) = %v", c.q, c.in.Symbol, got)
+		}
+	}
+}
