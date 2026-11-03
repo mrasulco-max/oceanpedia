@@ -16,7 +16,7 @@ import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
 import { getAlerts, getBookmarks, getNotifications, getUnread, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
 import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
-import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel } from "./newsroom-bind";
+import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
@@ -272,9 +272,12 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = bindLivePublic(html, live, board.kind === "app");
     title = live ? `Live: ${live.title}` : "Live";
   } else if (path === "/short") {
-    const list = await safe(api.shorts(), { data: [] });
-    html = bindShorts(html, list.data, search.v ?? "", board.kind === "app");
-    enhance.push("reader");
+    const list = await safe(api.shorts(token), { data: [] });
+    const cur = list.data.find((x) => x.id === search.v) ?? list.data[0];
+    const cm = cur ? await safe(api.shortComments(cur.id, token), { data: [] }) : { data: [] };
+    html = bindShorts(html, list.data, search.v ?? "", board.kind === "app", { loggedIn: !!user, me: user?.full_name ?? "", comments: cm.data, siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "" });
+    if (board.kind === "app" && cur) ctx.state = JSON.stringify({ u: { u6: [cur.liked], u7: [cur.saved] } });
+    enhance.push("reader", "shorts");
     title = "Ocean Short";
   } else if (path === "/newsletter") {
     html = bindNewsletterPublic(html, { email: user?.email ?? "", status: search.berhenti === "ok" || search.berhenti === "invalid" ? search.berhenti : null });
@@ -395,7 +398,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     enhance.push("reader");
     title = `Price alert ${inst.symbol}`;
   } else if (path === "/tersimpan") {
-    html = bindSaved(html, { loggedIn: !!user, items: user ? (await getBookmarks()) ?? [] : [] });
+    const [bms, savedShorts] = user ? await Promise.all([getBookmarks(), meGetJSON<{ data: ShortRow[] }>("/v1/me/shorts/saved")]) : [null, null];
+    html = bindSaved(html, { loggedIn: !!user, items: bms ?? [], shorts: savedShorts?.data ?? [] });
     enhance.push("reader");
     title = "Tersimpan";
   } else if (path === "/notifikasi") {
@@ -447,6 +451,16 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const slots = await safe(api.ads(board.kind === "app" ? "app" : "web", pageKey), { data: [] });
     html = bindAdSlots(html, slots.data);
     if (html.includes("data-ad-imp") && !enhance.includes("reader")) enhance.push("reader");
+  }
+
+  // Admin: sub-menu Konten mendapat tab "Ocean Short".
+  if (board.kind === "admin" && html.includes('href="/admin/live"')) {
+    const onShort = boardId === "admin-live" && search.tab === "short";
+    const ON = "flex: none; min-height: 42px; display: flex; align-items: center; font-size: 14px; font-weight: 500; color: #2F74EB; border-bottom: 2px solid #4285F4";
+    const OFF = "flex: none; min-height: 42px; display: flex; align-items: center; font-size: 14px; font-weight: 400; color: #5F6B7D; border-bottom: 2px solid transparent";
+    html = html.replace(/<a href="\/admin\/live"( aria-current=page)? style="[^"]*">Breaking &(?:amp;)? live<\/a>/, (m) =>
+      (onShort ? `<a href="/admin/live" style="${OFF}">Breaking &amp; live</a>` : m) + `<a href="/admin/live?tab=short"${onShort ? " aria-current=page" : ""} style="${onShort ? ON : OFF}">Ocean Short</a>`,
+    );
   }
 
   // Lencana lonceng: jumlah notifikasi belum dibaca yang sebenarnya (bukan angka contoh desain).
@@ -537,6 +551,15 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = bindVersions(html, { article: v.article, list: v.data, cmp: search.cmp && UUID.test(search.cmp) ? search.cmp : null });
     enhance.push("newsroom");
     title = `Riwayat versi · ${v.article.title}`;
+  } else if (boardId === "admin-live" && search.tab === "short") {
+    const filter = ["pending", "visible", "hidden"].includes(search.komentar ?? "") ? search.komentar! : "";
+    const [sl, sc] = await Promise.all([adminApi.shorts(), adminApi.shortComments(filter)]);
+    if (!sl) notFound();
+    const tabBtn = (href: string, label: string) => `<a href="${href}" style="min-height: 44px; display: inline-flex; align-items: center; padding: 0 18px; border-radius: 999px; border: 1px solid #E3EBF7; background: #FFFFFF; color: #0B0B0F; font-size: 14px">${label}</a>`;
+    html = replaceBody(html, shortsAdminPanel(sl.data, sc?.data ?? [], filter), { subtitle: "Ocean Short · video, suka, komentar, bagikan", actions: tabBtn("/admin/live", "← Breaking &amp; live blog") + tabBtn("/short", "Lihat halaman Short") });
+    html = html.replace(/(<h1[^>]*>)[^<]*(<\/h1>)/, "$1Ocean Short$2");
+    enhance.push("newsroom");
+    title = "Ocean Short";
   } else if (boardId === "admin-live") {
     const st = await adminApi.live();
     if (!st) notFound();

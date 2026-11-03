@@ -292,6 +292,8 @@ export const adminApi = {
   search: (q: string) => adminGet<{ query: string; data: import("@/dc/newsroom-bind").AdminHit[] }>(`/search?q=${encodeURIComponent(q)}`),
   versions: (id: string) => adminGet<{ article: { id: string; title: string; status: string }; data: import("@/dc/newsroom-bind").VersionItem[] }>(`/articles/${encodeURIComponent(id)}/versions`),
   live: () => adminGet<import("@/dc/newsroom-bind").LiveState>("/live"),
+  shorts: () => adminGet<{ data: import("@/dc/newsroom-bind").ShortRow[] }>("/shorts"),
+  shortComments: (status = "") => adminGet<{ data: import("@/dc/newsroom-bind").ShortComment[] }>(`/short-comments?status=${encodeURIComponent(status)}&limit=100`),
   newsletter: (q = "") => adminGet<import("@/dc/newsroom-bind").NLState>(`/newsletter?q=${encodeURIComponent(q)}`),
   settings: () => adminGet<import("@/dc/newsroom-bind").SettingsState>("/settings"),
   staff: () => adminGet<{ data: RbacState["staff"] }>(`/staff`),

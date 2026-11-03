@@ -229,6 +229,31 @@ jobs:
           curl -sf -X POST -H "$SU" "localhost:8080/v1/admin/live/$LIVE/end" | jq -e '.live.status == "ended"'
           curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' localhost:8080/v1/admin/shorts -d '{"title":"IHSG dalam 60 detik","caption":"Ringkas","video_url":"https://cdn.example.com/a.mp4"}' | jq -e '.status == "published"'
           curl -sf localhost:8080/v1/shorts | jq -e '.data[0].title == "IHSG dalam 60 detik"'
+          # Ocean Short: suka, simpan, bagikan, komentar, moderasi.
+          SH=$(curl -sf localhost:8080/v1/shorts | jq -r '.data[0].id')
+          RB="Authorization: Bearer $TOKEN"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "localhost:8080/v1/shorts/$SH/like"); test "$code" = 401
+          curl -sf -X POST -H "$RB" "localhost:8080/v1/shorts/$SH/like" | jq -e '.liked == true and .likes == 1'
+          curl -sf -X POST -H "$RB" "localhost:8080/v1/shorts/$SH/like" | jq -e '.likes == 1'
+          curl -sf -X POST -H "$RB" "localhost:8080/v1/shorts/$SH/save" | jq -e '.saved == true and .saves == 1'
+          curl -sf -H "$RB" localhost:8080/v1/shorts | jq -e '.data[0].liked == true and .data[0].saved == true and .data[0].likes == 1'
+          curl -sf localhost:8080/v1/shorts | jq -e '.data[0].liked == false and .data[0].likes == 1'
+          curl -sf -H "$RB" localhost:8080/v1/me/shorts/saved | jq -e --arg id "$SH" '.data[0].id == $id'
+          curl -sf -X DELETE -H "$RB" "localhost:8080/v1/shorts/$SH/like" | jq -e '.liked == false and .likes == 0'
+          curl -sf -X POST -H 'Content-Type: application/json' "localhost:8080/v1/shorts/$SH/share" -d '{"channel":"wa"}' | jq -e '.shares == 1'
+          # Akun baru → komentar menunggu moderasi; setelah disetujui tampil.
+          CK=$(curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' "localhost:8080/v1/shorts/$SH/comments" -d '{"body":"Ringkas dan jelas!"}')
+          echo "$CK" | jq -e '.status == "pending"'; SC=$(echo "$CK" | jq -r .id)
+          curl -sf "localhost:8080/v1/shorts/$SH/comments" | jq -e '.data | length == 0'
+          curl -sf -H "$ED" "localhost:8080/v1/admin/short-comments?status=pending" | jq -e --arg id "$SC" '.data[0].id == $id and .data[0].short_title == "IHSG dalam 60 detik"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/short-comments/$SC/status" -d '{"status":"visible"}'); test "$code" = 204
+          curl -sf "localhost:8080/v1/shorts/$SH/comments" | jq -e --arg id "$SC" '.data[0].id == $id and .data[0].mine == false'
+          curl -sf -H "$RB" "localhost:8080/v1/shorts/$SH/comments" | jq -e '.data[0].mine == true'
+          curl -sf localhost:8080/v1/shorts | jq -e '.data[0].comments == 1 and .data[0].shares == 1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/short-comments/$SC/status" -d '{"status":"hidden"}'); test "$code" = 204
+          curl -sf localhost:8080/v1/shorts | jq -e '.data[0].comments == 0'
+          curl -sf -H "$ED" localhost:8080/v1/admin/shorts | jq -e '.data[0].likes == 0 and .data[0].saves == 1 and .data[0].shares == 1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$RB" "localhost:8080/v1/shorts/$SH/comments/$SC"); test "$code" = 204
           curl -sf -X POST localhost:8080/v1/newsletter/subscribe -H 'Content-Type: application/json' -d '{"email":"Pembaca@Example.com"}' | jq -e '.subscribed and .new'
           curl -sf -X POST localhost:8080/v1/newsletter/subscribe -H 'Content-Type: application/json' -d '{"email":"pembaca@example.com","lists":["weekly"]}' | jq -e '.new == false'
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/newsletter/subscribe -H 'Content-Type: application/json' -d '{"email":"bukan-email"}'); test "$code" = 422
@@ -451,6 +476,19 @@ jobs:
           ! curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/watchlist | grep -q 'role="complementary" aria-label="Iklan '
           ! curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'khusus pelanggan Ocean Pedia Plus'
           code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/pjar -A "$MOB" localhost:3000/plus/analisis); test "$code" = 200
+          # Ocean Short: tombol suka/simpan/bagikan/komentar terhubung (web & app) + BFF.
+          curl -sf -A "$MOB" localhost:3000/short | grep -q 'data-sh="like"'
+          curl -sf -A "$MOB" localhost:3000/short | grep -q 'data-sh-share="wa"'
+          curl -sf -A "$DESK" localhost:3000/short | grep -q 'id="komentar"'
+          ! curl -sf -A "$DESK" localhost:3000/short | grep -q 'Suka 1,2 rb'
+          SHID=$(curl -sf localhost:8080/v1/shorts | jq -r '.data[0].id')
+          if [ -n "$SHID" ] && [ "$SHID" != "null" ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:3000/api/v1/shorts/$SHID/like); test "$code" = 401
+            curl -sf -b /tmp/pjar -X POST localhost:3000/api/v1/shorts/$SHID/like | jq -e '.liked == true'
+            curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/short | grep -q 'data-liked="1"'
+            curl -sf -b /tmp/pjar -X DELETE localhost:3000/api/v1/shorts/$SHID/like | jq -e '.liked == false'
+            curl -sf -X POST -H 'Content-Type: application/json' localhost:3000/api/v1/shorts/$SHID/share -d '{"channel":"copy"}' | jq -e '.shares >= 1'
+          fi
           # Lonceng notifikasi: tidak ada angka contoh "3" bila tidak ada notifikasi belum dibaca.
           ! curl -sf -A "$MOB" localhost:3000/ | grep -q 'Notifikasi, 3 baru'
           curl -sf -A "$MOB" localhost:3000/ | grep -q 'href="/notifikasi" aria-label="Notifikasi"'
