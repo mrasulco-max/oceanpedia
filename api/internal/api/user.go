@@ -56,16 +56,53 @@ func uid(r *http.Request) string { c, _ := auth.FromContext(r.Context()); return
 
 // TokenResponse mengikuti gaya OAuth 2.0 (RFC 6749 §5.1).
 type TokenResponse struct {
-	AccessToken  string     `json:"access_token"`
-	TokenType    string     `json:"token_type"`
-	ExpiresIn    int        `json:"expires_in"`
-	RefreshToken string     `json:"refresh_token"`
-	User         store.User `json:"user"`
+	AccessToken  string   `json:"access_token"`
+	TokenType    string   `json:"token_type"`
+	ExpiresIn    int      `json:"expires_in"`
+	RefreshToken string   `json:"refresh_token"`
+	User         UserView `json:"user"`
+}
+
+// UserView: data akun + peran & izin terkini (RBAC dari database) untuk FE.
+type UserView struct {
+	store.User
+	RoleName    string   `json:"role_name"`
+	IsStaff     bool     `json:"is_staff"`
+	Permissions []string `json:"permissions"`
+}
+
+// view melengkapi data akun dengan peran & izinnya; menolak akun yang diblokir.
+func (s *Server) view(r *http.Request, u store.User) (UserView, error) {
+	a, err := s.Store.UserAccess(r.Context(), u.ID)
+	if err != nil {
+		return UserView{}, err
+	}
+	if a.Blocked {
+		return UserView{}, httpx.Forbidden("Akun ini diblokir. Hubungi tim OceanBird.")
+	}
+	perms := a.Permissions
+	if perms == nil {
+		perms = []string{}
+	}
+	return UserView{User: u, RoleName: a.RoleName, IsStaff: a.IsStaff && len(perms) > 0, Permissions: perms}, nil
 }
 
 func hashToken(t string) []byte { h := sha256.Sum256([]byte(t)); return h[:] }
 
 func (s *Server) issue(w http.ResponseWriter, r *http.Request, u store.User, status int) error {
+	// Undangan staf untuk email ini diterapkan saat masuk/verifikasi.
+	if inv, role, err := s.Store.AcceptInvitation(r.Context(), u.ID); err != nil {
+		s.Log.Warn("terapkan undangan gagal", "err", err)
+	} else if inv != "" {
+		u.Role = role
+		if err := s.Store.Audit(r.Context(), u.ID, "staff.invite_accept", "staff", inv, map[string]any{"role": role, "email": u.Email}); err != nil {
+			s.Log.Warn("audit gagal", "err", err)
+		}
+	}
+	v, err := s.view(r, u)
+	if err != nil {
+		return err
+	}
 	plan := ""
 	if u.Plan != nil {
 		plan = *u.Plan
@@ -83,7 +120,7 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request, u store.User, sta
 		return err
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.JSON(w, status, TokenResponse{AccessToken: at, TokenType: "Bearer", ExpiresIn: int(s.Cfg.AccessTokenTTL.Seconds()), RefreshToken: rt, User: u})
+	httpx.JSON(w, status, TokenResponse{AccessToken: at, TokenType: "Bearer", ExpiresIn: int(s.Cfg.AccessTokenTTL.Seconds()), RefreshToken: rt, User: v})
 	return nil
 }
 
@@ -392,8 +429,12 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	v, err := s.view(r, u)
+	if err != nil {
+		return err
+	}
 	w.Header().Set("Cache-Control", "private, no-store")
-	httpx.JSON(w, 200, u)
+	httpx.JSON(w, 200, v)
 	return nil
 }
 

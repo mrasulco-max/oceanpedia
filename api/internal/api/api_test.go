@@ -23,12 +23,48 @@ import (
 // fake mengimplementasikan sebagian Store untuk uji handler.
 type fake struct {
 	store.Store
-	users  map[string]store.User
-	tokens map[string]string
-	avatar map[string]string
+	users   map[string]store.User
+	tokens  map[string]string
+	avatar  map[string]string
+	blocked map[string]bool
 }
 
 func (f *fake) Ping(context.Context) error { return nil }
+
+// testMatrix meniru isi awal migrasi 0008_rbac.
+var testMatrix = map[string][]string{
+	"superadmin": {"content.write", "content.publish_own", "content.publish", "content.breaking", "content.delete", "users.read", "users.ban", "market.manage", "market.read", "ads.manage", "revenue.read", "rbac.manage", "audit.read"},
+	"admin":      {"content.write", "content.publish_own", "content.publish", "content.breaking", "content.delete", "users.read", "users.ban", "market.manage", "market.read", "ads.manage", "revenue.read", "audit.read"},
+	"editor":     {"content.write", "content.publish_own", "content.publish", "content.breaking", "content.delete", "users.read", "market.read"},
+	"author":     {"content.write", "content.publish_own"},
+	"ads":        {"ads.manage", "revenue.read"},
+	"support":    {"users.read", "users.ban"},
+	"reader":     {},
+}
+
+func accessFor(role string) store.Access {
+	return store.Access{Role: role, RoleName: role, IsStaff: role != "reader", Permissions: testMatrix[role]}
+}
+
+// UserAccess: peran dari pengguna palsu, atau dari id berpola "u-<role>" (token uji).
+func (f *fake) UserAccess(_ context.Context, id string) (store.Access, error) {
+	for _, u := range f.users {
+		if u.ID == id {
+			a := accessFor(u.Role)
+			a.Blocked = f.blocked[id]
+			return a, nil
+		}
+	}
+	if role, ok := strings.CutPrefix(id, "u-"); ok {
+		if _, known := testMatrix[role]; known {
+			a := accessFor(role)
+			a.Blocked = f.blocked[id]
+			return a, nil
+		}
+	}
+	return store.Access{}, httpx.ErrNotFound
+}
+func (f *fake) AcceptInvitation(context.Context, string) (string, string, error) { return "", "", nil }
 func (f *fake) Categories(context.Context) ([]store.Category, error) {
 	return []store.Category{{Slug: "saham", Name: "Saham", ArticleCount: 1}}, nil
 }

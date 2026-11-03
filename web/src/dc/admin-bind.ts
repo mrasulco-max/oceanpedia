@@ -10,7 +10,7 @@ import { esc, initials } from "./bind";
  * Semua elemen yang diubah tetap memakai gaya inline dari desain.
  */
 
-const ROLE_LABEL: Record<string, string> = { admin: "Admin", editor: "Editor", author: "Penulis", reader: "Pembaca" };
+const ROLE_LABEL: Record<string, string> = { superadmin: "Super Admin", admin: "Admin", editor: "Editor", author: "Penulis", ads: "Ads Ops", data: "Data", support: "Support", reader: "Pembaca" };
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draf",
   revision: "Revisi",
@@ -20,18 +20,29 @@ const STATUS_LABEL: Record<string, string> = {
   archived: "Arsip",
 };
 
-/** Editor/admin: kelola artikel siapa pun (BREAKING, minta revisi). */
-export function canPublish(role: string): boolean {
-  return role === "admin" || role === "editor";
+/** Pengguna panel: id & izin terkini dari database (RBAC). */
+export interface Staff {
+  id: string;
+  perms: Set<string>;
 }
 
-/** Semua peran redaksi (termasuk penulis) boleh menerbitkan artikelnya sendiri tanpa review. */
-const staffRole = (role: string) => role === "admin" || role === "editor" || role === "author";
+/** Mengelola artikel siapa pun (review, terbit, minta revisi): izin content.publish. */
+export function canPublish(who: Staff): boolean {
+  return who.perms.has("content.publish");
+}
 
-/** Sama dengan aturan API: penulis menghapus draf/review miliknya; editor/admin semua yang tidak sedang tayang. */
-export function canDelete(a: AdminArticle, role: string, now = Date.now()): boolean {
+/** Boleh menerbitkan artikel (sendiri: content.publish_own; semua: content.publish). */
+export function canRelease(who: Staff): boolean {
+  return who.perms.has("content.publish_own") || who.perms.has("content.publish");
+}
+
+const owns = (a: AdminArticle, who: Staff) => a.created_by === who.id || a.author_user_id === who.id;
+
+/** Sama dengan aturan API: tidak sedang tayang; milik sendiri (content.write) atau milik orang lain (content.delete). */
+export function canDelete(a: AdminArticle, who: Staff, now = Date.now()): boolean {
   const live = a.status === "published" && !!a.published_at && new Date(a.published_at).getTime() <= now;
-  return staffRole(role) && !live;
+  if (live) return false;
+  return owns(a, who) ? who.perms.has("content.write") || who.perms.has("content.delete") : who.perms.has("content.delete");
 }
 
 function must(html: string, needle: string | RegExp, where: string): void {
@@ -61,7 +72,7 @@ export function bindStaffHeader(html: string, user: SessionUser | null): string 
   if (!user) return html;
   return html
     .split(">Andi Saputra<").join(`>${esc(user.full_name)}<`)
-    .split(">Super Admin<").join(`>${esc(ROLE_LABEL[user.role] ?? user.role)}<`)
+    .split(">Super Admin<").join(`>${esc(user.role_name || ROLE_LABEL[user.role] || user.role)}<`)
     .split(">AS<").join(`>${esc(initials(user.full_name))}<`);
 }
 
@@ -70,9 +81,9 @@ export function bindStaffHeader(html: string, user: SessionUser | null): string 
 // ---------------------------------------------------------------------------
 export function bindEditor(
   html: string,
-  opts: { article: AdminArticle | null; categories: Category[]; instruments: Instrument[]; role: string },
+  opts: { article: AdminArticle | null; categories: Category[]; instruments: Instrument[]; who: Staff },
 ): string {
-  const { article: a, categories, instruments, role } = opts;
+  const { article: a, categories, instruments, who } = opts;
   let h = html;
 
   // Judul halaman & catatan editor.
@@ -91,14 +102,14 @@ export function bindEditor(
   );
 
   // Hapus artikel (bila diizinkan) di samping Pratinjau.
-  if (a && canDelete(a, role)) {
+  if (a && canDelete(a, who)) {
     h = h.replace(/(<a href="\/admin\/versi"([^>]*)>(<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Riwayat versi<\/a>)/, (_m, whole: string, attrs: string) =>
       `${whole}<a href="#" data-ed-action="delete"${attrs.replace(/color: #0B0B0F/, "color: #B3261E").replace(/border: 1px solid #E3EBF7/, "border: 1px solid #F5C2C0")}>Hapus</a>`,
     );
   }
 
   // Alur 5 langkah mengikuti keadaan artikel.
-  h = bindSteps(h, a, role);
+  h = bindSteps(h, a);
 
   // Toolbar format isi.
   const tools: Record<string, string> = { Tebal: "bold", Daftar: "list", Kutipan: "quote", Tautan: "link", Gambar: "image", "Sisipkan widget harga": "widget" };
@@ -177,12 +188,12 @@ export function bindEditor(
         .replace(/background: #[0-9A-F]{6}/, `background: ${on ? "#4285F4" : "#DCE3EE"}`)
         .replace(/justify-content: flex-(start|end)/, `justify-content: flex-${on ? "end" : "start"}`);
       if (disabled) st += "; opacity: .45; cursor: not-allowed";
-      return `<button role="switch" aria-checked="${on}" aria-label="${aria}" data-ed-switch="${key}"${disabled ? ' aria-disabled="true" title="Hanya editor/admin"' : ""} style="${st}">`;
+      return `<button role="switch" aria-checked="${on}" aria-label="${aria}" data-ed-switch="${key}"${disabled ? ' aria-disabled="true" title="Butuh izin content.breaking"' : ""} style="${st}">`;
     });
   };
-  sw("Tandai breaking", "breaking", !!a?.is_breaking, !canPublish(role));
+  sw("Tandai breaking", "breaking", !!a?.is_breaking, !who.perms.has("content.breaking"));
   sw("Penggerak pasar", "mover", true);
-  sw("Kirim push", "push", canPublish(role));
+  sw("Kirim push", "push", canPublish(who));
 
   // Pratinjau notifikasi mengikuti judul & dek.
   h = h.replace(/(<strong style="font-size: 14px; font-weight: 700")>IHSG naik 0,6% di sesi 1</, `$1 data-ed="pv-title">${esc(title || "Judul artikel")}<`);
@@ -203,10 +214,10 @@ export function bindEditor(
   h = h.replace(/<div style="display: flex; gap: 10px">(<a href="\/admin\/konten"[^>]*>Simpan draf<\/a>)/, '<div data-ed-actions style="display: flex; gap: 10px">$1');
   h = h.replace(/<a href="\/admin\/konten"([^>]*)>Simpan draf<\/a>/, `<a href="#" data-ed-action="draft"$1>Simpan draf</a>`);
   h = h.replace(/<a href="\/admin\/konten"( class=ob-anim[^>]*)>(<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)Kirim ke review<\/a>/, (_m, attrs: string, svg: string) =>
-    `<a href="#" data-ed-action="publish"${attrs}>${svg}Terbitkan</a>`,
+    canRelease(who) ? `<a href="#" data-ed-action="publish"${attrs}>${svg}Terbitkan</a>` : `<a href="#" data-ed-action="review"${attrs}>${svg}Kirim ke review</a>`,
   );
-  // Review editor tetap tersedia sebagai pilihan (tidak wajib).
-  {
+  // Review editor tetap tersedia sebagai pilihan (tidak wajib) bagi yang boleh terbit sendiri.
+  if (canRelease(who)) {
     const at = h.indexOf("data-ed-actions");
     const close = at >= 0 ? h.indexOf("</div>", at) : -1;
     if (close >= 0) {
@@ -227,7 +238,7 @@ export function bindEditor(
 // ---------------------------------------------------------------------------
 type StepState = "done" | "current" | "todo";
 
-function bindSteps(html: string, a: AdminArticle | null, role: string): string {
+function bindSteps(html: string, a: AdminArticle | null): string {
   const listRe = /(<div role="list" aria-label="Alur"[^>]*>)([\s\S]*?)(<\/div><\/div>)(?=<div style="display: flex; flex-wrap: wrap; gap: 20px)/;
   const m = listRe.exec(html);
   if (!m) return html;
@@ -291,8 +302,8 @@ function grab(html: string, re: RegExp, where: string): string {
 
 const nf = new Intl.NumberFormat("id-ID");
 
-export function bindContent(html: string, opts: { list: AdminList; status: string; selected: AdminArticle | null; role: string }): string {
-  const { list, status, selected, role } = opts;
+export function bindContent(html: string, opts: { list: AdminList; status: string; selected: AdminArticle | null; who: Staff }): string {
+  const { list, status, selected, who } = opts;
   let h = html;
   const c = list.counts;
 
@@ -425,15 +436,15 @@ export function bindContent(html: string, opts: { list: AdminList; status: strin
   const MARK = "\u0001ob-actions\u0001";
   const actions = (secAttrs: string, secSvg: string, priAttrs: string, priSvg: string): string => {
     const edit = `<a href="/admin/tulis?id=${s.id}"${secAttrs}>Edit</a>`;
-    if (!staffRole(role)) return edit;
+    if (!canRelease(who)) return edit;
     const future = s.published_at && new Date(s.published_at).getTime() > Date.now();
     if (ds === "published" || ds === "scheduled") {
       return `${edit}<a href="#" data-cnt-action="unpublish" data-id="${s.id}"${secAttrs}>${secSvg}Tarik ke draf</a><a href="/berita/${esc(s.slug)}" target="_blank" rel="noopener"${priAttrs}>${priSvg}Lihat</a>`;
     }
     if (ds === "archived") return `${edit}<a href="#" data-cnt-action="publish" data-id="${s.id}"${priAttrs}>${priSvg}Terbitkan lagi</a>`;
-    if (!canPublish(role)) {
-      // Penulis: terbitkan sendiri (BREAKING tetap lewat editor).
-      if (s.is_breaking) return edit;
+    if (!canPublish(who)) {
+      // Terbitkan sendiri (BREAKING butuh izin content.breaking).
+      if (s.is_breaking && !who.perms.has("content.breaking")) return edit;
       return `${edit}<a href="#" data-cnt-action="publish" data-id="${s.id}"${priAttrs}>${priSvg}${future ? "Jadwalkan" : "Terbitkan"}</a>`;
     }
     return `<a href="#" data-cnt-action="reject" data-id="${s.id}"${secAttrs}>${secSvg}Minta revisi</a>${edit}<a href="#" data-cnt-action="publish" data-id="${s.id}"${priAttrs}>${priSvg}${future ? "Setujui & jadwalkan" : "Setujui & terbitkan"}</a>`;
@@ -441,8 +452,8 @@ export function bindContent(html: string, opts: { list: AdminList; status: strin
   h = h.replace(actRe, (_m, a1: string, a2: string, a3: string, a4: string) => actions(a1, a2, a3, a4) + MARK);
   // Arsipkan (yang sedang tayang) & hapus (yang boleh dihapus).
   const extra: string[] = [];
-  if (staffRole(role) && ds === "published") extra.push(`<a href="#" data-cnt-action="archive" data-id="${s.id}" style="font-size: 14px; color: #5F6B7D; text-decoration: underline">Arsipkan</a>`);
-  if (canDelete(s, role)) extra.push(`<a href="#" data-cnt-action="delete" data-id="${s.id}" style="font-size: 14px; color: #B3261E; text-decoration: underline">Hapus artikel</a>`);
+  if (canRelease(who) && ds === "published") extra.push(`<a href="#" data-cnt-action="archive" data-id="${s.id}" style="font-size: 14px; color: #5F6B7D; text-decoration: underline">Arsipkan</a>`);
+  if (canDelete(s, who)) extra.push(`<a href="#" data-cnt-action="delete" data-id="${s.id}" style="font-size: 14px; color: #B3261E; text-decoration: underline">Hapus artikel</a>`);
   const at = h.indexOf(MARK);
   h = h.replace(MARK, "");
   const close = at >= 0 ? h.indexOf("</div>", at) : -1;

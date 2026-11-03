@@ -143,6 +143,30 @@ jobs:
           curl -sf -X POST -H "$AU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$PID/status" -d '{"action":"unpublish"}' | jq -e '.status == "draft"'
           code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$AU" "localhost:8080/v1/admin/articles/$PID"); test "$code" = 204
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(echo "$ART" | jq -c '.title="Uji CI: penulis breaking" | .is_breaking=true | .action="publish"')"); test "$code" = 422
+          # RBAC dari database: Super Admin mengubah matriks, mengundang, mengganti role, memblokir.
+          curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d '{"email":"super@example.com","password":"Sandi-rahasia1","full_name":"CI Super"}' > /dev/null
+          curl -sf -X POST localhost:8080/v1/auth/verify -H 'Content-Type: application/json' -d '{"email":"super@example.com","code":"000000"}' > /dev/null
+          PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -c "UPDATE users SET role='superadmin' WHERE email='super@example.com';"
+          SU="Authorization: Bearer $(tok super)"
+          curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"super@example.com","password":"Sandi-rahasia1"}' | jq -e '.user.is_staff and (.user.permissions | index("rbac.manage")) != null and .user.role_name == "Super Admin"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$ED" localhost:8080/v1/admin/rbac); test "$code" = 403
+          curl -sf -H "$SU" localhost:8080/v1/admin/rbac | jq -e '(.permissions | length) == 13 and (.matrix.author | index("content.publish_own")) != null'
+          # Cabut publish_own penulis → penulis tak bisa terbit langsung (tanpa login ulang), lalu kembalikan.
+          curl -sf -X PUT -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/matrix -d '{"matrix":{"author":["content.write"]}}' | jq -e '.matrix.author == ["content.write"]'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(echo "$ART" | jq -c '.action="publish"')"); test "$code" = 403
+          curl -sf -X PUT -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/matrix -d '{"matrix":{"author":["content.write","content.publish_own"]}}' > /dev/null
+          # Undangan: pendaftar dengan email itu otomatis jadi Penulis.
+          curl -sf -X POST -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/invitations -d '{"email":"undangan@example.com","role":"author","categories":["saham"]}' | jq -e '.id | length == 36'
+          curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d '{"email":"undangan@example.com","password":"Sandi-rahasia1","full_name":"CI Undangan"}' > /dev/null
+          curl -sf -X POST localhost:8080/v1/auth/verify -H 'Content-Type: application/json' -d '{"email":"undangan@example.com","code":"000000"}' | jq -e '.user.role == "author" and .user.is_staff'
+          curl -sf -H "$SU" localhost:8080/v1/admin/rbac | jq -e '(.invitations[0].status == "accepted") and ([.staff[] | select(.email == "undangan@example.com") | .desks[0]] == ["saham"])'
+          # Role baru + ganti role + blokir.
+          curl -sf -X POST -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/roles -d '{"name":"Analis Pasar","description":"Riset"}' | jq -e '.key == "analis_pasar"'
+          UID_INV=$(curl -sf -H "$SU" localhost:8080/v1/admin/rbac | jq -r '.staff[] | select(.email == "undangan@example.com") | .id')
+          curl -sf -X PATCH -H "$SU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/users/$UID_INV/role" -d '{"role":"reader"}' > /dev/null
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(tok undangan)" localhost:8080/v1/admin/articles); test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/users/$UID_INV/block" -d '{"blocked":true}'); test "$code" = 204
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"undangan@example.com","password":"Sandi-rahasia1"}'); test "$code" = 403
           echo "$ART" > /tmp/art.json
       - name: Jalankan web
         run: |
@@ -176,6 +200,14 @@ jobs:
           curl -sf -A "$MOB" "localhost:3000/verifikasi?email=ci%40example.com&mode=signup" | grep -q 'data-otp-input'
           curl -sf -A "$DESK" "localhost:3000/cari?q=bbca" | grep -q '/market/BBCA'
           curl -sf -A "$MOB" "localhost:3000/cari?q=bbca" | grep -q 'data-search-input'
+          # Halaman Role & Akses (Super Admin) terhubung database; penulis ditolak.
+          curl -sf -c /tmp/sjar -A "$DESK" -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"super@example.com","password":"Sandi-rahasia1"}' > /dev/null
+          RB=$(curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/role)
+          echo "$RB" | grep -q 'data-rb="matrix"'
+          echo "$RB" | grep -q 'data-perm="content.publish_own"'
+          echo "$RB" | grep -q 'Analis Pasar'
+          echo "$RB" | grep -q 'undangan@example.com'
+          echo "$RB" | grep -q 'data-rb-user-role'
           # Penulis di HP: masuk lewat web, Tulis artikel & Konten tampil responsif, simpan → tampil di Konten.
           curl -sf -c /tmp/jar -A "$MOB" -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"penulis@example.com","password":"Sandi-rahasia1"}' > /dev/null
           ED_HTML=$(curl -sf -b /tmp/jar -A "$MOB" localhost:3000/admin/tulis)

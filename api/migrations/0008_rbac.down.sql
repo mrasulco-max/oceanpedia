@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS staff_desks;
+DROP TABLE IF EXISTS staff_invitations;
+ALTER TABLE users DROP COLUMN IF EXISTS blocked_at;
+DROP INDEX IF EXISTS users_role_idx;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_fkey;
+UPDATE users SET role = 'admin' WHERE role = 'superadmin';
+UPDATE users SET role = 'reader' WHERE role NOT IN ('reader', 'author', 'editor', 'admin');
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('reader', 'author', 'editor', 'admin'));
+DROP TABLE IF EXISTS role_permissions;
+DROP TABLE IF EXISTS permissions;
+DROP TABLE IF EXISTS roles;

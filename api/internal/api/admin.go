@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -15,29 +16,59 @@ import (
 	"github.com/mrasulco-max/oceanpedia/api/internal/store"
 )
 
-// Peran redaksi yang boleh membuka panel admin.
-var staffRoles = map[string]bool{"author": true, "editor": true, "admin": true}
+type accessKey struct{}
 
-// canPublish: editor & admin mengelola artikel siapa pun (termasuk BREAKING & minta revisi).
-func canPublish(role string) bool { return role == "editor" || role == "admin" }
+// acc: peran & izin terkini pengguna (dibaca dari database oleh requireStaff).
+func acc(r *http.Request) store.Access {
+	a, _ := r.Context().Value(accessKey{}).(store.Access)
+	return a
+}
 
-// canRelease: semua peran redaksi boleh menerbitkan artikelnya sendiri tanpa review
-// (penulis: hanya miliknya; editor/admin: semua artikel).
-func canRelease(role string) bool { return staffRoles[role] }
+// can: apakah pengguna yang sedang meminta punya izin ini (matriks role_permissions).
+func can(r *http.Request, perm string) bool { return acc(r).Has(perm) }
 
-func requireStaff(next http.Handler) http.Handler {
+// canPublish: mengelola artikel siapa pun (review, terbit, minta revisi) — izin content.publish.
+func canPublish(r *http.Request) bool { return can(r, "content.publish") }
+
+// canRelease: boleh menerbitkan (miliknya sendiri: content.publish_own; semua: content.publish).
+func canRelease(a store.Access) bool { return a.Has("content.publish_own") || a.Has("content.publish") }
+
+// requireStaff membaca peran & izin terkini dari database pada setiap permintaan, sehingga perubahan
+// role/izin/blokir di panel Role & Akses langsung berlaku tanpa menunggu token kedaluwarsa.
+func (s *Server) requireStaff(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, ok := auth.FromContext(r.Context())
 		if !ok {
 			httpx.Error(w, r, httpx.Unauthorized("Silakan masuk terlebih dahulu."))
 			return
 		}
-		if !staffRoles[c.Role] {
+		a, err := s.Store.UserAccess(r.Context(), c.Sub)
+		if errors.Is(err, httpx.ErrNotFound) {
+			httpx.Error(w, r, httpx.Unauthorized("Akun tidak ditemukan."))
+			return
+		}
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		if a.Blocked {
+			httpx.Error(w, r, httpx.Forbidden("Akun ini diblokir."))
+			return
+		}
+		if !a.IsStaff || len(a.Permissions) == 0 {
 			httpx.Error(w, r, httpx.Forbidden("Akun ini tidak punya akses ke panel redaksi."))
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), accessKey{}, a)))
 	})
+}
+
+// need: wajib punya izin tertentu.
+func need(r *http.Request, perm string) error {
+	if !can(r, perm) {
+		return httpx.Forbidden("Peran Anda tidak punya izin " + perm + ".")
+	}
+	return nil
 }
 
 func claims(r *http.Request) auth.Claims { c, _ := auth.FromContext(r.Context()); return c }
@@ -114,14 +145,14 @@ type articleReq struct {
 }
 
 // decideStatus menerjemahkan aksi + peran menjadi status & waktu terbit.
-func decideStatus(role, action string, publishAt *time.Time, now time.Time) (string, *time.Time, error) {
+func decideStatus(a store.Access, action string, publishAt *time.Time, now time.Time) (string, *time.Time, error) {
 	switch action {
 	case "", "draft":
 		return "draft", nil, nil
 	case "review":
 		return "review", nil, nil
 	case "publish":
-		if !canRelease(role) {
+		if !canRelease(a) {
 			return "", nil, httpx.Forbidden("Peran ini tidak bisa menerbitkan artikel.")
 		}
 		t := now
@@ -134,7 +165,7 @@ func decideStatus(role, action string, publishAt *time.Time, now time.Time) (str
 	}
 }
 
-func (s *Server) validateArticle(in *articleReq, role, status string) error {
+func (s *Server) validateArticle(in *articleReq, a store.Access, status string) error {
 	in.Title = strings.TrimSpace(in.Title)
 	in.Excerpt = strings.TrimSpace(in.Excerpt)
 	in.Body = strings.TrimSpace(strings.ReplaceAll(in.Body, "\r\n", "\n"))
@@ -155,8 +186,8 @@ func (s *Server) validateArticle(in *articleReq, role, status string) error {
 	if status != "draft" && in.Excerpt == "" {
 		f["excerpt"] = "Isi dek (ringkasan) sebelum dikirim."
 	}
-	if in.IsBreaking && !canPublish(role) {
-		f["is_breaking"] = "Hanya editor/admin yang bisa menandai BREAKING."
+	if in.IsBreaking && !a.Has("content.breaking") {
+		f["is_breaking"] = "Peran Anda tidak punya izin menandai BREAKING."
 	}
 	if in.CoverURL != nil {
 		u := strings.TrimSpace(*in.CoverURL)
@@ -204,7 +235,7 @@ func (s *Server) adminArticles(w http.ResponseWriter, r *http.Request) error {
 		return httpx.BadRequest("Status tidak dikenal.")
 	}
 	// Penulis hanya melihat artikelnya sendiri.
-	if q.Get("mine") == "1" || !canPublish(c.Role) {
+	if q.Get("mine") == "1" || !canPublish(r) {
 		f.Mine = c.Sub
 	}
 	list, err := s.Store.AdminArticles(r.Context(), f)
@@ -231,7 +262,7 @@ func (s *Server) adminArticle(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	c := claims(r)
-	if !canPublish(c.Role) && !a.OwnedBy(c.Sub) {
+	if !canPublish(r) && !a.OwnedBy(c.Sub) {
 		return httpx.NotFound("Artikel tidak ditemukan.")
 	}
 	w.Header().Set("Cache-Control", "private, no-store")
@@ -242,15 +273,18 @@ func (s *Server) adminArticle(w http.ResponseWriter, r *http.Request) error {
 // POST /v1/admin/articles
 func (s *Server) createArticle(w http.ResponseWriter, r *http.Request) error {
 	c := claims(r)
+	if !can(r, "content.write") && !canPublish(r) {
+		return httpx.Forbidden("Peran Anda tidak punya izin menulis artikel.")
+	}
 	var in articleReq
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
 	}
-	status, at, err := decideStatus(c.Role, in.Action, in.PublishAt, s.Now())
+	status, at, err := decideStatus(acc(r), in.Action, in.PublishAt, s.Now())
 	if err != nil {
 		return err
 	}
-	if err := s.validateArticle(&in, c.Role, status); err != nil {
+	if err := s.validateArticle(&in, acc(r), status); err != nil {
 		return err
 	}
 	u, err := s.Store.UserByID(r.Context(), c.Sub)
@@ -284,14 +318,14 @@ func (s *Server) updateArticle(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if !canPublish(c.Role) && !cur.OwnedBy(c.Sub) {
+	if !canPublish(r) && !cur.OwnedBy(c.Sub) {
 		return httpx.NotFound("Artikel tidak ditemukan.")
 	}
 	var in articleReq
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
 	}
-	status, at, err := decideStatus(c.Role, in.Action, in.PublishAt, s.Now())
+	status, at, err := decideStatus(acc(r), in.Action, in.PublishAt, s.Now())
 	if err != nil {
 		return err
 	}
@@ -299,7 +333,7 @@ func (s *Server) updateArticle(w http.ResponseWriter, r *http.Request) error {
 	if status == "published" && cur.Status == "published" && cur.PublishedAt != nil && in.PublishAt == nil {
 		at = cur.PublishedAt
 	}
-	if err := s.validateArticle(&in, c.Role, status); err != nil {
+	if err := s.validateArticle(&in, acc(r), status); err != nil {
 		return err
 	}
 	a, err := s.Store.UpdateArticle(r.Context(), id, in.toInput(status, at))
@@ -331,15 +365,15 @@ func (s *Server) articleStatus(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	// Penulis mengelola status artikelnya sendiri (terbit, tarik, arsip); minta revisi hanya editor/admin.
-	if !canPublish(c.Role) {
+	if !canPublish(r) {
 		if !cur.OwnedBy(c.Sub) {
 			return httpx.NotFound("Artikel tidak ditemukan.")
 		}
 		if in.Action == "reject" {
-			return httpx.Forbidden("Hanya editor/admin yang bisa meminta revisi.")
+			return httpx.Forbidden("Meminta revisi butuh izin content.publish.")
 		}
-		if in.Action == "publish" && cur.IsBreaking {
-			return httpx.Forbidden("Artikel BREAKING hanya bisa diterbitkan editor/admin.")
+		if in.Action == "publish" && cur.IsBreaking && !can(r, "content.breaking") {
+			return httpx.Forbidden("Artikel BREAKING butuh izin content.breaking.")
 		}
 	}
 	var (
@@ -351,7 +385,7 @@ func (s *Server) articleStatus(w http.ResponseWriter, r *http.Request) error {
 		if len([]rune(cur.Body)) < 50 || cur.Excerpt == "" {
 			return httpx.Validation(map[string]string{"body": "Lengkapi dek dan isi artikel sebelum terbit."})
 		}
-		status, at, _ = decideStatus(c.Role, "publish", in.PublishAt, s.Now())
+		status, at, _ = decideStatus(acc(r), "publish", in.PublishAt, s.Now())
 	case "reject", "unpublish":
 		status = "draft"
 	case "archive":
@@ -385,8 +419,15 @@ func (s *Server) deleteArticle(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	live := cur.Status == "published" && cur.PublishedAt != nil && !cur.PublishedAt.After(s.Now())
-	if !canPublish(c.Role) && !cur.OwnedBy(c.Sub) {
+	own := cur.OwnedBy(c.Sub)
+	if !own && !canPublish(r) && !can(r, "content.delete") {
 		return httpx.NotFound("Artikel tidak ditemukan.")
+	}
+	if own && !can(r, "content.write") && !can(r, "content.delete") {
+		return httpx.Forbidden("Peran Anda tidak punya izin menghapus artikel.")
+	}
+	if !own && !can(r, "content.delete") {
+		return httpx.Forbidden("Peran Anda tidak punya izin content.delete untuk menghapus artikel penulis lain.")
 	}
 	if live {
 		return httpx.Conflict("Artikel sedang tayang. Tarik ke draf atau arsipkan dulu sebelum menghapus.")

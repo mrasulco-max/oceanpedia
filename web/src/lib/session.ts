@@ -7,7 +7,13 @@ export interface SessionUser {
   id: string;
   email: string;
   full_name: string;
-  role: "reader" | "author" | "editor" | "admin";
+  /** Kunci peran dari tabel roles (mis. superadmin, editor, author, atau role buatan admin). */
+  role: string;
+  role_name?: string;
+  /** Punya akses panel admin (peran staf dengan ≥1 izin). */
+  is_staff?: boolean;
+  /** Izin terkini dari matriks role_permissions. */
+  permissions?: string[];
   phone?: string | null;
   created_at?: string;
   email_verified?: boolean;

@@ -31,24 +31,24 @@ func TestSlugify(t *testing.T) {
 
 func TestDecideStatus(t *testing.T) {
 	now := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
-	if st, _, err := decideStatus("author", "review", nil, now); err != nil || st != "review" {
+	if st, _, err := decideStatus(accessFor("author"), "review", nil, now); err != nil || st != "review" {
 		t.Fatalf("penulis kirim review: %s %v", st, err)
 	}
-	if st, _, err := decideStatus("author", "publish", nil, now); err != nil || st != "published" {
+	if st, _, err := decideStatus(accessFor("author"), "publish", nil, now); err != nil || st != "published" {
 		t.Fatalf("penulis terbit langsung tanpa review: %s %v", st, err)
 	}
-	if _, _, err := decideStatus("reader", "publish", nil, now); err == nil {
+	if _, _, err := decideStatus(accessFor("reader"), "publish", nil, now); err == nil {
 		t.Fatal("pembaca tidak boleh menerbitkan")
 	}
-	st, at, err := decideStatus("editor", "publish", nil, now)
+	st, at, err := decideStatus(accessFor("editor"), "publish", nil, now)
 	if err != nil || st != "published" || !at.Equal(now) {
 		t.Fatalf("editor terbit: %s %v %v", st, at, err)
 	}
 	later := now.Add(2 * time.Hour)
-	if _, at, _ := decideStatus("admin", "publish", &later, now); !at.Equal(later) {
+	if _, at, _ := decideStatus(accessFor("admin"), "publish", &later, now); !at.Equal(later) {
 		t.Fatalf("terjadwal: %v", at)
 	}
-	if _, _, err := decideStatus("admin", "hapus", nil, now); err == nil {
+	if _, _, err := decideStatus(accessFor("admin"), "hapus", nil, now); err == nil {
 		t.Fatal("aksi tak dikenal harus ditolak")
 	}
 }
@@ -132,7 +132,13 @@ func TestDeleteArticleRoles(t *testing.T) {
 	s, _ := newTest(t)
 	owner := "u-author"
 	past := time.Now().Add(-time.Hour)
-	fd := &fakeDel{fakeAdmin: &fakeAdmin{fake: s.Store.(*fake)}}
+	fk := s.Store.(*fake)
+	// Peran dibaca dari database (bukan dari token): siapkan akun-akun uji.
+	fk.users["lain@x"] = store.User{ID: "u-lain", Role: "author"}
+	fk.users["ed@x"] = store.User{ID: "u-ed", Role: "editor"}
+	fk.users["baca@x"] = store.User{ID: "u-baca", Role: "reader"}
+	fk.users["iklan@x"] = store.User{ID: "u-iklan", Role: "ads"}
+	fd := &fakeDel{fakeAdmin: &fakeAdmin{fake: fk}}
 	s.Store = fd
 	h := s.Handler()
 	tok := func(sub, role string) string {
@@ -151,7 +157,9 @@ func TestDeleteArticleRoles(t *testing.T) {
 		{"penulis hapus arsip sendiri", owner, "author", "archived", &past, 204},
 		{"editor hapus yang tayang", "u-ed", "editor", "published", &past, 409},
 		{"editor hapus arsip", "u-ed", "editor", "archived", &past, 204},
-		{"pembaca", owner, "reader", "draft", nil, 403},
+		{"pembaca", "u-baca", "reader", "draft", nil, 403},
+		{"token mengaku admin, database bilang pembaca", "u-baca", "admin", "draft", nil, 403},
+		{"Ads Ops tanpa izin konten", "u-iklan", "ads", "archived", &past, 404},
 	}
 	for _, c := range cases {
 		fd.art = store.AdminArticle{ID: "11111111-1111-1111-1111-111111111111", Title: "Uji", Status: c.status, PublishedAt: c.at, CreatedBy: &owner}
