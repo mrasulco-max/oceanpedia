@@ -16,6 +16,7 @@ import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
 import { getAlerts, getBookmarks, getNotifications, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
 import { bindAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
+import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
@@ -245,6 +246,52 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     }
     html = bindArticleCards(html, all);
     title = path === "/akun" ? "Akun" : "Pengaturan";
+  } else if (path === "/plus") {
+    const [plans, sub] = await Promise.all([safe(api.plans(), { data: [], tax_rate: 0.11 }), user ? meGetJSON<{ data: SubInfo | null }>("/v1/billing/subscription") : Promise.resolve(null)]);
+    html = bindPlusPlans(html, { plans: plans.data, sub: sub?.data ?? null, tax: plans.tax_rate });
+    enhance.push("plus");
+    title = "Ocean Pedia Plus";
+  } else if (path === "/plus/checkout") {
+    const plans = await safe(api.plans(), { data: [], tax_rate: 0.11 });
+    const want = ["student", "essential", "corporate"].includes(search.plan ?? "") ? search.plan! : "essential";
+    const monthly = plans.data.find((p) => p.code === want) ?? plans.data.find((p) => p.code === "essential");
+    if (!monthly) notFound();
+    const yearly = plans.data.find((p) => p.code === `${monthly.code}_yearly`) ?? null;
+    const pr = user ? await getProfile() : null;
+    const cfg: CheckoutCfg = {
+      monthly: { code: monthly.code, name: monthly.name, price: monthly.price_amount, seats: monthly.min_seats },
+      yearly: yearly ? { code: yearly.code, price: yearly.price_amount } : null,
+      tax: plans.tax_rate,
+      promo: monthly.code === "essential" ? { code: "PLUSBARU", first: 9900 } : null,
+      loggedIn: !!user,
+    };
+    html = bindCheckout(html, cfg, { email: pr?.profile.email ?? user?.email ?? "", phone: pr?.profile.phone ?? null, features: monthly.features });
+    ctx.plus = JSON.stringify(cfg);
+    ctx.state = JSON.stringify({ promo: !!cfg.promo, method: 0 });
+    enhance.push("plus");
+    title = `Checkout ${monthly.name}`;
+  } else if (path === "/plus/menunggu-pembayaran" || path === "/plus/berhasil" || path === "/plus/email" || path === "/plus/whatsapp") {
+    if (!user) redirect(`/masuk?next=${encodeURIComponent(path + (search.inv ? `?inv=${search.inv}` : ""))}`);
+    const id = /^[0-9a-f-]{36}$/.test(search.inv ?? "") ? search.inv! : null;
+    let bill = id ? await meGetJSON<BillInfo>(`/v1/billing/invoices/${id}`) : null;
+    if (!bill) {
+      const list = (await meGetJSON<{ data: BillInfo[] }>("/v1/billing/invoices"))?.data ?? [];
+      bill = (path === "/plus/menunggu-pembayaran" ? list.find((b) => b.status === "open") : list.find((b) => b.status === "paid")) ?? list[0] ?? null;
+    }
+    if (!bill) redirect("/plus");
+    if (path === "/plus/menunggu-pembayaran" && bill.status === "paid") redirect(`/plus/berhasil?inv=${bill.id}`);
+    const pr = await getProfile();
+    const me = { name: pr?.profile.full_name ?? user.full_name ?? "", email: pr?.profile.email ?? user.email, phone: pr?.profile.phone ?? null };
+    if (path === "/plus/menunggu-pembayaran") {
+      html = bindWaiting(html, bill);
+      const left = bill.pay_expires_at ? Math.max(0, Math.floor((new Date(bill.pay_expires_at).getTime() - Date.now()) / 1000)) : 0;
+      ctx.state = JSON.stringify({ left });
+    } else if (path === "/plus/berhasil") html = bindPaid(html, bill, me);
+    else html = bindReceipt(html, bill, me);
+    ctx.inv = bill.id;
+    ctx.invStatus = bill.status;
+    enhance.push("plus");
+    title = path === "/plus/menunggu-pembayaran" ? "Menunggu pembayaran" : `Invoice ${bill.number}`;
   } else if (path === "/plus/baca" || path === "/plus/analisis") {
     // Analisis AI lengkap untuk berita (?a=slug) atau instrumen (?symbol=BTCUSD); bawaan: berita utama terbaru.
     const symbol = (search.symbol ?? "").toUpperCase();

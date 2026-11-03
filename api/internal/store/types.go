@@ -301,6 +301,17 @@ type Store interface {
 	SetReminder(ctx context.Context, uid, eventID string, on bool) error
 	DispatchReminders(ctx context.Context) (int, error)
 	TopicBySlug(ctx context.Context, slug, uid string) (Topic, error)
+
+	// tagihan & langganan
+	CreatePayment(ctx context.Context, invoiceID, provider, method, ref string, amount int64, expires time.Time) (string, error)
+	SetPaymentRaw(ctx context.Context, paymentID string, raw map[string]any) error
+	SetInvoiceSeats(ctx context.Context, invoiceID string, seats int) error
+	Bill(ctx context.Context, id, uid string) (Bill, error)
+	BillByOrder(ctx context.Context, orderID string) (Bill, error)
+	Bills(ctx context.Context, uid string) ([]Bill, error)
+	ApplyPayment(ctx context.Context, provider, ref, outcome, method string, raw map[string]any) (bool, error)
+	ActiveSubscription(ctx context.Context, uid string) (Subscription, error)
+	SetCancelAtPeriodEnd(ctx context.Context, uid string, cancel bool) error
 	AdClick(ctx context.Context, id string) (string, error)
 	// Operasional admin: pengguna, iklan, data pasar.
 	AdminUsers(ctx context.Context, tab, q string, limit int) ([]AdminUser, UserStats, error)

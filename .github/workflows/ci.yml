@@ -129,6 +129,24 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me/notifications/read -d '{}'); test "$code" = 204
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/notifications | jq -e '.unread == 0'
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/alerts | jq -e '[.data[] | select(.active == false)] | length >= 1'
+          # Plus: checkout (mode manual tanpa kunci Midtrans) → simulasi lunas → langganan aktif.
+          CK=$(curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/billing/checkout -d '{"plan_code":"essential","method":"qris","promo_code":"plusbaru"}')
+          echo "$CK" | jq -e '.provider == "manual" and .invoice.total == 10989 and (.order_id | startswith("INV-OP-"))'
+          INV=$(echo "$CK" | jq -r .invoice.id)
+          curl -sf -H "Authorization: Bearer $TOKEN" "localhost:8080/v1/billing/invoices/$INV" | jq -e '.status == "open" and .payment_status == "pending" and .method == "qris"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/billing/checkout -d '{"plan_code":"essential","method":"bitcoin"}'); test "$code" = 422
+          curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "localhost:8080/v1/billing/invoices/$INV/simulate" -d '{"outcome":"paid"}' | jq -e '.status == "paid" and .paid_at != null and .period_end != null'
+          curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "localhost:8080/v1/billing/invoices/$INV/simulate" -d '{"outcome":"paid"}' | jq -e '.status == "paid"'
+          curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/billing/subscription | jq -e '.data.plan_code == "essential" and .data.status == "active"'
+          curl -sf -H "Authorization: Bearer $TOKEN" "localhost:8080/v1/me/notifications?kind=billing" | jq -e '.data | length == 1'
+          curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/billing/subscription/cancel -d '{}' | jq -e '.data.cancel_at_period_end == true'
+          curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/billing/invoices | jq -e '.data | length == 1'
+          # Perpanjangan: invoice kedua memperpanjang langganan yang sama 1 bulan.
+          INV2=$(curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/billing/checkout -d '{"plan_code":"essential","method":"va_bca"}' | jq -r .invoice.id)
+          END1=$(curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/billing/subscription | jq -r .data.current_period_end)
+          curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "localhost:8080/v1/billing/invoices/$INV2/simulate" -d '{"outcome":"paid"}' > /dev/null
+          curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/billing/subscription | jq -e --arg e "$END1" '.data.current_period_end > $e and .data.cancel_at_period_end == false'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/billing/midtrans/notify -H 'Content-Type: application/json' -d '{"order_id":"x","status_code":"200","gross_amount":"1.00","signature_key":"x"}'); test "$code" = 503
           # Redaksi: penulis & editor — CRUD artikel lengkap.
           for who in penulis editor; do
             curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d "{\"email\":\"$who@example.com\",\"password\":\"Sandi-rahasia1\",\"full_name\":\"CI $who\"}" > /dev/null
@@ -354,10 +372,14 @@ jobs:
           EID=$(curl -sf -X POST -H "Authorization: Bearer $(curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"editor@example.com","password":"Sandi-rahasia1"}' | jq -r .access_token)" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(jq -c '.title="Uji CI format isi artikel publik" | .action="publish"' /tmp/art.json)" | jq -r .slug)
           curl -sf -A "$DESK" "localhost:3000/berita/$EID" | grep -q '<strong>saham bank</strong>'
           # Semua rute desain dapat dirender (desktop & ponsel).
-          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa; do
+          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/checkout?plan=corporate /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa; do
             for ua in "$DESK" "$MOB"; do
               code=$(curl -s -o /dev/null -w '%{http_code}' -A "$ua" "localhost:3000$p"); test "$code" = 200 || { echo "GAGAL $p ($code)"; exit 1; }
             done
+          done
+          # Halaman tagihan butuh login.
+          for p in /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }
           done
       - name: Log bila gagal
         if: failure()
