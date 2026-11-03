@@ -271,6 +271,8 @@ jobs:
           curl -sf -A "$MOB" localhost:3000/ | grep -q 'class="dc-frame-app"'
           # Status bar tiruan (9:41) tidak ikut dirender → header aplikasi tidak terlalu tinggi.
           if curl -sf -A "$MOB" localhost:3000/ | grep -q '>9:41<'; then echo "status bar tiruan masih ada"; exit 1; fi
+          # Area konten naik mengikuti header yang dirapatkan (tidak ada celah kosong di bawah ticker).
+          curl -sf -A "$MOB" localhost:3000/ | grep -q 'top: calc(108px + env(safe-area-inset-top'
           curl -sf -A "$DESK" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'IHSG Menguat Ditopang Saham Perbankan'
           curl -sf -A "$MOB" localhost:3000/berita/ihsg-menguat-ditopang-saham-perbankan | grep -q 'class="dc-frame-app"'
           curl -sf -A "$MOB" localhost:3000/market/BBCA | grep -q 'class="dc-frame-app"'

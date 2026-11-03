@@ -273,12 +273,24 @@ export function bindDetail(html: string, kind: "web" | "app", d: DetailData): st
 export function hideFakeStatusBar(html: string): string {
   // Status bar tiruan desain (jam 9:41 & baterai) dibuang beserta ruangnya, supaya header tidak terlalu tinggi.
   // Yang tersisa hanya area aman atas (notch) saat dibuka sebagai aplikasi layar penuh; di browser biasa = 0.
-  return html.replace(/<div style="([^"]*)"><span>9:41<\/span>([\s\S]*?)<\/div>/, (_m, st: string, rest: string) => {
+  let removed = false;
+  const out = html.replace(/<div style="([^"]*)"><span>9:41<\/span>([\s\S]*?)<\/div>/, (_m, st: string, rest: string) => {
     if (rest.includes("<img")) {
       // Varian dengan logo (profil): logo tetap, jam dihapus, jarak atas dirapatkan.
       return `<div style="${st.replace(/padding: 14px (\d+px) 0/, "padding: max(10px, env(safe-area-inset-top)) $1 0").replace("justify-content: space-between", "justify-content: flex-end")}">${rest}</div>`;
     }
     const pos = st.includes("position: relative") ? "position: relative; " : "";
+    removed = true;
     return `<div aria-hidden="true" style="${pos}height: env(safe-area-inset-top, 0px)"></div>`;
   });
+  // Area gulir yang diposisikan absolut di bawah header memakai jarak tetap yang masih menghitung
+  // status bar (30px) — naikkan supaya tidak ada celah kosong antara header/ticker dan konten.
+  if (!removed) return out;
+  return out.replace(/position: absolute; top: (\d+)px; left: 0; right: 0; bottom: (\d+px|0)(; overflow-y: auto)/g, (_m, top: string, bottom: string, rest: string) => {
+    const n = Math.max(0, Number(top) - STATUS_BAR_PX);
+    return `position: absolute; top: calc(${n}px + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: ${bottom}${rest}`;
+  });
 }
+
+/** Tinggi status bar tiruan desain (padding 14px + teks). */
+const STATUS_BAR_PX = 30;
