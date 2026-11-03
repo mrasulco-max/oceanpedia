@@ -648,7 +648,7 @@ export function bindAdSlots(html: string, slots: AdSlot[]): string {
         : `<a href="/iklan" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 100%; height: 100%; color: #5F6B7D; text-align: center"><strong style="font-size: 13px; font-weight: 500; color: #2F74EB">Pasang iklan di OceanBird</strong><span style="font-size: 11px">${w} × ${ht} · hubungi tim iklan</span></a>`;
       blk = blk.slice(0, box.index) + `<span style="${st}; overflow: hidden; padding: 0">${inner}</span></div>`;
       if (slot) {
-        used.add(slot.campaign_id + i);
+        used.add(`${slot.campaign_id}${i}`);
         blk = blk.replace(/(<span style="display: flex; justify-content: space-between; font-size: 10px; letter-spacing: .08em; color: #5F6B7D">\s*<span>IKLAN<\/span>\s*<span>)[^<]*(<\/span>)/, `$1${esc(slot.advertiser ?? "Sponsor")}$2`);
       }
     }
