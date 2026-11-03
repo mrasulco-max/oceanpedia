@@ -77,6 +77,8 @@ jobs:
       DATABASE_URL: postgres://oceanpedia:ci@localhost:5432/oceanpedia?sslmode=disable
       API_JWT_SECRET: ci-secret-ci-secret-ci-secret-ci-secret
       API_ENV: development
+      # Uji beruntun cepat dari satu IP: jangan sampai terkena batas laju (429).
+      API_RATE_LIMIT_RPS: "1000"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
