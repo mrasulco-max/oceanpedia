@@ -66,6 +66,7 @@ export const api = {
     get<{ symbol: string; interval: string; data: Candle[] }>(`/v1/market/instruments/${encodeURIComponent(symbol)}/candles?interval=${interval}&limit=${limit}`, { revalidate: 30 }),
   author: (slug: string) => get<{ author: Author; articles: ArticleCard[] }>(`/v1/authors/${encodeURIComponent(slug)}`, { revalidate: 120 }),
   topic: (slug: string) => get<{ topic: TopicInfo; articles: ArticleCard[] }>(`/v1/topics/${encodeURIComponent(slug)}`, { revalidate: 120 }),
+  plans: () => get<{ data: { code: string; name: string; price_amount: number; currency: string; billing_period: "month" | "year"; min_seats: number; features: string[] }[]; tax_rate: number }>("/v1/plans", { revalidate: 300 }),
   events: () => get<Page<EconomicEvent>>("/v1/events?days=2", { revalidate: 60 }),
   eventsWeek: (from: string) => get<Page<EconomicEvent>>(`/v1/events?from=${from}&days=7`, { revalidate: 60 }),
   ads: (surface: "web" | "app", page: string) => get<Page<AdSlot>>(`/v1/ads?surface=${surface}&page=${page}`, { revalidate: 60 }),

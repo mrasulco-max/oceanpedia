@@ -27,6 +27,8 @@ type fake struct {
 	tokens  map[string]string
 	avatar  map[string]string
 	blocked map[string]bool
+	bill    *store.Bill
+	applied []string
 }
 
 func (f *fake) Ping(context.Context) error { return nil }
@@ -372,6 +374,33 @@ func TestQuotesUnknownSymbolParam(t *testing.T) {
 func (f *fake) ActiveAlerts(context.Context, []string) ([]store.AlertJob, error) { return nil, nil }
 func (f *fake) NotifyArticle(context.Context, string) (int, error)               { return 0, nil }
 func (f *fake) DispatchReminders(context.Context) (int, error)                   { return 0, nil }
+func (f *fake) CreatePayment(context.Context, string, string, string, string, int64, time.Time) (string, error) {
+	return "00000000-0000-0000-0000-0000000000aa", nil
+}
+func (f *fake) SetPaymentRaw(context.Context, string, map[string]any) error { return nil }
+func (f *fake) SetInvoiceSeats(context.Context, string, int) error          { return nil }
+func (f *fake) Bill(_ context.Context, id, _ string) (store.Bill, error) {
+	if f.bill != nil && f.bill.ID == id {
+		return *f.bill, nil
+	}
+	return store.Bill{}, httpx.ErrNotFound
+}
+func (f *fake) BillByOrder(_ context.Context, oid string) (store.Bill, error) {
+	if f.bill != nil && f.bill.OrderID == oid {
+		return *f.bill, nil
+	}
+	return store.Bill{}, httpx.ErrNotFound
+}
+func (f *fake) Notify(context.Context, string, store.NotifyInput) error { return nil }
+func (f *fake) Bills(context.Context, string) ([]store.Bill, error)     { return nil, nil }
+func (f *fake) ApplyPayment(_ context.Context, provider, ref, outcome, _ string, _ map[string]any) (bool, error) {
+	f.applied = append(f.applied, provider+":"+ref+":"+outcome)
+	return outcome == "paid", nil
+}
+func (f *fake) ActiveSubscription(context.Context, string) (store.Subscription, error) {
+	return store.Subscription{}, httpx.ErrNotFound
+}
+func (f *fake) SetCancelAtPeriodEnd(context.Context, string, bool) error { return httpx.ErrNotFound }
 func (f *fake) TopicBySlug(_ context.Context, slug, _ string) (store.Topic, error) {
 	return store.Topic{}, httpx.ErrNotFound
 }

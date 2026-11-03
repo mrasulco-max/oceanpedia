@@ -18,9 +18,11 @@ export async function middleware(req: NextRequest) {
 
   // Sesi kedaluwarsa tapi refresh token masih ada → terbitkan token baru sebelum halaman dirender.
   let fresh: { access_token: string; refresh_token: string; expires_in: number } | null = null;
-  const needsAuth = ["/admin", "/akun", "/pengaturan"].some((p) => req.nextUrl.pathname.startsWith(p));
+  // Semua halaman (fitur pembaca juga butuh sesi); setelah pembayaran lunas token diterbitkan ulang
+  // agar status langganan (klaim "plan") langsung berlaku.
+  const force = req.nextUrl.pathname === "/plus/berhasil";
   const rt = req.cookies.get("ob_rt")?.value;
-  if (needsAuth && !req.cookies.get("ob_at") && rt) {
+  if ((force || !req.cookies.get("ob_at")) && rt) {
     try {
       const r = await fetch(`${API}/v1/auth/refresh`, {
         method: "POST",

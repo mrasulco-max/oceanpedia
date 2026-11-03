@@ -21,6 +21,7 @@ import (
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
 	"github.com/mrasulco-max/oceanpedia/api/internal/migrate"
 	"github.com/mrasulco-max/oceanpedia/api/internal/otp"
+	"github.com/mrasulco-max/oceanpedia/api/internal/pay"
 	"github.com/mrasulco-max/oceanpedia/api/internal/store"
 	"github.com/mrasulco-max/oceanpedia/api/migrations"
 )
@@ -72,6 +73,7 @@ func run(log *slog.Logger) error {
 		log.Warn("TWELVEDATA_API_KEY kosong: memakai data pasar contoh")
 	}
 	srv := &api.Server{Store: &store.PG{DB: db}, Market: provider, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: &store.PG{DB: db}}, Cfg: cfg, Log: log}
+	srv.Pay = &pay.Midtrans{ServerKey: cfg.MidtransServerKey, Production: cfg.MidtransProduction, NotifyURL: cfg.APIPublicURL + "/v1/billing/midtrans/notify"}
 	if cfg.BirdKey != "" {
 		srv.OTP = otp.NewBird(cfg.BirdKey, cfg.BirdURL)
 	}

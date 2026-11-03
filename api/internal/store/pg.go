@@ -337,7 +337,7 @@ func (p *PG) AdSlots(ctx context.Context, surface, page string) ([]AdSlot, error
 // ---------------------------------------------------------------- pengguna & sesi
 
 const userCols = `u.id, u.email, u.full_name, u.role, coalesce(u.password_hash, ''), u.created_at,
-       (SELECT s.plan_code FROM subscriptions s WHERE s.user_id = u.id AND s.status IN ('active', 'past_due') LIMIT 1),
+       (SELECT s.plan_code FROM subscriptions s WHERE s.user_id = u.id AND s.status IN ('active', 'past_due') AND (s.current_period_end IS NULL OR s.current_period_end > now()) LIMIT 1),
        u.email_verified_at IS NOT NULL, u.phone_e164, u.avatar_media_id, u.two_factor`
 
 func scanUser(s scanner) (User, error) {
@@ -663,6 +663,9 @@ func AllQueries() map[string]string {
 		out[k] = v
 	}
 	for k, v := range readerQueries() {
+		out[k] = v
+	}
+	for k, v := range billingQueries() {
 		out[k] = v
 	}
 	for k, v := range opsQueries() {

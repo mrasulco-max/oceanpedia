@@ -34,6 +34,10 @@ type Config struct {
 	CandleTTL       time.Duration
 	MarketSkip      []string
 	TaxRate         float64 // PPN, mis. 0.11
+	// Midtrans (payment gateway). Server key hanya dari env (rahasia); tidak pernah dikirim ke klien.
+	MidtransServerKey  string
+	MidtransProduction bool
+	APIPublicURL       string // untuk URL notifikasi pembayaran (webhook)
 }
 
 // Load membaca dan memvalidasi konfigurasi.
@@ -62,6 +66,10 @@ func Load() (Config, error) {
 		// Paket Basic Twelve Data tidak mencakup bursa IDX; kosongkan setelah upgrade ke Pro.
 		MarketSkip: splitList(env("TWELVEDATA_SKIP", "IDX,JKSE,JKLQ45")),
 		TaxRate:    float("API_TAX_RATE", 0.11),
+
+		MidtransServerKey:  strings.TrimSpace(os.Getenv("MIDTRANS_SERVER_KEY")),
+		MidtransProduction: env("MIDTRANS_PRODUCTION", "false") == "true",
+		APIPublicURL:       strings.TrimRight(env("API_PUBLIC_URL", "https://oceanpedia-api.vercel.app"), "/"),
 	}
 	var errs []error
 	if c.DatabaseURL == "" {

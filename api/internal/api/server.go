@@ -12,6 +12,7 @@ import (
 	"github.com/mrasulco-max/oceanpedia/api/internal/httpx"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
 	"github.com/mrasulco-max/oceanpedia/api/internal/otp"
+	"github.com/mrasulco-max/oceanpedia/api/internal/pay"
 	"github.com/mrasulco-max/oceanpedia/api/internal/store"
 )
 
@@ -26,6 +27,8 @@ type Server struct {
 	Now    func() time.Time
 	// Mail (opsional): email transaksional, mis. undangan staf.
 	Mail Mailer
+	// Pay (opsional): Midtrans Snap; nil/tanpa kunci = mode manual (pengembangan).
+	Pay *pay.Midtrans
 }
 
 // Mailer mengirim email transaksional.
@@ -116,6 +119,15 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /v1/articles/{slug}/reaction", s.react)
 	auth("POST /v1/articles/{slug}/comments", s.addComment)
 	auth("POST /v1/checkout", s.checkout)
+	auth("POST /v1/billing/checkout", s.checkout)
+	auth("GET /v1/billing/invoices", s.invoices)
+	auth("GET /v1/billing/invoices/{id}", s.invoice)
+	auth("POST /v1/billing/invoices/{id}/refresh", s.refreshInvoice)
+	auth("POST /v1/billing/invoices/{id}/resend", s.resendReceipt)
+	auth("POST /v1/billing/invoices/{id}/simulate", s.simulatePayment)
+	auth("GET /v1/billing/subscription", s.subscription)
+	auth("POST /v1/billing/subscription/cancel", s.cancelSubscription)
+	h("POST /v1/billing/midtrans/notify", s.midtransNotify)
 
 	// panel redaksi (penulis, editor, admin)
 	staff("GET /v1/admin/articles", s.adminArticles)
