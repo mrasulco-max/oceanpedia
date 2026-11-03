@@ -309,6 +309,7 @@ func (s *Server) createArticle(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	s.audit(r, "article."+actionVerb(status), a.ID, map[string]any{"title": a.Title, "status": a.Status})
+	s.snapshot(r, a.ID, "Draf dibuat")
 	s.notifyPublished(r.Context(), a.ID, a.Status, a.PublishedAt)
 	httpx.JSON(w, http.StatusCreated, a)
 	return nil
@@ -348,6 +349,7 @@ func (s *Server) updateArticle(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	s.audit(r, "article."+actionVerb(status), a.ID, map[string]any{"title": a.Title, "status": a.Status})
+	s.snapshot(r, a.ID, versionNote(in.Action))
 	s.notifyPublished(r.Context(), a.ID, a.Status, a.PublishedAt)
 	httpx.JSON(w, 200, a)
 	return nil
@@ -405,6 +407,7 @@ func (s *Server) articleStatus(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	s.audit(r, "article."+in.Action, id, map[string]any{"title": cur.Title, "note": in.Note})
+	s.snapshot(r, id, versionNote(in.Action))
 	a, err := s.Store.AdminArticle(r.Context(), id)
 	if err != nil {
 		return err
@@ -582,4 +585,22 @@ func imageSize(b []byte) (int, int) {
 		return 0, 0
 	}
 	return c.Width, c.Height
+}
+
+func versionNote(action string) string {
+	switch action {
+	case "review":
+		return "Kirim ke review"
+	case "publish":
+		return "Terbit"
+	case "reject":
+		return "Minta revisi"
+	case "unpublish":
+		return "Tarik ke draf"
+	case "archive":
+		return "Arsipkan"
+	case "draft":
+		return "Simpan draf"
+	}
+	return "Simpan"
 }

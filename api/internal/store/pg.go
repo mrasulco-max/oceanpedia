@@ -62,7 +62,7 @@ func (p *PG) Categories(ctx context.Context) ([]Category, error) {
 
 const cardCols = `a.id, a.slug, a.title, a.excerpt, a.cover_url, a.cover_alt,
        c.id, c.slug, c.name, c.description, c.icon,
-       au.name, au.slug, a.is_premium, a.is_breaking, a.reading_minutes, a.view_count, a.published_at`
+       au.name, au.slug, a.is_premium, (a.is_breaking AND (a.breaking_until IS NULL OR a.breaking_until > now())), a.reading_minutes, a.view_count, a.published_at`
 
 const cardFrom = `
 FROM articles a
@@ -666,6 +666,9 @@ func AllQueries() map[string]string {
 		out[k] = v
 	}
 	for k, v := range billingQueries() {
+		out[k] = v
+	}
+	for k, v := range newsroomQueries() {
 		out[k] = v
 	}
 	for k, v := range opsQueries() {

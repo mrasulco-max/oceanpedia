@@ -312,6 +312,35 @@ type Store interface {
 	ApplyPayment(ctx context.Context, provider, ref, outcome, method string, raw map[string]any) (bool, error)
 	ActiveSubscription(ctx context.Context, uid string) (Subscription, error)
 	SetCancelAtPeriodEnd(ctx context.Context, uid string, cancel bool) error
+
+	// redaksi lanjutan
+	SnapshotArticle(ctx context.Context, id, editorID, note string) error
+	ArticleVersions(ctx context.Context, id string) ([]Version, error)
+	RestoreVersion(ctx context.Context, articleID, versionID, editorID string) (int, error)
+	BreakingList(ctx context.Context) ([]BreakingItem, error)
+	SetBreaking(ctx context.Context, id string, hours int) error
+	CurrentLive(ctx context.Context) (LiveBlog, error)
+	StartLive(ctx context.Context, title, summary, symbol string, closes *time.Time, uid string) (string, error)
+	EndLive(ctx context.Context, id string) error
+	AddLivePost(ctx context.Context, blogID, body, kind, symbol string, pinned bool, uid string) (string, error)
+	PinLivePost(ctx context.Context, id string, pinned bool) error
+	DeleteLivePost(ctx context.Context, id string) error
+	Shorts(ctx context.Context, all bool, limit int) ([]Short, error)
+	CreateShort(ctx context.Context, s Short, uid string) (string, error)
+	SetShortStatus(ctx context.Context, id, status string) error
+	ShortView(ctx context.Context, id string) error
+	Subscribe(ctx context.Context, email, uid string, lists []string, source string) (bool, error)
+	Unsubscribe(ctx context.Context, token, email string) error
+	NewsletterOverview(ctx context.Context, q string, limit int) (NewsletterStats, []Subscriber, error)
+	Issues(ctx context.Context) ([]Issue, error)
+	Issue(ctx context.Context, id string) (Issue, error)
+	CreateIssue(ctx context.Context, list, subject, intro string, articleIDs []string, uid string) (string, error)
+	IssueRecipients(ctx context.Context, list string) ([][2]string, error)
+	MarkIssueSent(ctx context.Context, id string, sent, failed int) error
+	ArticleLinks(ctx context.Context, ids []string) ([][3]string, error)
+	DashboardStats(ctx context.Context) (Dashboard, error)
+	Reports(ctx context.Context) (Report, error)
+	AdminSearch(ctx context.Context, q string) ([]AdminHit, error)
 	AdClick(ctx context.Context, id string) (string, error)
 	// Operasional admin: pengguna, iklan, data pasar.
 	AdminUsers(ctx context.Context, tab, q string, limit int) ([]AdminUser, UserStats, error)

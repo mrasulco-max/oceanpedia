@@ -391,8 +391,9 @@ func (f *fake) BillByOrder(_ context.Context, oid string) (store.Bill, error) {
 	}
 	return store.Bill{}, httpx.ErrNotFound
 }
-func (f *fake) Notify(context.Context, string, store.NotifyInput) error { return nil }
-func (f *fake) Bills(context.Context, string) ([]store.Bill, error)     { return nil, nil }
+func (f *fake) SnapshotArticle(context.Context, string, string, string) error { return nil }
+func (f *fake) Notify(context.Context, string, store.NotifyInput) error       { return nil }
+func (f *fake) Bills(context.Context, string) ([]store.Bill, error)           { return nil, nil }
 func (f *fake) ApplyPayment(_ context.Context, provider, ref, outcome, _ string, _ map[string]any) (bool, error) {
 	f.applied = append(f.applied, provider+":"+ref+":"+outcome)
 	return outcome == "paid", nil

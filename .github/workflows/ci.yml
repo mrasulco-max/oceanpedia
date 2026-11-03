@@ -192,6 +192,37 @@ jobs:
           curl -sf -X PUT -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/matrix -d '{"matrix":{"author":["content.write"]}}' | jq -e '.matrix.author == ["content.write"]'
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(echo "$ART" | jq -c '.action="publish"')"); test "$code" = 403
           curl -sf -X PUT -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/matrix -d '{"matrix":{"author":["content.write","content.publish_own"]}}' > /dev/null
+          # Redaksi lanjutan: dashboard, versi, breaking & live, short, newsletter, laporan, cari, pengaturan.
+          curl -sf -H "$SU" localhost:8080/v1/admin/dashboard | jq -e '(.stats.readers >= 1) and (.review | type == "array") and .quota_daily == 800'
+          curl -sf -H "$SU" localhost:8080/v1/admin/feed | jq -e '.data | type == "array"'
+          curl -sf -H "$SU" localhost:8080/v1/admin/reports | jq -e '(.revenue | length == 30) and (.totals.revenue >= 0)'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$AU" localhost:8080/v1/admin/reports); test "$code" = 403
+          curl -sf -H "$SU" "localhost:8080/v1/admin/search?q=bbca" | jq -e '[.data[] | select(.kind == "symbol" and .id == "BBCA")] | length == 1'
+          curl -sf -H "$SU" localhost:8080/v1/admin/settings | jq -e '([.integrations[].key] | index("midtrans")) != null and (tostring | contains("SERVER_KEY") | not)'
+          VID=$(curl -sf -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(echo "$ART" | jq -c '.title="Uji CI riwayat versi artikel" | .action="draft"')" | jq -r .id)
+          curl -sf -X PUT -H "$AU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/articles/$VID" -d "$(echo "$ART" | jq -c '.title="Uji CI riwayat versi artikel (revisi)" | .action="draft"')" > /dev/null
+          curl -sf -H "$AU" "localhost:8080/v1/admin/articles/$VID/versions" | jq -e '(.data | length) == 2 and .data[0].version == 2 and .data[1].title == "Uji CI riwayat versi artikel"'
+          V1=$(curl -sf -H "$AU" "localhost:8080/v1/admin/articles/$VID/versions" | jq -r '.data[1].id')
+          curl -sf -X POST -H "$AU" "localhost:8080/v1/admin/articles/$VID/versions/$V1/restore" | jq -e '.restored == 1 and .data[0].version == 3 and .data[0].note == "Pulihkan v1"'
+          curl -sf -H "$AU" "localhost:8080/v1/admin/articles/$VID" | jq -e '.title == "Uji CI riwayat versi artikel"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$ED" "localhost:8080/v1/admin/articles/00000000-0000-0000-0000-000000000000/versions"); test "$code" = 404
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/v1/live); test "$code" = 404
+          LIVE=$(curl -sf -X POST -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/live -d '{"title":"Perdagangan IHSG hari ini","symbol":"IHSG"}' | jq -r .live.id)
+          curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/live/$LIVE/posts" -d '{"body":"Pasar dibuka menguat.","pinned":true}' | jq -e '.live.posts[0].pinned == true'
+          curl -sf localhost:8080/v1/live | jq -e '.status == "live" and (.posts | length) == 1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/live/$LIVE/posts" -d '{"body":"x","kind":"breaking"}'); test "$code" = 403
+          curl -sf -X POST -H "$SU" "localhost:8080/v1/admin/live/$LIVE/end" | jq -e '.live.status == "ended"'
+          curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' localhost:8080/v1/admin/shorts -d '{"title":"IHSG dalam 60 detik","caption":"Ringkas","video_url":"https://cdn.example.com/a.mp4"}' | jq -e '.status == "published"'
+          curl -sf localhost:8080/v1/shorts | jq -e '.data[0].title == "IHSG dalam 60 detik"'
+          curl -sf -X POST localhost:8080/v1/newsletter/subscribe -H 'Content-Type: application/json' -d '{"email":"Pembaca@Example.com"}' | jq -e '.subscribed and .new'
+          curl -sf -X POST localhost:8080/v1/newsletter/subscribe -H 'Content-Type: application/json' -d '{"email":"pembaca@example.com","lists":["weekly"]}' | jq -e '.new == false'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/newsletter/subscribe -H 'Content-Type: application/json' -d '{"email":"bukan-email"}'); test "$code" = 422
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/newsletter/subscribe -H 'Content-Type: application/json' -d '{"email":"a@b.co","lists":["plus"]}'); test "$code" = 403
+          curl -sf -H "$ED" localhost:8080/v1/admin/newsletter | jq -e '.stats.active == 1 and (.subscribers[0].lists | sort) == ["daily","weekly"]'
+          curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' localhost:8080/v1/admin/newsletter/issues -d '{"subject":"Ringkasan pasar pagi","intro":"Halo"}' | jq -e '.status == "draft"'
+          NLTOK=$(PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -tAc "SELECT token FROM newsletter_subscribers WHERE email='pembaca@example.com'")
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/newsletter/unsubscribe?token=$NLTOK"); test "$code" = 302
+          curl -sf -H "$ED" localhost:8080/v1/admin/newsletter | jq -e '.stats.active == 0 and .stats.unsubscribed == 1'
           # Undangan: pendaftar dengan email itu otomatis jadi Penulis.
           curl -sf -X POST -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/invitations -d '{"email":"undangan@example.com","role":"author","categories":["saham"]}' | jq -e '.id | length == 36'
           curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d '{"email":"undangan@example.com","password":"Sandi-rahasia1","full_name":"CI Undangan"}' > /dev/null
@@ -342,6 +373,14 @@ jobs:
           curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/komentar?status=visible" | grep -q 'data-cm-setting="hold_links"'
           curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/media | grep -q 'data-md="drop"'
           curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/aktivitas | grep -q 'data-act-row'
+          # Dashboard & modul redaksi lanjutan (Super Admin).
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin | grep -q 'Halo, CI'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/live | grep -q 'data-live="start"'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/newsletter | grep -q 'data-nl="save-send"'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/laporan | grep -q 'data-report'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/notifikasi | grep -q 'data-feed'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/cari/hasil?q=bbca" | grep -q '/admin/simbol?s=BBCA'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/pengaturan | grep -q 'data-settings'
           # Pengguna, Iklan, Data Pasar, Detail simbol (Super Admin) dari database.
           curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/pengguna?tab=reader" | grep -q 'data-us-row'
           curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/pengguna?tab=reader" | grep -q 'data-us-action="warn"'
@@ -372,11 +411,19 @@ jobs:
           EID=$(curl -sf -X POST -H "Authorization: Bearer $(curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"editor@example.com","password":"Sandi-rahasia1"}' | jq -r .access_token)" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(jq -c '.title="Uji CI format isi artikel publik" | .action="publish"' /tmp/art.json)" | jq -r .slug)
           curl -sf -A "$DESK" "localhost:3000/berita/$EID" | grep -q '<strong>saham bank</strong>'
           # Semua rute desain dapat dirender (desktop & ponsel).
-          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/checkout?plan=corporate /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa; do
+          for p in / /market /market/BTCUSD /kalender /cari /watchlist /alert /notifikasi /live /short /tersimpan /penulis/maya-lestari /topik/ihsg /offline /daftar /verifikasi /selamat-datang /splash /plus /plus/baca /plus/analisis /plus/checkout /plus/checkout?plan=corporate /screener /newsletter /tentang /iklan /bantuan /admin/masuk/lupa /admin/masuk/sesi-berakhir /admin/masuk/sandi-baru; do
             for ua in "$DESK" "$MOB"; do
               code=$(curl -s -o /dev/null -w '%{http_code}' -A "$ua" "localhost:3000$p"); test "$code" = 200 || { echo "GAGAL $p ($code)"; exit 1; }
             done
           done
+          # Halaman publik & lupa sandi staf terhubung API.
+          curl -sf -A "$DESK" localhost:3000/live | grep -q 'Perdagangan IHSG hari ini'
+          curl -sf -A "$MOB" localhost:3000/live | grep -q 'Pasar dibuka menguat.'
+          curl -sf -A "$DESK" localhost:3000/short | grep -q 'IHSG dalam 60 detik'
+          curl -sf -A "$DESK" localhost:3000/newsletter | grep -q 'data-nlp="subscribe"'
+          curl -sf -A "$DESK" localhost:3000/admin/masuk/lupa | grep -q 'data-forgot-submit'
+          curl -sf -A "$DESK" "localhost:3000/admin/masuk/sandi-baru?email=a%40b.co" | grep -q 'data-sr="submit"'
+          curl -sf -A "$DESK" "localhost:3000/plus/checkout?plan=corporate" | grep -q 'Ocean Pedia Plus Corporate'
           # Halaman tagihan butuh login.
           for p in /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }

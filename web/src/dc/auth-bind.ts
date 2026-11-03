@@ -153,3 +153,36 @@ export function bindAccount(html: string, u: AccountUser): string {
   }
   return h;
 }
+
+// ======================================================================= lupa sandi staf (panel admin)
+const SR_INPUT = "min-height: 52px; padding: 0 16px; border-radius: 16px; border: 1px solid #E3EBF7; background: #FFFFFF; font-size: 14px; color: #0B0B0F";
+export function bindStaffForgot(html: string): string {
+  let h = html;
+  h = h.replace(/<input value="andi@oceanbird\.id" placeholder=""/, '<input type="email" data-forgot-email autocomplete="email" value="" placeholder="nama@oceanbird.id"');
+  h = h.replace(/<a href="\/admin\/masuk\/cek-email"([^>]*)>([\s\S]*?)Kirim tautan<\/a>/, '<a href="#" data-forgot-submit$1>$2Kirim kode</a>');
+  h = h.replace(/Kami kirim tautan untuk mengatur ulang kata sandi\./, "Kami kirim kode 6 karakter untuk mengatur ulang kata sandi.");
+  h = h.replace(/>Tautan berlaku 30 menit dan hanya bisa dipakai sekali\.</, ">Kode berlaku 10 menit dan hanya bisa dipakai sekali.<");
+  return h;
+}
+export function bindStaffReset(html: string, email: string): string {
+  let h = html;
+  h = h.replace(/>Untuk andi@oceanbird\.id</, email ? `>Untuk ${esc(email)}<` : ">Masukkan email kerja, kode dari email, dan sandi baru.<");
+  const fields = `${email ? "" : `<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #5F6B7D">Email kerja<input type="email" data-sr="email" autocomplete="email" placeholder="nama@oceanbird.id" style="${SR_INPUT}"></label>`}<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #5F6B7D">Kode dari email<input data-sr="code" maxlength="6" autocomplete="one-time-code" autocapitalize="characters" placeholder="6 karakter" style="${SR_INPUT}; letter-spacing: .3em; font-family: 'Roboto Mono', monospace"></label>`;
+  let n = 0;
+  h = h.replace(/<input type="password" value="[^"]*"/g, () => `<input type="password" data-sr="${n++ === 0 ? "pw" : "pw2"}" autocomplete="new-password" value=""`);
+  const i = h.indexOf('data-sr="pw"');
+  const lab = i > 0 ? h.lastIndexOf("<label", i) : -1;
+  if (lab > 0) h = h.slice(0, lab) + fields + h.slice(lab);
+  h = h.replace(/>Minimal 12 karakter</, ">Minimal 8 karakter<").replace(/>Tidak sama dengan 5 sandi terakhir</, ">Berbeda dari sandi lama<").replace(/>Kekuatan: kuat</, "><");
+  h = h.replace(/<a href="\/admin\/masuk"([^>]*)>([\s\S]{0,800}?)Simpan &amp; masuk<\/a>|<a href="\/admin\/masuk"([^>]*)>([\s\S]{0,800}?)Simpan & masuk<\/a>/, (_m, a1?: string, b1?: string, a2?: string, b2?: string) => `<a href="#" data-sr="submit"${a1 ?? a2}>${b1 ?? b2}Simpan &amp; masuk</a>`);
+  h = h.replace(/>Setelah disimpan, Anda masuk ulang dengan verifikasi 2 langkah\.</, ">Setelah disimpan, Anda langsung masuk ke panel.<");
+  return h;
+}
+export function bindStaffExpired(html: string): string {
+  let h = html;
+  h = h.replace(/<input value="andi@oceanbird\.id" placeholder=""/, '<input type="email" data-login-email autocomplete="email" value="" placeholder="nama@oceanbird.id"');
+  h = h.replace(/>“Rekap sesi 1” tersimpan otomatis 12:24 dan akan terbuka lagi setelah masuk\.</, ">Perubahan yang sudah disimpan tetap aman. Masuk lagi untuk melanjutkan.<");
+  h = h.replace(/>Sesi admin dibatasi 12 jam tanpa aktivitas, sesuai pengaturan keamanan\.</, ">Sesi admin berakhir otomatis setelah tidak aktif, sesuai pengaturan keamanan.<");
+  h = h.replace(/>Tidak ada aktivitas selama 12 jam, jadi Anda keluar otomatis\.</, ">Anda keluar otomatis karena sesi berakhir.<");
+  return h;
+}

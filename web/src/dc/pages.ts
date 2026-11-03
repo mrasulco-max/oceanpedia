@@ -11,11 +11,12 @@ import { bindRoles } from "./rbac-bind";
 import { bindCategories, bindCategoryForm, catIcons } from "./cms-bind";
 import { bindActivity, bindComments, bindMedia } from "./mod-bind";
 import { bindAds, bindTwoFactor, bindUsers, bindMarket, bindSymbol, MARKET_TABS, type FeedStatus } from "./ops-bind";
-import { bindAccount, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
+import { bindAccount, bindStaffExpired, bindStaffForgot, bindStaffReset, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
 import { getAlerts, getBookmarks, getNotifications, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
 import { bindAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
+import { bindDashboard, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
@@ -246,6 +247,19 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     }
     html = bindArticleCards(html, all);
     title = path === "/akun" ? "Akun" : "Pengaturan";
+  } else if (path === "/live") {
+    const live = await api.live().catch(() => null);
+    html = bindLivePublic(html, live, board.kind === "app");
+    title = live ? `Live: ${live.title}` : "Live";
+  } else if (path === "/short") {
+    const list = await safe(api.shorts(), { data: [] });
+    html = bindShorts(html, list.data, search.v ?? "", board.kind === "app");
+    enhance.push("reader");
+    title = "Ocean Short";
+  } else if (path === "/newsletter") {
+    html = bindNewsletterPublic(html, { email: user?.email ?? "", status: search.berhenti === "ok" || search.berhenti === "invalid" ? search.berhenti : null });
+    enhance.push("reader");
+    title = "Newsletter";
   } else if (path === "/plus") {
     const [plans, sub] = await Promise.all([safe(api.plans(), { data: [], tax_rate: 0.11 }), user ? meGetJSON<{ data: SubInfo | null }>("/v1/billing/subscription") : Promise.resolve(null)]);
     html = bindPlusPlans(html, { plans: plans.data, sub: sub?.data ?? null, tax: plans.tax_rate });
@@ -417,6 +431,24 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = bindVerify(html, { email: /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(email) ? email : "", mode, next: nextUrl });
     enhance.push("auth");
     title = mode === "reset" ? "Atur ulang kata sandi" : "Verifikasi kode";
+  } else if (boardId === "admin-login-forgot") {
+    html = bindStaffForgot(html);
+    enhance.push("auth");
+    ctx.resetUrl = "/admin/masuk/sandi-baru";
+    title = "Lupa kata sandi";
+  } else if (boardId === "admin-login-forgot-sent") {
+    redirect(`/admin/masuk/sandi-baru${search.email ? `?email=${encodeURIComponent(search.email)}` : ""}`);
+  } else if (boardId === "admin-login-locked") {
+    redirect("/admin/masuk");
+  } else if (boardId === "admin-login-reset") {
+    const email = /^[^\s@]+@[^\s@]+$/.test(search.email ?? "") ? search.email!.toLowerCase() : "";
+    html = bindStaffReset(html, email);
+    ctx.email = email;
+    enhance.push("auth");
+    title = "Kata sandi baru";
+  } else if (boardId === "admin-login-expired") {
+    html = bindStaffExpired(html);
+    title = "Sesi berakhir";
   } else if (boardId === "admin-login-2-f-a") {
     const email = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(search.email ?? "") ? search.email! : "";
     if (!email) redirect("/admin/masuk");
@@ -452,6 +484,51 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     selected ??= list.data[0] ?? null;
     html = bindContent(html, { list, status, selected, who });
     enhance.push("content");
+  } else if (boardId === "admin-overview") {
+    const d = await adminApi.dashboard();
+    if (d) html = bindDashboard(html, { stats: d.stats, review: d.review, quota: d.quota_daily, me: user?.full_name ?? "" });
+    title = "Dashboard";
+  } else if (boardId === "admin-versions") {
+    const id = search.id && UUID.test(search.id) ? search.id : "";
+    if (!id) redirect("/admin/konten");
+    const v = await adminApi.versions(id);
+    if (!v) notFound();
+    html = bindVersions(html, { article: v.article, list: v.data, cmp: search.cmp && UUID.test(search.cmp) ? search.cmp : null });
+    enhance.push("newsroom");
+    title = `Riwayat versi · ${v.article.title}`;
+  } else if (boardId === "admin-live") {
+    const st = await adminApi.live();
+    if (!st) notFound();
+    html = bindLiveAdmin(html, st);
+    enhance.push("newsroom");
+    title = "Breaking & live blog";
+  } else if (boardId === "admin-newsletter") {
+    const [st, recent] = await Promise.all([adminApi.newsletter(search.q ?? ""), adminApi.articles("published")]);
+    if (!st) notFound();
+    html = replaceBody(html, newsletterPanel(st, (recent?.data ?? []).slice(0, 20).map((a) => ({ id: a.id, title: a.title }))), { subtitle: `${st.stats.active} pelanggan aktif · edisi dikirim lewat email transaksional`, actions: "" });
+    enhance.push("newsroom");
+    title = "Newsletter";
+  } else if (boardId === "admin-notif") {
+    const f = await adminApi.feed();
+    const kind = ["all", "content", "market", "ads", "comments", "users", "system"].includes(search.tipe ?? "") ? search.tipe! : "all";
+    html = replaceBody(html, feedPanel(f?.data ?? [], kind), { subtitle: `${f?.urgent ?? 0} butuh tindakan · diperbarui saat halaman dibuka`, actions: "" });
+    title = "Notifikasi";
+  } else if (boardId === "admin-reports") {
+    const r = await adminApi.reports();
+    if (!r) notFound();
+    html = replaceBody(html, reportsPanel(r), { subtitle: "30 hari terakhir · pendapatan, audiens, redaksi, dan iklan", actions: "" });
+    title = "Laporan";
+  } else if (boardId === "admin-search" || boardId === "admin-search-results") {
+    const q = (search.q ?? "").trim().slice(0, 80);
+    if (boardId === "admin-search") redirect(`/admin/cari/hasil${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    const r = q ? await adminApi.search(q) : { query: q, data: [] };
+    html = replaceBody(html, searchPanel(q, r?.data ?? []), { subtitle: q ? `${r?.data.length ?? 0} hasil untuk “${q}”` : "Cari artikel, pengguna, dan simbol" });
+    title = q ? `Cari: ${q}` : "Cari";
+  } else if (boardId === "admin-settings") {
+    const st = await adminApi.settings();
+    if (!st) notFound();
+    html = replaceBody(html, settingsPanel(st), { subtitle: "Status integrasi & tautan pengaturan modul" });
+    title = "Pengaturan";
   } else if (boardId === "admin-roles") {
     const [rbac, cats] = await Promise.all([adminApi.rbac(), safe(api.categories(), { data: [] })]);
     if (!rbac) notFound();

@@ -121,7 +121,7 @@ export function auth(host: HTMLElement, { router, ctx }: Env): Cleanup {
       const r = await post("/api/auth/otp", { email });
       if (r.ok) {
         toast(host, "Jika email terdaftar, kode dikirim ke email tersebut.", "ok");
-        router.push(verifyUrl(email, mode, ctx.next));
+        router.push(mode === "reset" && ctx.resetUrl ? `${ctx.resetUrl}?email=${encodeURIComponent(email)}` : verifyUrl(email, mode, ctx.next));
       } else toast(host, problemText(r.data, "Gagal mengirim kode. Coba lagi."));
     } catch {
       toast(host, "Koneksi bermasalah. Coba lagi.");
@@ -262,6 +262,28 @@ export function auth(host: HTMLElement, { router, ctx }: Env): Cleanup {
       const em = loginEmail();
       if (em) void sendCode(em, "login");
       else router.push("/verifikasi?mode=login");
+    } else if (hit('[data-sr="submit"]')) {
+      // Atur ulang sandi staf: kode dari email + sandi baru → masuk ke panel.
+      stop();
+      if (busy) return;
+      const v = (k: string) => $<HTMLInputElement>(`[data-sr="${k}"]`)?.value ?? "";
+      const email = (v("email") || ctx.email || "").trim().toLowerCase();
+      const code = v("code").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      const pw = v("pw");
+      if (!EMAIL_RE.test(email)) return toast(host, "Isi email kerja Anda.");
+      if (code.length !== 6) return toast(host, "Masukkan 6 karakter kode dari email.");
+      if (!Object.values(RULES).every((r) => r(pw))) return toast(host, "Sandi min. 8 karakter, berisi huruf besar, huruf kecil, dan angka.");
+      if (pw !== v("pw2")) return toast(host, "Ulangi kata sandi belum sama.");
+      busy = true;
+      void post("/api/auth/reset", { email, code, password: pw })
+        .then((r) => {
+          if (!r.ok) return toast(host, problemText(r.data, "Kode salah atau kedaluwarsa."));
+          toast(host, "Kata sandi diperbarui.", "ok");
+          router.push("/admin");
+          router.refresh();
+        })
+        .catch(() => toast(host, "Koneksi bermasalah. Coba lagi."))
+        .finally(() => (busy = false));
     } else if (hit("[data-otp-submit]")) {
       stop();
       void submitCode();
