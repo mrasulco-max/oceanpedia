@@ -572,3 +572,78 @@ export function bindNewsletterPublic(html: string, d: { email: string; status: s
   for (const [label, key] of map) h = h.replace(rx(`<button role="switch" aria-checked="(true|false)" aria-label="${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`), (_m, on: string) => `<button type="button" role="switch" aria-checked="${on}" data-nlp-list="${key}" aria-label="${label}"`);
   return h;
 }
+
+// ======================================================================= screener (web)
+export interface ScreenRow {
+  symbol: string;
+  name: string;
+  asset_class: string;
+  exchange: string;
+  currency: string;
+  price: number | null;
+  change: number | null;
+  closes: number[];
+}
+const CLASS_LABEL: Record<string, string> = { equity: "Saham", index: "Indeks", crypto: "Crypto", forex: "Forex", commodity: "Komoditas" };
+export function bindScreener(html: string, rows: ScreenRow[], tab: string): string {
+  let h = html;
+  const tabs: [string, string][] = [["gainer", "Top gainer"], ["loser", "Top loser"], ["saham", "Saham"], ["crypto", "Crypto"], ["forex", "Forex"], ["komoditas", "Komoditas"]];
+  const tl = /(<div role="tablist" class="ob-scroll" style="display: flex; gap: 8px; overflow-x: auto">)([\s\S]*?)(<\/div>)/.exec(h);
+  if (tl) {
+    const btns = tl[2]!.match(/<button[\s\S]*?<\/button>/g) ?? [];
+    const on = btns[0]!, off = btns[1] ?? on;
+    h = h.replace(tl[0], tl[1] + tabs.map(([k, l]) => (k === tab ? on : off).replace("<button ", `<a href="/screener?urut=${k}" `).replace(/<\/button>$/, "</a>").replace(/>[^<]*<\/a>$/, `>${l}</a>`).replace(/aria-selected="(true|false)"/, `aria-selected="${k === tab}"`)).join("") + tl[3]);
+  }
+  const cls = { saham: ["equity", "index"], crypto: ["crypto"], forex: ["forex"], komoditas: ["commodity"] } as Record<string, string[]>;
+  let list = rows.filter((r) => !cls[tab] || cls[tab]!.includes(r.asset_class));
+  list = list.slice().sort((a, b) => (tab === "loser" ? (a.change ?? 1e9) - (b.change ?? 1e9) : (b.change ?? -1e9) - (a.change ?? -1e9)));
+  h = h.replace(/>Saring saham berdasarkan kinerja, valuasi, dan dividen</, ">Pergerakan harga hari ini untuk semua instrumen yang dipantau<");
+  h = h.replace(/>7 dari 812 saham cocok · Keuangan, Energi · naik 0–5%</, `>${list.length} instrumen · harga Twelve Data (tertunda hingga 15 menit)<`);
+  h = h.replace(/<span style="text-align: left">SEKTOR<\/span>/, '<span style="text-align: left">NAMA</span>').replace('<span style="text-align: right">KAP. PASAR</span>', '<span style="text-align: right">KELAS</span>').replace('<span style="text-align: right">P/E</span>', '<span style="text-align: right">BURSA</span>').replace('<span style="text-align: right">DIV. YIELD</span>', '<span style="text-align: right">MATA UANG</span>');
+  // Panel filter desain (sektor/valuasi belum ada datanya) → pilihan kelompok yang berfungsi.
+  const fi = h.indexOf(">Filter<");
+  if (fi > 0) {
+    const box = h.lastIndexOf('<div style="', h.lastIndexOf("<div", fi) - 1);
+    const start = h.lastIndexOf("<div", h.lastIndexOf("<div", fi) - 1);
+    void box;
+    const end = closeOf(h, start);
+    const link = (k: string, l: string) => `<a href="/screener?urut=${k}" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 12px; ${k === tab ? "background: #EEF5FF; color: #2F74EB; font-weight: 500" : "color: #0B0B0F"}">${l}<span style="font-size: 12px; color: #5F6B7D">${k === "gainer" || k === "loser" ? rows.length : rows.filter((r) => cls[k]?.includes(r.asset_class)).length}</span></a>`;
+    const panel = `<div style="border-radius: 22px; border: 1px solid #E3EAF4; padding: 18px; display: flex; flex-direction: column; gap: 4px"><strong style="font-size: 17px; font-weight: 700; margin-bottom: 6px">Kelompok</strong>${tabs.map(([k, l]) => link(k, l)).join("")}<p style="margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: #5F6B7D">Data valuasi (kap. pasar, P/E, dividen) tersedia setelah paket data fundamental diaktifkan.</p></div>`;
+    if (end > fi) h = h.slice(0, start) + panel + h.slice(end);
+  }
+  const rs = blocks(h, '<div style="display: grid; grid-template-columns: 110px 1fr 80px 90px 100px 60px 80px 70px; gap: 12px; align-items: center;');
+  if (rs.length) {
+    const tpl = rs[0]!.html;
+    const fmt = (v: number, cur: string) => {
+      const dec = Math.abs(v) < 10 ? 4 : cur === "IDR" || Math.abs(v) >= 1000 ? 0 : 2;
+      return new Intl.NumberFormat("id-ID", { minimumFractionDigits: dec, maximumFractionDigits: dec }).format(v);
+    };
+    const spark = (c: number[]) => {
+      if (c.length < 2) return "";
+      const mn = Math.min(...c), mx = Math.max(...c), sp = mx - mn || 1;
+      const pts = c.map((v, i) => `${((i / (c.length - 1)) * 66 + 2).toFixed(1)},${(22 - ((v - mn) / sp) * 18).toFixed(1)}`).join(" ");
+      return `<svg width="70" height="24" viewBox="0 0 70 24" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${c[c.length - 1]! >= c[0]! ? "#16A34A" : "#E5484D"}" stroke-width="1.6"/></svg>`;
+    };
+    const built = list.length
+      ? list
+          .map((r) => {
+            const vals = [r.price != null ? fmt(r.price, r.currency) : "—", CLASS_LABEL[r.asset_class] ?? r.asset_class, r.exchange, r.currency];
+            let k = 0;
+            const short = r.symbol.length > 5 ? r.symbol.slice(0, 3) : r.symbol;
+            return tpl
+              .replace('href="/market/BBCA"', `href="/market/${encodeURIComponent(r.symbol)}"`)
+              .replace(/(<span style="flex: none; width: 30px; height: 30px; border-radius: 999px; )background: #[0-9A-F]{6}; color: #[0-9A-F]{6}([^"]*">)[^<]*(<\/span>)/, (_m, a: string, b: string, c: string) => recolorAvatar(`${a}background: #000000; color: #000000${b}${esc(short)}${c}`, r.symbol))
+              .replace(/(<strong style="font-weight: 700">)[^<]*(<\/strong>)/, `$1${esc(r.symbol)}$2`)
+              .replace(/(<span style="color: #5F6B7D">)[^<]*(<\/span>)/, `$1${esc(r.name)}$2`)
+              .replace(/(<span style="font-family: 'Roboto Mono', monospace; font-size: 1[34]px; font-weight: 500; color: #0B0B0F">)[^<]*(<\/span>)/g, (_m, a: string, b: string) => `${a}${esc(vals[k++] ?? "")}${b}`)
+              .replace(/<span style="font-weight: 700; color: #[0-9A-F]{6}">[^<]*<\/span>/, r.change == null ? '<span style="font-weight: 700; color: #5F6B7D">—</span>' : `<span style="font-weight: 700; color: ${r.change >= 0 ? "#15803D" : "#DC2626"}">${r.change >= 0 ? "+" : "−"}${Math.abs(r.change).toFixed(2).replace(".", ",")}%</span>`)
+              .replace(/(<span style="display: flex; justify-content: flex-end; align-items: center">)<svg(?:(?!<\/svg>)[\s\S])*<\/svg>(<\/span><\/div>)$/, `$1${spark(r.closes)}$2`);
+          })
+          .join("")
+      : emptyRow("Belum ada instrumen di kelompok ini.");
+    h = h.slice(0, rs[0]!.start) + built + h.slice(rs[rs.length - 1]!.end);
+  }
+  h = h.replace(/<a href="#"[^>]*>(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Ekspor CSV<\/a>/, "");
+  h = h.replace(/<a href="#"([^>]*>(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Simpan screener<\/a>)/, '<a href="/watchlist"$1').replace(/>Simpan screener</, ">Buka watchlist<");
+  return h;
+}

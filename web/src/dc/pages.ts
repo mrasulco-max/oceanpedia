@@ -16,7 +16,7 @@ import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
 import { getAlerts, getBookmarks, getNotifications, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
 import { bindAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
-import { bindDashboard, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel } from "./newsroom-bind";
+import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
@@ -382,6 +382,15 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     if (n && !n.unread) ctx.state = JSON.stringify({ read: true });
     enhance.push("reader");
     title = "Notifikasi";
+  } else if (path === "/screener") {
+    const ins = await safe(api.instruments(), { data: [] });
+    const syms = ins.data.map((i) => i.symbol);
+    const qs = syms.length ? await safe(api.quotes(syms.slice(0, 60)), { data: [] }) : { data: [] };
+    const qm = new Map(quotes);
+    for (const it of qs.data) if (it.quote) qm.set(it.instrument.symbol, it.quote);
+    const tab = ["gainer", "loser", "saham", "crypto", "forex", "komoditas"].includes(search.urut ?? "") ? search.urut! : "gainer";
+    html = bindScreener(html, ins.data.map((i) => ({ symbol: i.symbol, name: i.name, asset_class: i.asset_class, exchange: i.exchange, currency: i.currency, price: qm.get(i.symbol)?.price ?? null, change: qm.get(i.symbol)?.change_percent ?? null, closes: [] })), tab);
+    title = "Screener & Top Movers";
   } else if (path === "/kalender") {
     const wib = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
     const today = wib(new Date());

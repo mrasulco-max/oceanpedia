@@ -421,6 +421,7 @@ jobs:
           curl -sf -A "$MOB" localhost:3000/live | grep -q 'Pasar dibuka menguat.'
           curl -sf -A "$DESK" localhost:3000/short | grep -q 'IHSG dalam 60 detik'
           curl -sf -A "$DESK" localhost:3000/newsletter | grep -q 'data-nlp="subscribe"'
+          curl -sf -A "$DESK" "localhost:3000/screener?urut=crypto" | grep -q '/market/BTCUSD'
           curl -sf -A "$DESK" localhost:3000/admin/masuk/lupa | grep -q 'data-forgot-submit'
           curl -sf -A "$DESK" "localhost:3000/admin/masuk/sandi-baru?email=a%40b.co" | grep -q 'data-sr="submit"'
           curl -sf -A "$DESK" "localhost:3000/plus/checkout?plan=corporate" | grep -q 'Ocean Pedia Plus Corporate'
