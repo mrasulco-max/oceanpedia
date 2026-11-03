@@ -1,5 +1,5 @@
 import "server-only";
-import type { AIAnalysis, AdSlot, SearchResponse, Article, ArticleCard, Candle, Category, EconomicEvent, HomeData, Instrument, Page, Quote, QuoteItem } from "./types";
+import type { AIAnalysis, AdSlot, Author, TopicInfo, SearchResponse, Article, ArticleCard, Candle, Category, EconomicEvent, HomeData, Instrument, Page, Quote, QuoteItem } from "./types";
 
 const BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
@@ -55,6 +55,8 @@ export const api = {
     return get<Page<ArticleCard>>(`/v1/articles?${p}`, o);
   },
   article: (slug: string, o?: Opts) => get<Article>(`/v1/articles/${encodeURIComponent(slug)}`, { revalidate: 60, ...o }),
+  comments: (slug: string) => get<Page<{ id: string; user_name: string; body: string; created_at: string }>>(`/v1/articles/${encodeURIComponent(slug)}/comments?limit=50`, { revalidate: 0 }),
+  reactions: (slug: string) => get<Page<{ kind: string; count: number }>>(`/v1/articles/${encodeURIComponent(slug)}/reactions`, { revalidate: 0 }),
   related: (slug: string) => get<Page<ArticleCard>>(`/v1/articles/${encodeURIComponent(slug)}/related?limit=6`, { revalidate: 120 }),
   instruments: () => get<Page<Instrument>>("/v1/market/instruments", { revalidate: 3600 }),
   quotes: (symbols: string[]) => get<Page<QuoteItem>>(`/v1/market/quotes?symbols=${symbols.join(",")}`, { revalidate: 15 }),
@@ -62,8 +64,11 @@ export const api = {
     get<{ instrument: Instrument; quote: Quote | null; news: ArticleCard[]; error?: string }>(`/v1/market/instruments/${encodeURIComponent(symbol)}`, { revalidate: 15 }),
   candles: (symbol: string, interval: string, limit = 120) =>
     get<{ symbol: string; interval: string; data: Candle[] }>(`/v1/market/instruments/${encodeURIComponent(symbol)}/candles?interval=${interval}&limit=${limit}`, { revalidate: 30 }),
+  author: (slug: string) => get<{ author: Author; articles: ArticleCard[] }>(`/v1/authors/${encodeURIComponent(slug)}`, { revalidate: 120 }),
+  topic: (slug: string) => get<{ topic: TopicInfo; articles: ArticleCard[] }>(`/v1/topics/${encodeURIComponent(slug)}`, { revalidate: 120 }),
   events: () => get<Page<EconomicEvent>>("/v1/events?days=2", { revalidate: 60 }),
-  ads: (surface: "web" | "app", page: string) => get<Page<AdSlot>>(`/v1/ads?surface=${surface}&page=${page}`, { revalidate: 300 }),
+  eventsWeek: (from: string) => get<Page<EconomicEvent>>(`/v1/events?from=${from}&days=7`, { revalidate: 60 }),
+  ads: (surface: "web" | "app", page: string) => get<Page<AdSlot>>(`/v1/ads?surface=${surface}&page=${page}`, { revalidate: 60 }),
 };
 
 /** safe menjalankan panggilan API dan mengembalikan nilai cadangan bila gagal (halaman tetap tampil). */

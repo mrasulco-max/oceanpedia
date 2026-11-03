@@ -58,6 +58,8 @@ func (s *Server) quotes(w http.ResponseWriter, r *http.Request) error {
 		q.Symbol = in.Symbol
 		out[i].Quote = &q
 	}
+	s.evaluateAlerts(r.Context(), out)
+	s.dispatchReminders(r.Context())
 	w.Header().Set("Cache-Control", "public, max-age=15")
 	httpx.JSON(w, 200, Page[QuoteItem]{Data: out})
 	return nil

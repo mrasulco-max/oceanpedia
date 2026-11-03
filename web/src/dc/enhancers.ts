@@ -14,8 +14,9 @@ import { profile } from "./profile";
 import { rbac } from "./rbac";
 import { activity, catform, medialib, moderation, taxonomy } from "./cms";
 import { ops, twofa } from "./ops";
+import { reader } from "./reader";
 
-export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile" | "rbac" | "taxonomy" | "catform" | "moderation" | "medialib" | "activity" | "ops" | "twofa";
+export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile" | "rbac" | "taxonomy" | "catform" | "moderation" | "medialib" | "activity" | "ops" | "twofa" | "reader";
 
 export interface Env {
   router: ReturnType<typeof useRouter>;
@@ -118,7 +119,7 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
   return () => host.removeEventListener("click", onClick, true);
 }
 
-const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile, rbac, taxonomy, catform, moderation, medialib, activity, ops, twofa };
+const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile, rbac, taxonomy, catform, moderation, medialib, activity, ops, twofa, reader };
 
 export function runEnhancer(id: EnhancerId, host: HTMLElement, env: Env): Cleanup {
   return REGISTRY[id]?.(host, env);

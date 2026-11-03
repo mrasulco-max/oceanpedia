@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
+import type { ArticleCard, Instrument } from "./types";
 
 const BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
@@ -34,6 +35,10 @@ export function sessionHash(rt: string | undefined): string {
   return rt ? createHash("sha256").update(rt).digest("hex") : "";
 }
 
+export async function meGetJSON<T>(path: string): Promise<T | null> {
+  return meGet<T>(path);
+}
+
 async function meGet<T>(path: string): Promise<T | null> {
   const jar = await cookies();
   const token = jar.get("ob_at")?.value;
@@ -55,4 +60,46 @@ export async function getProfile(): Promise<{ profile: Profile; alert_limit: num
 
 export async function getSessions(): Promise<Session[]> {
   return (await meGet<{ data: Session[] }>("/v1/me/sessions"))?.data ?? [];
+}
+
+// ---------------------------------------------------------------- fitur pembaca
+
+export interface WatchItem extends Instrument {
+  added_at: string;
+}
+export interface UserAlert {
+  id: string;
+  symbol: string;
+  condition: "price_above" | "price_below" | "change_pct" | "volume_spike" | "rsi" | "news";
+  threshold: number | null;
+  frequency: "once" | "every_time" | "daily";
+  channels: string[];
+  note: string;
+  active: boolean;
+  created_at: string;
+}
+export interface UserNotification {
+  id: string;
+  kind: "breaking" | "price_alert" | "topic" | "account" | "reply" | "billing";
+  title: string;
+  body: string;
+  link: string;
+  symbol?: string;
+  price?: number;
+  change?: number;
+  read_at: string | null;
+  created_at: string;
+}
+
+export async function getWatchlist(): Promise<WatchItem[] | null> {
+  return (await meGet<{ data: WatchItem[] }>("/v1/me/watchlist"))?.data ?? null;
+}
+export async function getAlerts(): Promise<UserAlert[] | null> {
+  return (await meGet<{ data: UserAlert[] }>("/v1/me/alerts"))?.data ?? null;
+}
+export async function getBookmarks(): Promise<ArticleCard[] | null> {
+  return (await meGet<{ data: ArticleCard[] }>("/v1/me/bookmarks?limit=100"))?.data ?? null;
+}
+export async function getNotifications(kind = ""): Promise<{ data: UserNotification[]; counts: Record<string, number>; unread: number } | null> {
+  return meGet(`/v1/me/notifications?kind=${encodeURIComponent(kind)}&limit=100`);
 }

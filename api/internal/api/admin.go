@@ -309,6 +309,7 @@ func (s *Server) createArticle(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	s.audit(r, "article."+actionVerb(status), a.ID, map[string]any{"title": a.Title, "status": a.Status})
+	s.notifyPublished(r.Context(), a.ID, a.Status, a.PublishedAt)
 	httpx.JSON(w, http.StatusCreated, a)
 	return nil
 }
@@ -347,6 +348,7 @@ func (s *Server) updateArticle(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	s.audit(r, "article."+actionVerb(status), a.ID, map[string]any{"title": a.Title, "status": a.Status})
+	s.notifyPublished(r.Context(), a.ID, a.Status, a.PublishedAt)
 	httpx.JSON(w, 200, a)
 	return nil
 }
@@ -407,6 +409,7 @@ func (s *Server) articleStatus(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	s.notifyPublished(r.Context(), a.ID, a.Status, a.PublishedAt)
 	httpx.JSON(w, 200, a)
 	return nil
 }
