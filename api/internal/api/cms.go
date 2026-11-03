@@ -566,6 +566,9 @@ var mediaLicenses = map[string]bool{"none": true, "owned": true, "licensed": tru
 func (s *Server) mediaLibrary(w http.ResponseWriter, r *http.Request) error {
 	q := r.URL.Query()
 	f := q.Get("filter")
+	if f == "all" {
+		f = ""
+	}
 	if f != "" && f != "unlicensed" && f != "expiring" && !mediaKinds[f] {
 		return httpx.BadRequest("Filter tidak dikenal.")
 	}
@@ -672,7 +675,7 @@ func (s *Server) auditLog(w http.ResponseWriter, r *http.Request) error {
 		days = 7
 	}
 	var ents []string
-	if g := q.Get("group"); g != "" {
+	if g := q.Get("group"); g != "" && g != "all" {
 		e, ok := store.AuditGroups[g]
 		if !ok {
 			return httpx.BadRequest("Grup tidak dikenal.")

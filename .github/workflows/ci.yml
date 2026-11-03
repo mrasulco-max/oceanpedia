@@ -202,6 +202,7 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "$AU" "localhost:8080/v1/admin/comments"); test "$code" = 403
           curl -sf -H "$ED" "localhost:8080/v1/admin/media/library?filter=all" | jq -e '.counts.all >= 0'
           curl -sf -H "$SU" "localhost:8080/v1/admin/audit?group=content&days=7" | jq -e '([.data[].action] | index("category.delete")) != null'
+          curl -sf -H "$SU" "localhost:8080/v1/admin/audit?group=all&days=1" | jq -e '.groups.all >= 1'
           curl -sf -H "$ED" localhost:8080/v1/admin/staff | jq -e '.data | length >= 3'
           echo "$ART" > /tmp/art.json
       - name: Jalankan web
