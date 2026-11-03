@@ -38,7 +38,7 @@ func (s *Server) Handler() http.Handler {
 		m.Handle(pattern, s.optionalAuth(requireAuth(wrap(fn))))
 	}
 	staff := func(pattern string, fn func(http.ResponseWriter, *http.Request) error) {
-		m.Handle(pattern, s.optionalAuth(requireStaff(wrap(fn))))
+		m.Handle(pattern, s.optionalAuth(s.requireStaff(wrap(fn))))
 	}
 
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { httpx.JSON(w, 200, map[string]string{"status": "ok"}) })
@@ -109,6 +109,16 @@ func (s *Server) Handler() http.Handler {
 	staff("POST /v1/admin/articles/{id}/status", s.articleStatus)
 	staff("DELETE /v1/admin/articles/{id}", s.deleteArticle)
 	staff("POST /v1/admin/media", s.uploadMedia)
+
+	// RBAC: peran, izin, undangan staf, role & blokir pengguna
+	staff("GET /v1/admin/rbac", s.rbacState)
+	staff("PUT /v1/admin/rbac/matrix", s.rbacMatrix)
+	staff("POST /v1/admin/rbac/roles", s.rbacCreateRole)
+	staff("DELETE /v1/admin/rbac/roles/{key}", s.rbacDeleteRole)
+	staff("POST /v1/admin/rbac/invitations", s.rbacInvite)
+	staff("DELETE /v1/admin/rbac/invitations/{id}", s.rbacRevokeInvite)
+	staff("PATCH /v1/admin/users/{id}/role", s.setUserRole)
+	staff("POST /v1/admin/users/{id}/block", s.blockUser)
 	h("GET /v1/media/{id}", s.media)
 
 	m.Handle("/", wrap(func(w http.ResponseWriter, r *http.Request) error { return httpx.NotFound("Endpoint tidak dikenal.") }))

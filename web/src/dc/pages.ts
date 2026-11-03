@@ -6,7 +6,8 @@ import { api, ApiError, safe } from "@/lib/api";
 import type { Article, ArticleCard, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
-import { bindContent, bindEditor, bindStaffHeader } from "./admin-bind";
+import { bindContent, bindEditor, bindStaffHeader, type Staff } from "./admin-bind";
+import { bindRoles } from "./rbac-bind";
 import { bindAccount, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
@@ -244,11 +245,11 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = bindLogin(html, "andi@oceanbird.id", "Lanjut");
     enhance.push("login");
     ctx.next = search.next?.startsWith("/admin") ? search.next : "/admin";
-    ctx.requireRole = "admin,editor,author";
+    ctx.requireStaff = "1";
   }
   // Panel redaksi: data nyata untuk "Tulis artikel" & "Konten".
   if (board.kind === "admin") html = bindStaffHeader(html, user);
-  const role = user?.role ?? "reader";
+  const who: Staff = { id: user?.id ?? "", perms: new Set(user?.permissions ?? []) };
   if (boardId === "admin-editor") {
     const id = search.id && UUID.test(search.id) ? search.id : "";
     const [cats, ins, article] = await Promise.all([
@@ -257,7 +258,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       id ? adminApi.article(id) : Promise.resolve(null),
     ]);
     if (id && !article) notFound();
-    html = bindEditor(html, { article, categories: cats.data, instruments: ins.data, role });
+    html = bindEditor(html, { article, categories: cats.data, instruments: ins.data, who });
     enhance.push("editor");
     if (article) ctx.id = article.id;
     title = article ? `Edit: ${article.title}` : "Tulis artikel";
@@ -267,8 +268,13 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     let selected: AdminArticle | null = null;
     if (search.id && UUID.test(search.id)) selected = list.data.find((x) => x.id === search.id) ?? (await adminApi.article(search.id));
     selected ??= list.data[0] ?? null;
-    html = bindContent(html, { list, status, selected, role });
+    html = bindContent(html, { list, status, selected, who });
     enhance.push("content");
+  } else if (boardId === "admin-roles") {
+    const [rbac, cats] = await Promise.all([adminApi.rbac(), safe(api.categories(), { data: [] })]);
+    if (!rbac) notFound();
+    html = bindRoles(html, { rbac, categories: cats.data });
+    enhance.push("rbac");
   }
 
   if (user && board.kind !== "admin") html = bindAccount(html, user);

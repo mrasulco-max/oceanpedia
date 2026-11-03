@@ -179,7 +179,7 @@ func (p *PG) AdminCounts(ctx context.Context, mine string) (map[string]int, erro
 
 const qAuthorForUser = `SELECT id FROM authors WHERE user_id = $1`
 const qCreateAuthorForUser = `INSERT INTO authors (user_id, slug, name, title, verified)
-SELECT u.id, $2, u.full_name, CASE u.role WHEN 'admin' THEN 'Redaksi' WHEN 'editor' THEN 'Editor' ELSE 'Penulis' END, true
+SELECT u.id, $2, u.full_name, CASE WHEN u.role IN ('admin', 'superadmin') THEN 'Redaksi' WHEN u.role = 'author' THEN 'Penulis' ELSE COALESCE((SELECT r.name FROM roles r WHERE r.key = u.role), 'Penulis') END, true
 FROM users u WHERE u.id = $1
 ON CONFLICT (slug) DO NOTHING
 RETURNING id`

@@ -8,7 +8,8 @@ import { currentUser, type SessionUser } from "@/lib/session";
 
 type Props = { params: Promise<{ path?: string[] }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-const STAFF = new Set(["admin", "editor", "author"]);
+/** Izin minimum per halaman admin (RBAC dari database); selain ini cukup akses panel. */
+const PAGE_PERM: Record<string, string> = { "/admin/role": "rbac.manage" };
 
 function flat(sp: Record<string, string | string[] | undefined>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -26,10 +27,12 @@ async function resolve(props: Props) {
   let me: SessionUser | null = null;
   if (m.route.admin && !m.route.public) {
     me = await currentUser();
-    if (!me || !STAFF.has(me.role)) {
+    if (!me || !me.is_staff) {
       const qs = new URLSearchParams(search).toString();
       redirect(`/admin/masuk?next=${encodeURIComponent("/" + path.join("/") + (qs ? `?${qs}` : ""))}`);
     }
+    const perm = PAGE_PERM[m.route.path];
+    if (perm && !me.permissions?.includes(perm)) redirect("/admin?akses=ditolak");
   }
   // Situs: sesi pembaca (bila ada) untuk ikon akun, halaman akun, dan alur masuk/daftar.
   if (!m.route.admin) {

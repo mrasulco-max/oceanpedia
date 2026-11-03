@@ -187,6 +187,22 @@ paths:
     get: { summary: Detail artikel redaksi, tags: [Redaksi], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: OK }, '404': { $ref: '#/components/responses/Problem' } } }
     put: { summary: Ubah artikel, tags: [Redaksi], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/ArticleInput' } } } }, responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } } }
     delete: { summary: "Hapus artikel (penulis: draf/review miliknya; editor/admin: semua yang tidak sedang tayang)", tags: [Redaksi], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Terhapus }, '403': { $ref: '#/components/responses/Problem' }, '409': { $ref: '#/components/responses/Problem' } } }
+  /v1/admin/rbac:
+    get: { summary: "RBAC: peran, izin, matriks, anggota staf & undangan (izin rbac.manage)", tags: [RBAC], security: [{ bearer: [] }], responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Problem' } } }
+  /v1/admin/rbac/matrix:
+    put: { summary: "Simpan matriks izin {matrix: {role: [izin]}}; Super Admin selalu semua izin", tags: [RBAC], security: [{ bearer: [] }], responses: { '200': { description: Keadaan RBAC terbaru }, '422': { $ref: '#/components/responses/Problem' } } }
+  /v1/admin/rbac/roles:
+    post: { summary: "Buat role staf baru {name, description}", tags: [RBAC], security: [{ bearer: [] }], responses: { '201': { description: Dibuat }, '409': { $ref: '#/components/responses/Problem' } } }
+  /v1/admin/rbac/roles/{key}:
+    delete: { summary: "Hapus role buatan sendiri yang tidak punya anggota", tags: [RBAC], security: [{ bearer: [] }], parameters: [{ name: key, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK }, '409': { $ref: '#/components/responses/Problem' } } }
+  /v1/admin/rbac/invitations:
+    post: { summary: "Undang staf {email, role, categories}; role diterapkan saat email itu masuk/daftar ≤ 48 jam", tags: [RBAC], security: [{ bearer: [] }], responses: { '201': { description: Dibuat }, '422': { $ref: '#/components/responses/Problem' } } }
+  /v1/admin/rbac/invitations/{id}:
+    delete: { summary: "Batalkan undangan", tags: [RBAC], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: OK } } }
+  /v1/admin/users/{id}/role:
+    patch: { summary: "Ganti role pengguna {role} (rbac.manage; bukan akun sendiri)", tags: [RBAC], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Keadaan RBAC terbaru } } }
+  /v1/admin/users/{id}/block:
+    post: { summary: "Blokir/buka blokir {blocked} (users.ban); blokir mencabut semua sesi", tags: [RBAC], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: OK } } }
   /v1/admin/articles/{id}/status:
     post: { summary: Terbitkan / minta revisi / tarik / arsipkan (editor & admin), tags: [Redaksi], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], requestBody: { content: { application/json: { schema: { type: object, required: [action], properties: { action: { enum: [publish, reject, unpublish, archive] }, note: { type: string }, publish_at: { type: string, format: date-time } } } } } }, responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Problem' } } }
   /v1/admin/media:

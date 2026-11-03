@@ -652,6 +652,9 @@ func AllQueries() map[string]string {
 	for k, v := range profileQueries() {
 		out[k] = v
 	}
+	for k, v := range rbacQueries() {
+		out[k] = v
+	}
 	for k, v := range adminQueries() {
 		out[k] = v
 	}

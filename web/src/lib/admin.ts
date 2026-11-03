@@ -43,7 +43,25 @@ async function adminGet<T>(path: string): Promise<T | null> {
   return (await res.json()) as T;
 }
 
+export interface RbacRole {
+  key: string;
+  name: string;
+  description: string;
+  is_staff: boolean;
+  is_system: boolean;
+  members: number;
+}
+export interface RbacState {
+  roles: RbacRole[];
+  permissions: { key: string; group: string; label: string }[];
+  matrix: Record<string, string[]>;
+  staff: { id: string; email: string; full_name: string; role: string; role_name: string; blocked_at: string | null; created_at: string; desks: string[] }[];
+  invitations: { id: string; email: string; role: string; role_name: string; categories: string[]; invited_by_name: string | null; created_at: string; expires_at: string; status: "pending" | "expired" | "accepted" | "revoked" }[];
+  me: string;
+}
+
 export const adminApi = {
+  rbac: () => adminGet<RbacState>("/rbac"),
   articles: (status: string, q = "") => adminGet<AdminList>(`/articles?status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&limit=100`),
   article: (id: string) => adminGet<AdminArticle>(`/articles/${encodeURIComponent(id)}`),
 };

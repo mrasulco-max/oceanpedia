@@ -11,8 +11,9 @@ import { ai } from "./ai";
 import { auth, verifyUrl } from "./auth";
 import { search } from "./search";
 import { profile } from "./profile";
+import { rbac } from "./rbac";
 
-export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile";
+export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile" | "rbac";
 
 export interface Env {
   router: ReturnType<typeof useRouter>;
@@ -45,7 +46,7 @@ function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = (await res.json().catch(() => ({}))) as { user?: { role?: string }; detail?: string; type?: string; errors?: Record<string, string> };
+      const data = (await res.json().catch(() => ({}))) as { user?: { role?: string; is_staff?: boolean }; detail?: string; type?: string; errors?: Record<string, string> };
       if (res.status === 403 && data.type?.includes("verification-required")) {
         // Akun baru yang belum konfirmasi OTP: kode sudah dikirim, lanjut ke verifikasi.
         toast(host, data.detail ?? "Konfirmasi akun dengan kode yang dikirim ke email.", "ok");
@@ -56,8 +57,8 @@ function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
         toast(host, data.detail ?? "Gagal masuk. Coba lagi.");
         return;
       }
-      const need = ctx.requireRole?.split(",").filter(Boolean) ?? [];
-      if (need.length && !need.includes(data.user?.role ?? "")) {
+      // Panel admin: akses ditentukan izin peran di database (RBAC), bukan daftar peran tetap.
+      if (ctx.requireStaff === "1" && !data.user?.is_staff) {
         await fetch("/api/auth/logout", { method: "POST" });
         toast(host, "Akun ini tidak punya akses ke panel admin.");
         return;
@@ -103,7 +104,7 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
   return () => host.removeEventListener("click", onClick, true);
 }
 
-const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile };
+const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile, rbac };
 
 export function runEnhancer(id: EnhancerId, host: HTMLElement, env: Env): Cleanup {
   return REGISTRY[id]?.(host, env);

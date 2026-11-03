@@ -284,6 +284,56 @@ func TestPGStore(t *testing.T) {
 	if u6, _ := s.UserByID(ctx, u.ID); u6.AvatarID != nil {
 		t.Fatal("avatar harus kosong")
 	}
+	// RBAC: izin dari database, ubah matriks, undangan diterapkan saat masuk, blokir.
+	if a, err := s.UserAccess(ctx, u.ID); err != nil || a.Role != "reader" || a.IsStaff || len(a.Permissions) != 0 {
+		t.Fatalf("akses pembaca: %v %+v", err, a)
+	}
+	st, err := s.RBACState(ctx)
+	if err != nil || len(st.Roles) < 8 || len(st.Permissions) != 13 || len(st.Matrix["superadmin"]) != 13 || len(st.Matrix["author"]) != 2 {
+		t.Fatalf("rbac: %v roles=%d perms=%d", err, len(st.Roles), len(st.Permissions))
+	}
+	if err := s.CreateRole(ctx, "analis_uji_"+slugBase[len(slugBase)-6:], "Analis Uji", "uji"); err != nil {
+		t.Fatal(err)
+	}
+	ex := time.Now().Add(48 * time.Hour)
+	if _, err := s.CreateInvitation(ctx, email, "author", []string{"saham"}, u.ID, ex); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateInvitation(ctx, email, "editor", nil, u.ID, ex); err != nil {
+		t.Fatalf("undangan kedua menggantikan yang pertama: %v", err)
+	}
+	if inv, role, err := s.AcceptInvitation(ctx, u.ID); err != nil || inv == "" || role != "editor" {
+		t.Fatalf("terima undangan: %v %q %q", err, inv, role)
+	}
+	if a, _ := s.UserAccess(ctx, u.ID); a.Role != "editor" || !a.IsStaff || !a.Has("content.publish") {
+		t.Fatalf("akses setelah undangan: %+v", a)
+	}
+	if inv, _, _ := s.AcceptInvitation(ctx, u.ID); inv != "" {
+		t.Fatal("undangan hanya dipakai sekali")
+	}
+	if err := s.SetMatrix(ctx, map[string][]string{"editor": {"content.write"}}); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := s.UserAccess(ctx, u.ID); a.Has("content.publish") {
+		t.Fatal("izin yang dicabut masih ada")
+	}
+	if err := s.SetMatrix(ctx, map[string][]string{"editor": st.Matrix["editor"]}); err != nil {
+		t.Fatal(err)
+	}
+	if staff, err := s.StaffMembers(ctx); err != nil || len(staff) == 0 {
+		t.Fatalf("staf: %v", err)
+	}
+	if err := s.SetUserRole(ctx, u.ID, "peran_tidak_ada"); err == nil {
+		t.Fatal("role tak dikenal harus gagal")
+	}
+	if err := s.SetBlocked(ctx, u.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := s.UserAccess(ctx, u.ID); !a.Blocked {
+		t.Fatal("harus terblokir")
+	}
+	_ = s.SetBlocked(ctx, u.ID, false)
+	_ = s.SetUserRole(ctx, u.ID, "reader")
 	// Cache data pasar bersama.
 	if err := s.MarketCachePut(ctx, "q:TEST", []byte(`{"price":1}`), ""); err != nil {
 		t.Fatal(err)

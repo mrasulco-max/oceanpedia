@@ -320,7 +320,7 @@ export function editor(host: HTMLElement, { router, ctx }: Env): Cleanup {
     if (sw) {
       e.preventDefault();
       if (sw.getAttribute("aria-disabled") === "true") {
-        toast(host, "Hanya editor/admin yang bisa menandai BREAKING.");
+        toast(host, "Peran Anda belum punya izin menandai BREAKING (content.breaking).");
         return;
       }
       setSwitch(sw, sw.getAttribute("aria-checked") !== "true");

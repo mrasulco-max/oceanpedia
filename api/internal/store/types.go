@@ -240,6 +240,20 @@ type Store interface {
 	AdminArticle(ctx context.Context, id string) (AdminArticle, error)
 	AdminCounts(ctx context.Context, mine string) (map[string]int, error)
 	DeleteArticle(ctx context.Context, id string) error
+
+	// RBAC
+	UserAccess(ctx context.Context, userID string) (Access, error)
+	RBACState(ctx context.Context) (RBAC, error)
+	SetMatrix(ctx context.Context, m map[string][]string) error
+	CreateRole(ctx context.Context, key, name, desc string) error
+	DeleteRole(ctx context.Context, key string) error
+	StaffMembers(ctx context.Context) ([]StaffMember, error)
+	SetUserRole(ctx context.Context, userID, role string) error
+	SetBlocked(ctx context.Context, userID string, blocked bool) error
+	Invitations(ctx context.Context, now time.Time) ([]Invitation, error)
+	CreateInvitation(ctx context.Context, email, role string, categories []string, by string, expires time.Time) (string, error)
+	RevokeInvitation(ctx context.Context, id string) error
+	AcceptInvitation(ctx context.Context, userID string) (string, string, error)
 	CreateArticle(ctx context.Context, userID, authorSlug string, in ArticleInput, slugFn func(i int) string) (AdminArticle, error)
 	UpdateArticle(ctx context.Context, id string, in ArticleInput) (AdminArticle, error)
 	SetArticleStatus(ctx context.Context, id, status string, publishedAt *time.Time, note string) error
