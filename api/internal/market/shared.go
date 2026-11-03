@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,20 @@ type KV interface {
 	MarketCacheGet(ctx context.Context, key string) (body []byte, errText string, fetchedAt time.Time, found bool, err error)
 	MarketCachePut(ctx context.Context, key string, body []byte, errText string) error
 }
+
+// Recorder (opsional, diimplementasikan KV) mencatat setiap panggilan ke penyedia:
+// kredit terpakai, error, 429, dan latensi — untuk panel "Data Pasar".
+type Recorder interface {
+	MarketFetched(ctx context.Context, key, provider string, latency time.Duration, ok, limited bool)
+}
+
+// Saver (opsional, diimplementasikan KV) mengembalikan simbol penyedia berstatus "mode hemat kredit".
+type Saver interface {
+	SaverSymbols(ctx context.Context) (map[string]bool, error)
+}
+
+// SaverTTL: umur minimum harga untuk simbol mode hemat kredit.
+const SaverTTL = 5 * time.Minute
 
 // Shared menghemat kuota penyedia (paket Basic Twelve Data: 8 kredit/menit, 800/hari):
 //   - hasil disimpan di database dan dibagi semua instance,
@@ -32,6 +47,10 @@ type Shared struct {
 	Name string
 	// FastTTL (opsional): umur cache harga & candle intraday untuk penyedia tanpa kuota kredit (Binance).
 	FastTTL time.Duration
+
+	mu      sync.Mutex
+	saver   map[string]bool
+	saverAt time.Time
 }
 
 // Setelah kuota per menit habis (HTTP 429), penyedia tidak dihubungi selama jeda ini.
@@ -95,6 +114,9 @@ func load[T any](ctx context.Context, s *Shared, key string, ttl time.Duration, 
 		return fetch() // database bermasalah: langsung ke penyedia
 	}
 	age := s.now().Sub(at)
+	if fresh(ctx) {
+		age = ttl + s.ErrTTL // anggap kedaluwarsa: ambil langsung dari penyedia
+	}
 	if found && errText != "" && age < s.ErrTTL {
 		return zero, ErrUnavailable
 	}
@@ -115,7 +137,14 @@ func load[T any](ctx context.Context, s *Shared, key string, ttl time.Duration, 
 		}
 		return zero, ErrBusy
 	}
+	start := time.Now()
 	v, ferr := fetch()
+	took := time.Since(start)
+	defer func() {
+		if rec, ok := s.KV.(Recorder); ok {
+			rec.MarketFetched(ctx, key, s.Name, took, ferr == nil, rateLimited(ferr))
+		}
+	}()
 	if ferr == nil {
 		if b, err := json.Marshal(v); err == nil {
 			_ = s.KV.MarketCachePut(ctx, key, b, "")
@@ -142,7 +171,30 @@ func (s *Shared) Quote(ctx context.Context, ps string) (Quote, error) {
 	if s.Skip != nil && s.Skip(ps) {
 		return Quote{}, ErrUnavailable
 	}
-	return load(ctx, s, "q:"+ps, s.quoteTTL(), func() (Quote, error) { return s.P.Quote(ctx, ps) })
+	ttl := s.quoteTTL()
+	if s.saverOn(ctx, ps) && ttl < SaverTTL {
+		ttl = SaverTTL
+	}
+	return load(ctx, s, "q:"+ps, ttl, func() (Quote, error) { return s.P.Quote(ctx, ps) })
+}
+
+// saverOn: daftar simbol mode hemat dibaca dari database paling sering sekali per menit.
+func (s *Shared) saverOn(ctx context.Context, ps string) bool {
+	sv, ok := s.KV.(Saver)
+	if !ok {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.saver == nil || s.now().Sub(s.saverAt) > time.Minute {
+		if m, err := sv.SaverSymbols(ctx); err == nil {
+			s.saver = m
+		} else if s.saver == nil {
+			s.saver = map[string]bool{}
+		}
+		s.saverAt = s.now()
+	}
+	return s.saver[ps]
 }
 
 func (s *Shared) Candles(ctx context.Context, ps, interval string, n int) ([]Candle, error) {

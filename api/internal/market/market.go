@@ -257,8 +257,16 @@ func (c *Cached) put(key string, v any) {
 	c.mu.Unlock()
 }
 
+type freshKey struct{}
+
+// WithFresh menandai permintaan agar melewati cache (uji koneksi dari panel admin).
+// Jeda kuota (429) tetap dihormati.
+func WithFresh(ctx context.Context) context.Context { return context.WithValue(ctx, freshKey{}, true) }
+
+func fresh(ctx context.Context) bool { v, _ := ctx.Value(freshKey{}).(bool); return v }
+
 func (c *Cached) Quote(ctx context.Context, ps string) (Quote, error) {
-	if v, ok := c.get("q:" + ps); ok {
+	if v, ok := c.get("q:" + ps); ok && !fresh(ctx) {
 		return v.(Quote), nil
 	}
 	q, err := c.P.Quote(ctx, ps)

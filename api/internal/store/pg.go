@@ -307,7 +307,12 @@ func (p *PG) PlanByCode(ctx context.Context, code string) (Plan, error) {
 	return l[0], nil
 }
 
-const qAds = `SELECT code, surface, placement, width, height FROM ad_slots WHERE active AND surface = $1 AND $2 = ANY(pages) ORDER BY code`
+const qAds = `SELECT s.code, s.surface, s.placement, s.width, s.height, c.id, c.advertiser, c.creative_url, c.target_url
+FROM ad_slots s LEFT JOIN LATERAL (
+  SELECT id, advertiser, creative_url, target_url FROM ad_campaigns
+  WHERE slot_code = s.code AND status = 'live' AND current_date BETWEEN start_date AND end_date
+  ORDER BY random() LIMIT 1) c ON true
+WHERE s.active AND s.surface = $1 AND $2 = ANY(s.pages) ORDER BY s.code`
 
 func (p *PG) AdSlots(ctx context.Context, surface, page string) ([]AdSlot, error) {
 	rows, err := p.DB.QueryContext(ctx, qAds, surface, page)
@@ -318,7 +323,7 @@ func (p *PG) AdSlots(ctx context.Context, surface, page string) ([]AdSlot, error
 	out := []AdSlot{}
 	for rows.Next() {
 		var a AdSlot
-		if err := rows.Scan(&a.Code, &a.Surface, &a.Placement, &a.Width, &a.Height); err != nil {
+		if err := rows.Scan(&a.Code, &a.Surface, &a.Placement, &a.Width, &a.Height, &a.CampaignID, &a.Advertiser, &a.CreativeURL, &a.TargetURL); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -395,7 +400,8 @@ func (p *PG) UserByID(ctx context.Context, id string) (User, error) {
 	return scanUser(p.DB.QueryRowContext(ctx, qUserByID, id))
 }
 
-const qSaveRefresh = `INSERT INTO refresh_tokens (user_id, token_hash, user_agent, ip, expires_at) VALUES ($1, $2, $3, nullif($4, '')::inet, $5)`
+const qSaveRefresh = `WITH seen AS (UPDATE users SET last_login_at = now() WHERE id = $1::uuid)
+INSERT INTO refresh_tokens (user_id, token_hash, user_agent, ip, expires_at) VALUES ($1, $2, $3, nullif($4, '')::inet, $5)`
 
 func (p *PG) SaveRefreshToken(ctx context.Context, userID string, hash []byte, ua, ip string, exp time.Time) error {
 	_, err := p.DB.ExecContext(ctx, qSaveRefresh, userID, hash, ua, ip, exp)
@@ -651,6 +657,9 @@ func AllQueries() map[string]string {
 	}
 	out["market_cache_get"], out["market_cache_put"] = qMarketCacheGet, qMarketCachePut
 	for k, v := range profileQueries() {
+		out[k] = v
+	}
+	for k, v := range opsQueries() {
 		out[k] = v
 	}
 	for k, v := range cmsQueries() {

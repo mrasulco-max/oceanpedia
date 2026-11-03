@@ -6,7 +6,7 @@ import type { Cleanup, Env } from "./enhancers";
 import { toast } from "./toast";
 
 type Problem = { title?: string; detail?: string; errors?: Record<string, string> };
-async function call(method: string, path: string, body?: unknown): Promise<{ ok: boolean; status: number; data: Problem & Record<string, unknown> }> {
+export async function call(method: string, path: string, body?: unknown): Promise<{ ok: boolean; status: number; data: Problem & Record<string, unknown> }> {
   try {
     const isForm = body instanceof FormData;
     const res = await fetch(`/api/admin/${path}`, {
@@ -20,15 +20,15 @@ async function call(method: string, path: string, body?: unknown): Promise<{ ok:
     return { ok: false, status: 0, data: { detail: "Koneksi bermasalah. Coba lagi." } };
   }
 }
-const msg = (d: Problem, fb: string) => (d.errors && Object.values(d.errors)[0]) || d.detail || d.title || fb;
+export const msg = (d: Problem, fb: string) => (d.errors && Object.values(d.errors)[0]) || d.detail || d.title || fb;
 
-function setSwitch(btn: HTMLElement, on: boolean) {
+export function setSwitch(btn: HTMLElement, on: boolean) {
   btn.setAttribute("aria-checked", String(on));
   btn.style.background = on ? "#4285F4" : "#DCE3EE";
   btn.style.justifyContent = on ? "flex-end" : "flex-start";
 }
 
-function armed(el: HTMLElement, label: string): boolean {
+export function armed(el: HTMLElement, label: string): boolean {
   if (el.dataset.armed === "1") return true;
   const old = el.innerHTML;
   el.dataset.armed = "1";
@@ -42,7 +42,7 @@ function armed(el: HTMLElement, label: string): boolean {
   return false;
 }
 
-function onCapture(host: HTMLElement, fn: (t: Element, e: MouseEvent) => void | Promise<void>): () => void {
+export function onCapture(host: HTMLElement, fn: (t: Element, e: MouseEvent) => void | Promise<void>): () => void {
   const h = (e: MouseEvent) => {
     const t = e.target instanceof Element ? e.target : null;
     if (t) void fn(t, e);
@@ -50,7 +50,7 @@ function onCapture(host: HTMLElement, fn: (t: Element, e: MouseEvent) => void | 
   host.addEventListener("click", h, true);
   return () => host.removeEventListener("click", h, true);
 }
-const stop = (e: Event) => {
+export const stop = (e: Event) => {
   e.preventDefault();
   e.stopPropagation();
 };
@@ -408,7 +408,7 @@ export function moderation(host: HTMLElement, { router }: Env): Cleanup {
 }
 
 // ======================================================================= media
-async function shrink(file: File, max = 2000): Promise<Blob> {
+export async function shrink(file: File, max = 2000): Promise<Blob> {
   if (file.type === "image/gif" && file.size <= 4 * 1024 * 1024) return file;
   try {
     const bmp = await createImageBitmap(file);

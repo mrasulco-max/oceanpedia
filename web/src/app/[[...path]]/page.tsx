@@ -9,7 +9,15 @@ import { currentUser, type SessionUser } from "@/lib/session";
 type Props = { params: Promise<{ path?: string[] }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 /** Izin minimum per halaman admin (RBAC dari database); selain ini cukup akses panel. */
-const PAGE_PERM: Record<string, string> = { "/admin/role": "rbac.manage", "/admin/komentar": "comments.moderate", "/admin/aktivitas": "audit.read" };
+const PAGE_PERM: Record<string, string | string[]> = {
+  "/admin/role": "rbac.manage",
+  "/admin/komentar": "comments.moderate",
+  "/admin/aktivitas": "audit.read",
+  "/admin/pengguna": "users.read",
+  "/admin/iklan": ["ads.manage", "revenue.read"],
+  "/admin/pasar": ["market.read", "market.manage"],
+  "/admin/simbol": ["market.read", "market.manage"],
+};
 
 function flat(sp: Record<string, string | string[] | undefined>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -32,7 +40,7 @@ async function resolve(props: Props) {
       redirect(`/admin/masuk?next=${encodeURIComponent("/" + path.join("/") + (qs ? `?${qs}` : ""))}`);
     }
     const perm = PAGE_PERM[m.route.path];
-    if (perm && !me.permissions?.includes(perm)) redirect("/admin?akses=ditolak");
+    if (perm && !(Array.isArray(perm) ? perm : [perm]).some((p) => me.permissions?.includes(p))) redirect("/admin?akses=ditolak");
   }
   // Situs: sesi pembaca (bila ada) untuk ikon akun, halaman akun, dan alur masuk/daftar.
   if (!m.route.admin) {
