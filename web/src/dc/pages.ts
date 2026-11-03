@@ -14,7 +14,7 @@ import { bindAds, bindTwoFactor, bindUsers, bindMarket, bindSymbol, MARKET_TABS,
 import { bindAccount, bindStaffExpired, bindStaffForgot, bindStaffReset, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
-import { getAlerts, getBookmarks, getNotifications, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
+import { getAlerts, getBookmarks, getNotifications, getUnread, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
 import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
@@ -30,6 +30,17 @@ const AI_FAB_PATHS = new Set(["/", "/market", "/market/[symbol]", "/berita/[slug
 function aiFab(app: boolean): string {
   const bottom = app ? "calc(92px + env(safe-area-inset-bottom))" : "24px";
   return `<a href="/ai" data-ai-fab aria-label="Buka Asisten AI" style="position: fixed; right: 16px; bottom: ${bottom}; z-index: 40; display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 999px; background: linear-gradient(110deg,#2563EB 0%,#4285F4 50%,#2563EB 100%); color: #FFFFFF; font-size: 14px; font-weight: 500; text-decoration: none; box-shadow: 0 8px 24px rgba(37,99,235,.35)"><span aria-hidden="true">✦</span>Asisten AI</a>`;
+}
+
+/** Ikon lonceng di header: angka/titik merah hanya bila ada notifikasi belum dibaca. */
+export function bindBell(html: string, unread: number, href: string): string {
+  return html.replace(/<a [^>]*aria-label="Notifikasi(?:, \d+ baru)?"[^>]*>[\s\S]*?<\/a>/g, (a) => {
+    let h = a.replace(/href="#"/, `href="${href}"`).replace(/aria-label="Notifikasi(?:, \d+ baru)?"/, unread ? `aria-label="Notifikasi, ${unread} baru"` : 'aria-label="Notifikasi"');
+    // Lencana angka (aplikasi) dan titik merah (web/admin).
+    h = h.replace(/(<span style="position: absolute;[^"]*border-radius: 999px;[^"]*">)\d+(<\/span>)/, unread ? `$1${unread > 99 ? "99+" : unread}$2` : "");
+    if (!unread) h = h.replace(/<span style="position: absolute;[^"]*width: 8px; height: 8px;[^"]*"><\/span>/, "");
+    return h;
+  });
 }
 
 export interface Match {
@@ -436,6 +447,12 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const slots = await safe(api.ads(board.kind === "app" ? "app" : "web", pageKey), { data: [] });
     html = bindAdSlots(html, slots.data);
     if (html.includes("data-ad-imp") && !enhance.includes("reader")) enhance.push("reader");
+  }
+
+  // Lencana lonceng: jumlah notifikasi belum dibaca yang sebenarnya (bukan angka contoh desain).
+  if (html.includes('aria-label="Notifikasi')) {
+    const unread = board.kind === "admin" ? (user ? ((await adminApi.feed())?.urgent ?? 0) : 0) : user ? await getUnread() : 0;
+    html = bindBell(html, unread, board.kind === "admin" ? "/admin/notifikasi" : "/notifikasi");
   }
 
   // Form masuk memanggil API sungguhan.

@@ -451,6 +451,10 @@ jobs:
           ! curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/watchlist | grep -q 'role="complementary" aria-label="Iklan '
           ! curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'khusus pelanggan Ocean Pedia Plus'
           code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/pjar -A "$MOB" localhost:3000/plus/analisis); test "$code" = 200
+          # Lonceng notifikasi: tidak ada angka contoh "3" bila tidak ada notifikasi belum dibaca.
+          ! curl -sf -A "$MOB" localhost:3000/ | grep -q 'Notifikasi, 3 baru'
+          curl -sf -A "$MOB" localhost:3000/ | grep -q 'href="/notifikasi" aria-label="Notifikasi"'
+          curl -sf -A "$DESK" localhost:3000/ | grep -q 'href="/notifikasi" aria-label="Notifikasi"'
           # Asisten AI (/ai): tamu diarahkan masuk, pelanggan Plus dapat obrolan + tombol cepat di beranda.
           code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" localhost:3000/ai); test "$code" = 307
           curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/ai | grep -q 'Analisis gambar chart'
