@@ -40,7 +40,8 @@ async function resolve(props: Props) {
       redirect(`/admin/masuk?next=${encodeURIComponent("/" + path.join("/") + (qs ? `?${qs}` : ""))}`);
     }
     const perm = PAGE_PERM[m.route.path];
-    if (perm && !(Array.isArray(perm) ? perm : [perm]).some((p) => me.permissions?.includes(p))) redirect("/admin?akses=ditolak");
+    const granted = me.permissions ?? [];
+    if (perm && !(Array.isArray(perm) ? perm : [perm]).some((p) => granted.includes(p))) redirect("/admin?akses=ditolak");
   }
   // Situs: sesi pembaca (bila ada) untuk ikon akun, halaman akun, dan alur masuk/daftar.
   if (!m.route.admin) {
