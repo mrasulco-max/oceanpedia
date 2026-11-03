@@ -40,7 +40,7 @@ export function bindArticleAI(html: string, a: Article, ai: AIAnalysis | null, l
 }
 
 /** Halaman baca Plus (app-26): kalimat inti, sentimen, dan tautan analisis lengkap. */
-const LOCKED_TEXT = "Ringkasan AI, sentimen, dan level penting artikel ini khusus pelanggan Ocean Pedia Plus.";
+const LOCKED_TEXT = "Ringkasan AI, sentimen, dan level penting artikel ini — plus Asisten AI untuk tanya jawab semua berita & pasar serta analisis gambar chart — khusus pelanggan Ocean Pedia Plus.";
 
 export function bindPlusReadAI(html: string, a: Article, ai: AIAnalysis | null): string {
   let h = bindArticleAI(html, a, ai);
@@ -88,7 +88,7 @@ export function bindAnalysisPage(html: string, ai: AIAnalysis | null, src: AISou
   const ctxAttr = src.kind === "article" ? `data-ai-ask-slug="${esc(src.slug ?? "")}"` : `data-ai-ask-symbol="${esc(src.symbol ?? "")}"`;
   h = h.replace(
     /<div style="margin-top: 14px"><span style="font-size: 11px; line-height: 1.5; color: #5F6B7D">Dihasilkan AI/,
-    `<div data-ai-chat ${ctxAttr} data-dc-keep style="display: flex; flex-direction: column; gap: 10px"></div>$&`,
+    `<div data-ai-chat ${ctxAttr} data-dc-keep style="display: flex; flex-direction: column; gap: 10px"></div><a href="/ai" data-ai-open style="display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px; border-radius: 16px; background: #EEF5FF; border: 1px solid #BFD6FB; color: #1E40AF; text-decoration: none; font-size: 13px; line-height: 1.4"><span aria-hidden="true" style="font-size: 18px">✦</span><span style="flex: 1"><strong style="display: block; font-weight: 500">Buka Asisten AI</strong>Tanya semua berita &amp; pergerakan pasar, atau unggah gambar chart untuk analisis support–resistance.</span><span aria-hidden="true">›</span></a>$&`,
   );
   if (!ai) {
     h = h.split(SAMPLE_INTI).join(`<span data-ai-fill="${src.kind === "article" ? `article:${esc(src.slug ?? "")}` : `market:${esc(src.symbol ?? "")}`}">Analisis AI sedang disiapkan…</span>`);
