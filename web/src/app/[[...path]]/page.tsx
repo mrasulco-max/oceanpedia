@@ -9,7 +9,7 @@ import { currentUser, type SessionUser } from "@/lib/session";
 type Props = { params: Promise<{ path?: string[] }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 /** Izin minimum per halaman admin (RBAC dari database); selain ini cukup akses panel. */
-const PAGE_PERM: Record<string, string> = { "/admin/role": "rbac.manage" };
+const PAGE_PERM: Record<string, string> = { "/admin/role": "rbac.manage", "/admin/komentar": "comments.moderate", "/admin/aktivitas": "audit.read" };
 
 function flat(sp: Record<string, string | string[] | undefined>): Record<string, string> {
   const out: Record<string, string> = {};

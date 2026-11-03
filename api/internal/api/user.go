@@ -602,7 +602,12 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) error {
 	if n := utf8.RuneCountInString(in.Body); n < 1 || n > 2000 {
 		return httpx.Validation(map[string]string{"body": "Komentar 1–2000 karakter."})
 	}
-	c, err := s.Store.AddComment(r.Context(), uid(r), r.PathValue("slug"), in.Body)
+	u, err := s.Store.UserByID(r.Context(), uid(r))
+	if err != nil {
+		return err
+	}
+	status, reason := s.screenComment(r, in.Body, s.Now().Sub(u.CreatedAt))
+	c, err := s.Store.AddComment(r.Context(), uid(r), r.PathValue("slug"), in.Body, status, reason)
 	if err != nil {
 		return err
 	}

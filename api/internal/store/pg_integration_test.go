@@ -179,7 +179,7 @@ func TestPGStore(t *testing.T) {
 	if len(rc) != 4 || rc[0].Kind != "bullish" || rc[0].Count < 1 {
 		t.Fatalf("reactions: %+v", rc)
 	}
-	if c, err := s.AddComment(ctx, u.ID, a.Slug, "Mantap"); err != nil || c.UserName != "Penguji Baru" {
+	if c, err := s.AddComment(ctx, u.ID, a.Slug, "Mantap", "visible", ""); err != nil || c.UserName != "Penguji Baru" {
 		t.Fatalf("comment: %v", err)
 	}
 	promo := "PLUSBARU"
@@ -289,7 +289,7 @@ func TestPGStore(t *testing.T) {
 		t.Fatalf("akses pembaca: %v %+v", err, a)
 	}
 	st, err := s.RBACState(ctx)
-	if err != nil || len(st.Roles) < 8 || len(st.Permissions) != 13 || len(st.Matrix["superadmin"]) != 13 || len(st.Matrix["author"]) != 2 {
+	if err != nil || len(st.Roles) < 8 || len(st.Permissions) != 16 || len(st.Matrix["superadmin"]) != 16 || len(st.Matrix["author"]) != 2 {
 		t.Fatalf("rbac: %v roles=%d perms=%d", err, len(st.Roles), len(st.Permissions))
 	}
 	if err := s.CreateRole(ctx, "analis_uji_"+slugBase[len(slugBase)-6:], "Analis Uji", "uji"); err != nil {

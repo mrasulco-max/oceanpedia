@@ -60,7 +60,110 @@ export interface RbacState {
   me: string;
 }
 
+export interface AdminCategory {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  icon: string;
+  parent_id: string | null;
+  parent_name: string | null;
+  sort_order: number;
+  status: "active" | "draft" | "archived";
+  in_menu: boolean;
+  followable: boolean;
+  color: string;
+  seo_title: string;
+  seo_description: string;
+  editor_id: string | null;
+  editor_name: string | null;
+  articles: number;
+  published: number;
+  drafts: number;
+  views: number;
+  followers: number;
+  created_at: string;
+  created_by_name: string | null;
+}
+export interface AdminTag {
+  id: string;
+  slug: string;
+  name: string;
+  articles: number;
+  followers: number;
+  main_category: string | null;
+}
+export interface ModComment {
+  id: string;
+  body: string;
+  status: "visible" | "hidden" | "flagged" | "pending";
+  flag_reason: string;
+  created_at: string;
+  user_id: string;
+  user_name: string;
+  user_blocked: boolean;
+  article_title: string;
+  article_slug: string;
+  reports: number;
+  moderated_at: string | null;
+  moderated_by_name: string | null;
+}
+export interface ModerationState {
+  data: ModComment[];
+  counts: { pending: number; flagged: number; visible: number; hidden: number; approved_today: number; blocked_week: number };
+  settings: { hold_links: boolean; detect_pump: boolean; hide_after_reports: boolean; report_threshold: number; hold_new_accounts: boolean };
+  words: string[];
+}
+export interface MediaItem {
+  id: string;
+  url: string;
+  mime: string;
+  size: number;
+  title: string;
+  kind: "photo" | "chart" | "illustration" | "video";
+  source: string;
+  license: "none" | "owned" | "licensed" | "editorial" | "cc";
+  license_until: string | null;
+  alt: string;
+  file_name: string;
+  width: number | null;
+  height: number | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+  used_in: number;
+  used_title: string | null;
+  expires_soon: boolean;
+  expired: boolean;
+}
+export interface MediaLibrary {
+  data: MediaItem[];
+  counts: { all: number; unlicensed: number; expiring: number; video: number };
+}
+export interface AuditEntry {
+  id: number;
+  actor_id: string | null;
+  actor_name: string | null;
+  actor_role: string | null;
+  action: string;
+  entity: string;
+  entity_id: string | null;
+  data: Record<string, unknown>;
+  ip: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+export interface AuditPage {
+  data: AuditEntry[];
+  groups: Record<string, number>;
+  days: number;
+}
+
 export const adminApi = {
+  staff: () => adminGet<{ data: RbacState["staff"] }>(`/staff`),
+  categories: (q = "") => adminGet<{ categories: AdminCategory[]; tags: AdminTag[]; tag_total: number; tag_unused: number }>(`/categories?q=${encodeURIComponent(q)}`),
+  comments: (status: string) => adminGet<ModerationState>(`/comments?status=${encodeURIComponent(status)}&limit=100`),
+  media: (filter: string, q = "") => adminGet<MediaLibrary>(`/media/library?filter=${encodeURIComponent(filter)}&q=${encodeURIComponent(q)}&limit=120`),
+  audit: (group: string, days: number, before = "") => adminGet<AuditPage>(`/audit?group=${encodeURIComponent(group)}&days=${days}&before=${encodeURIComponent(before)}&limit=60`),
   rbac: () => adminGet<RbacState>("/rbac"),
   articles: (status: string, q = "") => adminGet<AdminList>(`/articles?status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&limit=100`),
   article: (id: string) => adminGet<AdminArticle>(`/articles/${encodeURIComponent(id)}`),

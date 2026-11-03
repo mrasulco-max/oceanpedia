@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS ad_campaigns, user_warnings, app_settings, moderation_words, comment_reports, category_redirects;
+ALTER TABLE instruments DROP COLUMN IF EXISTS in_ticker, DROP COLUMN IF EXISTS saver_mode, DROP COLUMN IF EXISTS category_slug, DROP COLUMN IF EXISTS created_at, DROP COLUMN IF EXISTS updated_at;
+ALTER TABLE users DROP COLUMN IF EXISTS blocked_until, DROP COLUMN IF EXISTS block_reason, DROP COLUMN IF EXISTS last_login_at, DROP COLUMN IF EXISTS two_factor;
+ALTER TABLE media DROP COLUMN IF EXISTS title, DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS source, DROP COLUMN IF EXISTS license, DROP COLUMN IF EXISTS license_until, DROP COLUMN IF EXISTS alt, DROP COLUMN IF EXISTS file_name, DROP COLUMN IF EXISTS width, DROP COLUMN IF EXISTS height;
+ALTER TABLE comments DROP COLUMN IF EXISTS flag_reason, DROP COLUMN IF EXISTS moderated_by, DROP COLUMN IF EXISTS moderated_at;
+UPDATE comments SET status = 'hidden' WHERE status = 'pending';
+ALTER TABLE comments DROP CONSTRAINT IF EXISTS comments_status_check;
+ALTER TABLE comments ADD CONSTRAINT comments_status_check CHECK (status IN ('visible', 'hidden', 'flagged'));
+ALTER TABLE tags DROP COLUMN IF EXISTS created_at;
+ALTER TABLE categories DROP COLUMN IF EXISTS status, DROP COLUMN IF EXISTS in_menu, DROP COLUMN IF EXISTS followable, DROP COLUMN IF EXISTS color, DROP COLUMN IF EXISTS seo_title, DROP COLUMN IF EXISTS seo_description, DROP COLUMN IF EXISTS editor_id, DROP COLUMN IF EXISTS created_by;

@@ -149,6 +149,7 @@ type Comment struct {
 	ID        string    `json:"id"`
 	UserName  string    `json:"user_name"`
 	Body      string    `json:"body"`
+	Status    string    `json:"status,omitempty"` // "pending" = menunggu moderasi
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -231,7 +232,7 @@ type Store interface {
 	React(ctx context.Context, userID, slug, kind string) error
 	Reactions(ctx context.Context, slug string) ([]ReactionCount, error)
 	Comments(ctx context.Context, slug string, limit int) ([]Comment, error)
-	AddComment(ctx context.Context, userID, slug, body string) (Comment, error)
+	AddComment(ctx context.Context, userID, slug, body, status, reason string) (Comment, error)
 
 	CreateInvoice(ctx context.Context, userID string, inv Invoice) (Invoice, error)
 
@@ -240,6 +241,36 @@ type Store interface {
 	AdminArticle(ctx context.Context, id string) (AdminArticle, error)
 	AdminCounts(ctx context.Context, mine string) (map[string]int, error)
 	DeleteArticle(ctx context.Context, id string) error
+
+	// CMS: kategori, tag, komentar, media, log aktivitas
+	AdminCategories(ctx context.Context) ([]AdminCategory, error)
+	CreateCategory(ctx context.Context, in CategoryInput, by string) (string, error)
+	UpdateCategory(ctx context.Context, id string, in CategoryInput) error
+	DeleteCategory(ctx context.Context, id, moveTo string, redirect bool) (int, error)
+	ReorderCategories(ctx context.Context, ids []string) error
+	SetCategoryMenu(ctx context.Context, id string, on bool) error
+	CategoryRedirect(ctx context.Context, slug string) (string, error)
+	AdminTags(ctx context.Context, q string, limit int) ([]AdminTag, error)
+	TagCounts(ctx context.Context) (int, int, error)
+	CreateTag(ctx context.Context, slug, name string) (string, error)
+	UpdateTag(ctx context.Context, id, slug, name string) error
+	DeleteTag(ctx context.Context, id string) error
+	MergeTags(ctx context.Context, from, into string) error
+	ModComments(ctx context.Context, status string, limit int) ([]ModComment, error)
+	ModerationCounts(ctx context.Context) (ModCounts, error)
+	SetCommentStatus(ctx context.Context, ids []string, status, by string) (int, error)
+	ReportComment(ctx context.Context, id, userID, reason string, threshold int) (int, bool, error)
+	ModerationWords(ctx context.Context) ([]string, error)
+	AddModerationWord(ctx context.Context, word, by string) error
+	RemoveModerationWord(ctx context.Context, word string) error
+	Setting(ctx context.Context, key string, dst any) (bool, error)
+	SetSetting(ctx context.Context, key string, v any, by string) error
+	MediaList(ctx context.Context, filter, q string, limit int) ([]MediaItem, MediaCounts, error)
+	MediaItemByID(ctx context.Context, id string) (MediaItem, error)
+	UpdateMediaMeta(ctx context.Context, id string, m MediaMeta) error
+	SetMediaFile(ctx context.Context, id, name, kind string, w, h int) error
+	DeleteMedia(ctx context.Context, id string) error
+	AuditLog(ctx context.Context, days int, entities []string, before int64, limit int) ([]AuditEntry, map[string]int, error)
 
 	// RBAC
 	UserAccess(ctx context.Context, userID string) (Access, error)

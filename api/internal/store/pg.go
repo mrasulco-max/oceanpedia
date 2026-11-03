@@ -40,7 +40,8 @@ const qCategories = `
 SELECT c.id, c.slug, c.name, c.description, c.icon,
        count(a.id) FILTER (WHERE a.status = 'published')::int
 FROM categories c LEFT JOIN articles a ON a.category_id = c.id
-GROUP BY c.id ORDER BY c.sort_order, c.name`
+WHERE c.status = 'active'
+GROUP BY c.id ORDER BY c.parent_id NULLS FIRST, c.sort_order, c.name`
 
 func (p *PG) Categories(ctx context.Context) ([]Category, error) {
 	rows, err := p.DB.QueryContext(ctx, qCategories)
@@ -602,15 +603,15 @@ func (p *PG) Comments(ctx context.Context, slug string, limit int) ([]Comment, e
 
 const qAddComment = `
 WITH ins AS (
-  INSERT INTO comments (article_id, user_id, body)
-  SELECT a.id, $1, $3 FROM articles a WHERE a.slug = $2 AND a.status = 'published'
-  RETURNING id, user_id, body, created_at
+  INSERT INTO comments (article_id, user_id, body, status, flag_reason)
+  SELECT a.id, $1, $3, $4::text, $5::text FROM articles a WHERE a.slug = $2 AND a.status = 'published'
+  RETURNING id, user_id, body, status, created_at
 )
-SELECT ins.id, u.full_name, ins.body, ins.created_at FROM ins JOIN users u ON u.id = ins.user_id`
+SELECT ins.id, u.full_name, ins.body, ins.status, ins.created_at FROM ins JOIN users u ON u.id = ins.user_id`
 
-func (p *PG) AddComment(ctx context.Context, userID, slug, body string) (Comment, error) {
+func (p *PG) AddComment(ctx context.Context, userID, slug, body, status, reason string) (Comment, error) {
 	var c Comment
-	err := p.DB.QueryRowContext(ctx, qAddComment, userID, slug, body).Scan(&c.ID, &c.UserName, &c.Body, &c.CreatedAt)
+	err := p.DB.QueryRowContext(ctx, qAddComment, userID, slug, body, status, reason).Scan(&c.ID, &c.UserName, &c.Body, &c.Status, &c.CreatedAt)
 	return c, notFound(err)
 }
 
@@ -650,6 +651,9 @@ func AllQueries() map[string]string {
 	}
 	out["market_cache_get"], out["market_cache_put"] = qMarketCacheGet, qMarketCachePut
 	for k, v := range profileQueries() {
+		out[k] = v
+	}
+	for k, v := range cmsQueries() {
 		out[k] = v
 	}
 	for k, v := range rbacQueries() {

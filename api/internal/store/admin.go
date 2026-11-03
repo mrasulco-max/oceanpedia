@@ -367,15 +367,26 @@ func (p *PG) Media(ctx context.Context, id string) (string, []byte, error) {
 	return mime, data, notFound(err)
 }
 
-const qAudit = `INSERT INTO audit_log (actor_id, action, entity, entity_id, data) VALUES ($1, $2, $3, $4, $5)`
+const qAudit = `INSERT INTO audit_log (actor_id, action, entity, entity_id, data, ip, user_agent) VALUES (nullif($1, '')::uuid, $2, $3, $4, $5, nullif($6, ''), nullif($7, ''))`
 
 // Audit mencatat tindakan redaksi ke log aktivitas.
+// Kunci "_ip" & "_ua" pada data dipindah ke kolom ip/user_agent.
 func (p *PG) Audit(ctx context.Context, actorID, action, entity, entityID string, data any) error {
+	var ip, ua string
+	if m, ok := data.(map[string]any); ok {
+		ip, _ = m["_ip"].(string)
+		ua, _ = m["_ua"].(string)
+		delete(m, "_ip")
+		delete(m, "_ua")
+	}
+	if data == nil {
+		data = map[string]any{}
+	}
 	b, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
-	_, err = p.DB.ExecContext(ctx, qAudit, actorID, action, entity, entityID, string(b))
+	_, err = p.DB.ExecContext(ctx, qAudit, actorID, action, entity, entityID, string(b), ip, ua)
 	return err
 }
 

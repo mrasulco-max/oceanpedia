@@ -77,6 +77,8 @@ jobs:
       DATABASE_URL: postgres://oceanpedia:ci@localhost:5432/oceanpedia?sslmode=disable
       API_JWT_SECRET: ci-secret-ci-secret-ci-secret-ci-secret
       API_ENV: development
+      # Uji beruntun cepat dari satu IP: jangan sampai terkena batas laju (429).
+      API_RATE_LIMIT_RPS: "1000"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -150,7 +152,7 @@ jobs:
           SU="Authorization: Bearer $(tok super)"
           curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"super@example.com","password":"Sandi-rahasia1"}' | jq -e '.user.is_staff and (.user.permissions | index("rbac.manage")) != null and .user.role_name == "Super Admin"'
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "$ED" localhost:8080/v1/admin/rbac); test "$code" = 403
-          curl -sf -H "$SU" localhost:8080/v1/admin/rbac | jq -e '(.permissions | length) == 13 and (.matrix.author | index("content.publish_own")) != null'
+          curl -sf -H "$SU" localhost:8080/v1/admin/rbac | jq -e '(.permissions | length) == 16 and (.matrix.author | index("content.publish_own")) != null'
           # Cabut publish_own penulis → penulis tak bisa terbit langsung (tanpa login ulang), lalu kembalikan.
           curl -sf -X PUT -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/matrix -d '{"matrix":{"author":["content.write"]}}' | jq -e '.matrix.author == ["content.write"]'
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AU" -H 'Content-Type: application/json' localhost:8080/v1/admin/articles -d "$(echo "$ART" | jq -c '.action="publish"')"); test "$code" = 403
@@ -167,6 +169,43 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(tok undangan)" localhost:8080/v1/admin/articles); test "$code" = 403
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/users/$UID_INV/block" -d '{"blocked":true}'); test "$code" = 204
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"undangan@example.com","password":"Sandi-rahasia1"}'); test "$code" = 403
+          # CMS: kategori & tag (editor), moderasi komentar, media, log aktivitas.
+          J='Content-Type: application/json'
+          CAT=$(curl -sf -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/categories -d '{"name":"Uji Kategori CI","description":"Kategori uji","status":"active","in_menu":true,"followable":true,"color":"#A9D4D3","icon":"candle"}')
+          echo "$CAT" | jq -e '.slug == "uji-kategori-ci"'
+          CID=$(echo "$CAT" | jq -r .id)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AU" -H "$J" localhost:8080/v1/admin/categories -d '{"name":"Ditolak"}'); test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/categories -d '{"name":"x","color":"merah"}'); test "$code" = 422
+          curl -sf -X PUT -H "$ED" -H "$J" "localhost:8080/v1/admin/categories/$CID" -d '{"name":"Uji Kategori CI 2","slug":"uji-kategori-ci","status":"draft","color":"#F5C9A0","icon":"coin"}' | jq -e '.slug == "uji-kategori-ci"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH -H "$ED" -H "$J" "localhost:8080/v1/admin/categories/$CID/menu" -d '{"in_menu":false}'); test "$code" = 204
+          curl -sf -H "$ED" localhost:8080/v1/admin/categories | jq -e --arg id "$CID" '[.categories[] | select(.id == $id) | (.name == "Uji Kategori CI 2" and .status == "draft" and .in_menu == false)] == [true]'
+          IDS=$(curl -sf -H "$ED" localhost:8080/v1/admin/categories | jq -c '[.categories[] | select(.parent_id == null) | .id] | reverse | {ids: .}')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/categories/reorder -d "$IDS"); test "$code" = 204
+          curl -sf localhost:8080/v1/categories | jq -e '.data | map(.slug) | index("uji-kategori-ci") == null'
+          T1=$(curl -sf -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/tags -d '{"name":"Uji Tag CI"}' | jq -r .id)
+          T2=$(curl -sf -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/tags -d '{"name":"Uji Tag CI 2"}' | jq -r .id)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "$ED" -H "$J" "localhost:8080/v1/admin/tags/$T1" -d '{"name":"Uji Tag Satu","slug":"uji-tag-satu"}'); test "$code" = 204
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H "$J" "localhost:8080/v1/admin/tags/$T2/merge" -d "{\"into\":\"$T1\"}"); test "$code" = 204
+          curl -sf -H "$ED" "localhost:8080/v1/admin/categories?q=uji-tag" | jq -e '[.tags[].slug] == ["uji-tag-satu"]'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$ED" "localhost:8080/v1/admin/tags/$T1"); test "$code" = 204
+          SAHAM=$(curl -sf -H "$ED" localhost:8080/v1/admin/categories | jq -r '.categories[] | select(.slug == "saham") | .id')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$ED" "localhost:8080/v1/admin/categories/$CID?move_to=$SAHAM&redirect=1"); test "$code" = 204
+          curl -sf localhost:8080/v1/categories/redirect/uji-kategori-ci | jq -e '.to == "saham"'
+          # Komentar akun baru bertautan → antrian; editor menyetujui → tampil publik.
+          CM=$(curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H "$J" localhost:8080/v1/articles/ihsg-menguat-ditopang-saham-perbankan/comments -d '{"body":"Cek analisis lengkap di www.contoh-saham.com"}')
+          echo "$CM" | jq -e '.status == "pending"'
+          CMID=$(echo "$CM" | jq -r .id)
+          curl -sf localhost:8080/v1/articles/ihsg-menguat-ditopang-saham-perbankan/comments | jq -e --arg id "$CMID" '[.data[].id] | index($id) == null'
+          curl -sf -H "$ED" "localhost:8080/v1/admin/comments?status=queue" | jq -e --arg id "$CMID" '([.data[].id] | index($id)) != null and .counts.pending >= 1 and .settings.hold_links'
+          curl -sf -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/comments/status -d "{\"ids\":[\"$CMID\"],\"status\":\"visible\"}" > /dev/null
+          curl -sf localhost:8080/v1/articles/ihsg-menguat-ditopang-saham-perbankan/comments | jq -e --arg id "$CMID" '([.data[].id] | index($id)) != null'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/moderation/words -d '{"word":"cuan pasti"}'); test "$code" = 204
+          curl -sf -H "$ED" "localhost:8080/v1/admin/comments?status=visible" | jq -e '.words | index("cuan pasti") != null'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$AU" "localhost:8080/v1/admin/comments"); test "$code" = 403
+          curl -sf -H "$ED" "localhost:8080/v1/admin/media/library?filter=all" | jq -e '.counts.all >= 0'
+          curl -sf -H "$SU" "localhost:8080/v1/admin/audit?group=content&days=7" | jq -e '([.data[].action] | index("category.delete")) != null'
+          curl -sf -H "$SU" "localhost:8080/v1/admin/audit?group=all&days=1" | jq -e '.groups.all >= 1'
+          curl -sf -H "$ED" localhost:8080/v1/admin/staff | jq -e '.data | length >= 3'
           echo "$ART" > /tmp/art.json
       - name: Jalankan web
         run: |
@@ -208,6 +247,14 @@ jobs:
           echo "$RB" | grep -q 'Analis Pasar'
           echo "$RB" | grep -q 'undangan@example.com'
           echo "$RB" | grep -q 'data-rb-user-role'
+          # Panel CMS (Super Admin): kategori, form, komentar, media, log aktivitas dari database.
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/kategori | grep -q 'data-cat-row'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/kategori?tab=tag" | grep -q 'data-tag-action="create"'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/kategori/form?id=$(curl -sf -H "Authorization: Bearer $(curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"super@example.com","password":"Sandi-rahasia1"}' | jq -r .access_token)" localhost:8080/v1/admin/categories | jq -r '.categories[0].id')" | grep -q 'data-cf-action="delete"'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/kategori/form | grep -q 'data-cf="name"'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/komentar?status=visible" | grep -q 'data-cm-setting="hold_links"'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/media | grep -q 'data-md="drop"'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/aktivitas | grep -q 'data-act-row'
           # Penulis di HP: masuk lewat web, Tulis artikel & Konten tampil responsif, simpan → tampil di Konten.
           curl -sf -c /tmp/jar -A "$MOB" -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"penulis@example.com","password":"Sandi-rahasia1"}' > /dev/null
           ED_HTML=$(curl -sf -b /tmp/jar -A "$MOB" localhost:3000/admin/tulis)
