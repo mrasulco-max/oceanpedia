@@ -286,9 +286,11 @@ export function hideFakeStatusBar(html: string): string {
   // Area gulir yang diposisikan absolut di bawah header memakai jarak tetap yang masih menghitung
   // status bar (30px) — naikkan supaya tidak ada celah kosong antara header/ticker dan konten.
   if (!removed) return out;
-  return out.replace(/position: absolute; top: (\d+)px; left: 0; right: 0; bottom: (\d+px|0)(; overflow-y: auto)/g, (_m, top: string, bottom: string, rest: string) => {
-    const n = Math.max(0, Number(top) - STATUS_BAR_PX);
-    return `position: absolute; top: calc(${n}px + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: ${bottom}${rest}`;
+  // Semua lapisan yang ditempel absolut di bawah header (baris tab, area gulir, panel) ikut naik.
+  return out.replace(/position: absolute; top: (\d+)px; left: 0; right: 0(?=[;"])/g, (m, top: string) => {
+    const t = Number(top);
+    if (t < 40) return m;
+    return `position: absolute; top: calc(${t - STATUS_BAR_PX}px + env(safe-area-inset-top, 0px)); left: 0; right: 0`;
   });
 }
 
