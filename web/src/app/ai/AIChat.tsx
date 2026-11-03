@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 /**
@@ -243,7 +244,7 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
   return (
     <main style={{ height: "100dvh", display: "flex", flexDirection: "column", background: "#F6F8FC", fontFamily: "Roboto, Arial, sans-serif", color: "#0B0B0F" }}>
       <header style={{ flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "max(10px, env(safe-area-inset-top)) 16px 10px", background: "#FFFFFF", borderBottom: "1px solid #E3EAF4" }}>
-        <a href="/" aria-label="Kembali" style={{ width: 40, height: 40, borderRadius: 999, border: "1px solid #E3EAF4", display: "flex", alignItems: "center", justifyContent: "center", color: "#0B0B0F", textDecoration: "none", fontSize: 18 }}>‹</a>
+        <Link href="/" aria-label="Kembali" style={{ width: 40, height: 40, borderRadius: 999, border: "1px solid #E3EAF4", display: "flex", alignItems: "center", justifyContent: "center", color: "#0B0B0F", textDecoration: "none", fontSize: 18 }}>‹</Link>
         <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
           <strong style={{ fontSize: 18 }}>Asisten AI</strong>
           <span style={{ fontSize: 12, color: "#5F6B7D" }}>Berita, pasar & analisis chart · Ocean Pedia Plus</span>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser, hasPlus } from "@/lib/session";
 import AIChat from "./AIChat";
@@ -21,10 +22,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: "#5F6B7D" }}>
             Ngobrol tentang semua berita & pergerakan pasar, dan unggah gambar chart untuk dianalisis support, resistance, pola, serta skenarionya.
           </p>
-          <a href="/plus" style={{ minHeight: 52, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 16, background: "linear-gradient(110deg,#2563EB 0%,#4285F4 35%,#63A4FA 55%,#4285F4 75%,#2563EB 100%)", color: "#fff", fontWeight: 500, textDecoration: "none" }}>
+          <Link href="/plus" style={{ minHeight: 52, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 16, background: "linear-gradient(110deg,#2563EB 0%,#4285F4 35%,#63A4FA 55%,#4285F4 75%,#2563EB 100%)", color: "#fff", fontWeight: 500, textDecoration: "none" }}>
             Lihat paket Ocean Pedia Plus
-          </a>
-          <a href="/" style={{ fontSize: 14, color: "#2F74EB", textDecoration: "none" }}>Kembali ke beranda</a>
+          </Link>
+          <Link href="/" style={{ fontSize: 14, color: "#2F74EB", textDecoration: "none" }}>Kembali ke beranda</Link>
         </div>
       </main>
     );
