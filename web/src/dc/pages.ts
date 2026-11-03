@@ -21,6 +21,7 @@ import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type B
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
+import { bindCoinLogos } from "./kit";
 import type { Candle, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
@@ -462,6 +463,9 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       (onShort ? `<a href="/admin/live" style="${OFF}">Breaking &amp; live</a>` : m) + `<a href="/admin/live?tab=short"${onShort ? " aria-current=page" : ""} style="${onShort ? ON : OFF}">Ocean Short</a>`,
     );
   }
+
+  // Logo crypto & emas pada lencana simbol.
+  html = bindCoinLogos(html);
 
   // Lencana lonceng: jumlah notifikasi belum dibaca yang sebenarnya (bukan angka contoh desain).
   if (html.includes('aria-label="Notifikasi')) {

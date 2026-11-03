@@ -234,3 +234,23 @@ export function input(attrs: string, value = "", extra = ""): string {
 export function select(attrs: string, options: [string, string][], value: string): string {
   return `<select ${attrs} style="${INPUT_STYLE}; appearance: auto">${options.map(([v, l]) => `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
 }
+
+/** Logo aset (crypto: ikon CC0 cryptocurrency-icons; emas: ikon batangan) untuk lencana bulat simbol. */
+const COIN_LOGO: Record<string, string> = {
+  BTC: "/img/coins/btc.svg", ETH: "/img/coins/eth.svg", SOL: "/img/coins/sol.svg", BNB: "/img/coins/bnb.svg", XRP: "/img/coins/xrp.svg",
+  DOGE: "/img/coins/doge.svg", USDT: "/img/coins/usdt.svg", USDC: "/img/coins/usdc.svg", TRX: "/img/coins/trx.svg", ADA: "/img/coins/ada.svg", XAU: "/img/coins/xau.webp",
+};
+export function coinLogo(symbol: string): string | null {
+  const s = symbol.toUpperCase().replace(/[^A-Z]/g, "");
+  const base = s.startsWith("DOGE") ? "DOGE" : s.replace(/(USD|IDR|USDT)$/, "") || s;
+  return COIN_LOGO[base] ?? COIN_LOGO[s] ?? null;
+}
+/** Ganti teks simbol di lencana bulat (avatar aset) dengan logo, di seluruh halaman. */
+export function bindCoinLogos(html: string): string {
+  return html.replace(/<span style="([^"]*width: \d+px; height: \d+px; border-radius: 999px;[^"]*font-weight: 700[^"]*)">([A-Z]{3,7})<\/span>/g, (m, st: string, sym: string) => {
+    const src = coinLogo(sym);
+    if (!src) return m;
+    const style = st.replace(/background: [^;]+;/, "background: transparent;").replace(/color: #[0-9A-Fa-f]{6};/, "") + "; overflow: hidden";
+    return `<span data-coin="${sym}" style="${style}"><img src="${src}" alt="${sym}" width="100%" height="100%" style="display: block; width: 100%; height: 100%; object-fit: contain"></span>`;
+  });
+}
