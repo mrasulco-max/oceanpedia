@@ -206,6 +206,44 @@ jobs:
           curl -sf -H "$SU" "localhost:8080/v1/admin/audit?group=content&days=7" | jq -e '([.data[].action] | index("category.delete")) != null'
           curl -sf -H "$SU" "localhost:8080/v1/admin/audit?group=all&days=1" | jq -e '.groups.all >= 1'
           curl -sf -H "$ED" localhost:8080/v1/admin/staff | jq -e '.data | length >= 3'
+          # Pengguna: daftar, detail, peringatan, blokir 7 hari → tidak bisa masuk → buka blokir.
+          curl -sf -H "$SU" "localhost:8080/v1/admin/users?tab=all" | jq -e '.stats.total >= 5 and (.data | length) >= 5'
+          curl -sf -H "$SU" "localhost:8080/v1/admin/users?tab=staff" | jq -e '[.data[].is_staff] | all'
+          CIU=$(curl -sf -H "$SU" "localhost:8080/v1/admin/users?q=ci@example.com" | jq -r '.data[0].id')
+          curl -sf -H "$SU" "localhost:8080/v1/admin/users/$CIU" | jq -e '(.activity | length) == 21 and .user.comments >= 1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" -H "$J" "localhost:8080/v1/admin/users/$CIU/warn" -d '{"reason":"Komentar berisi tautan promosi."}'); test "$code" = 204
+          curl -sf -H "$SU" "localhost:8080/v1/admin/users/$CIU" | jq -e '.user.status == "warned" and (.warnings | length) == 1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" -H "$J" "localhost:8080/v1/admin/users/$CIU/suspend" -d '{"days":7,"reason":"Spam"}'); test "$code" = 204
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/auth/login -H "$J" -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}'); test "$code" = 403
+          curl -sf -H "$SU" "localhost:8080/v1/admin/users?tab=blocked" | jq -e --arg id "$CIU" '([.data[].id] | index($id)) != null and .stats.blocked_temporary >= 1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" "localhost:8080/v1/admin/users/$CIU/unblock"); test "$code" = 204
+          curl -sf -X POST localhost:8080/v1/auth/login -H "$J" -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -e '.access_token | length > 20'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$AU" "localhost:8080/v1/admin/users"); test "$code" = 403
+          # Iklan: kampanye baru → dokumen kurang → lengkapi → tayang di slot publik → jeda; slot dimatikan.
+          CMP=$(curl -sf -X POST -H "$SU" -H "$J" localhost:8080/v1/admin/ads/campaigns -d "{\"name\":\"Uji Kampanye CI\",\"advertiser\":\"PT Uji\",\"industry\":\"crypto\",\"slot_code\":\"app_mrec\",\"start_date\":\"$(date +%F)\",\"end_date\":\"$(date -d '+14 day' +%F)\",\"regulated\":true,\"docs_company\":true,\"target_url\":\"https://example.com\",\"budget_usd\":500}" | jq -r .id)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" -H "$J" "localhost:8080/v1/admin/ads/campaigns/$CMP/status" -d '{"action":"approve"}'); test "$code" = 422
+          curl -sf -X POST -H "$SU" -H "$J" "localhost:8080/v1/admin/ads/campaigns/$CMP/status" -d '{"action":"request_docs"}' | jq -e '.status == "pending" and (.note | contains("OJK"))'
+          curl -sf -X PUT -H "$SU" -H "$J" "localhost:8080/v1/admin/ads/campaigns/$CMP" -d "{\"name\":\"Uji Kampanye CI\",\"advertiser\":\"PT Uji\",\"industry\":\"crypto\",\"slot_code\":\"app_mrec\",\"start_date\":\"$(date +%F)\",\"end_date\":\"$(date -d '+14 day' +%F)\",\"regulated\":true,\"docs_company\":true,\"docs_license\":true,\"docs_creative\":true,\"docs_claims\":true,\"creative_url\":\"https://example.com/b.png\",\"target_url\":\"https://example.com\",\"budget_usd\":500}" | jq -e '.status == "pending"'
+          curl -sf -X POST -H "$SU" -H "$J" "localhost:8080/v1/admin/ads/campaigns/$CMP/status" -d '{"action":"approve"}' | jq -e '.status == "live"'
+          curl -sf "localhost:8080/v1/ads?surface=app&page=home" | jq -e --arg id "$CMP" '[.data[] | select(.code == "app_mrec") | .campaign_id] == [$id]'
+          curl -sf -H "$SU" localhost:8080/v1/admin/ads | jq -e '.counts.live == 1 and ([.slots[] | select(.code == "app_mrec") | .live] == [1])'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$SU" "localhost:8080/v1/admin/ads/campaigns/$CMP"); test "$code" = 409
+          curl -sf -X POST -H "$SU" -H "$J" "localhost:8080/v1/admin/ads/campaigns/$CMP/status" -d '{"action":"pause"}' | jq -e '.status == "paused"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH -H "$SU" -H "$J" localhost:8080/v1/admin/ads/slots/app_banner -d '{"active":false}'); test "$code" = 204
+          curl -sf "localhost:8080/v1/ads?surface=app&page=article" | jq -e '[.data[].code] | index("app_banner") == null'
+          curl -sf -X PATCH -H "$SU" -H "$J" localhost:8080/v1/admin/ads/slots/app_banner -d '{"active":true}' > /dev/null
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$ED" localhost:8080/v1/admin/ads); test "$code" = 403
+          # Data pasar: feed, tambah/ubah/nonaktifkan simbol, aturan peringatan, uji koneksi.
+          curl -sf -H "$SU" localhost:8080/v1/admin/market | jq -e '(.data | length) >= 5 and .daily_credits == 800 and .alerts.latency'
+          curl -sf -X POST -H "$SU" -H "$J" localhost:8080/v1/admin/market/instruments -d '{"symbol":"UJICI","name":"Uji CI Tbk","provider_symbol":"UJICI:IDX","asset_class":"equity","in_ticker":true}' | jq -e '.symbol == "UJICI"'
+          curl -sf -H "$SU" localhost:8080/v1/admin/market/UJICI | jq -e '.instrument.exchange == "IDX" and .instrument.currency == "IDR" and .instrument.active'
+          curl -sf -X PUT -H "$SU" -H "$J" localhost:8080/v1/admin/market/instruments/UJICI -d '{"name":"Uji CI Persero","provider_symbol":"UJICI:IDX","asset_class":"equity","saver_mode":true,"category_slug":"saham"}' > /dev/null
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" -H "$J" localhost:8080/v1/admin/market/instruments/UJICI/active -d '{"active":false}'); test "$code" = 204
+          curl -sf localhost:8080/v1/market/instruments | jq -e '[.data[].symbol] | index("UJICI") == null'
+          curl -sf -H "$SU" localhost:8080/v1/admin/market/UJICI | jq -e '.instrument.name == "Uji CI Persero" and .instrument.saver_mode and (.instrument.active | not)'
+          curl -sf -X PUT -H "$SU" -H "$J" localhost:8080/v1/admin/market/alerts -d '{"latency":false,"rate_limit":true,"quota":true,"ws_drop":true}' | jq -e '.ws_drop'
+          curl -sf -X POST -H "$SU" -H "$J" localhost:8080/v1/admin/market/test -d '{"symbol":"BBCA"}' | jq -e 'has("ok") and has("latency_ms")'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$AU" localhost:8080/v1/admin/market); test "$code" = 403
           echo "$ART" > /tmp/art.json
       - name: Jalankan web
         run: |
@@ -255,6 +293,16 @@ jobs:
           curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/komentar?status=visible" | grep -q 'data-cm-setting="hold_links"'
           curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/media | grep -q 'data-md="drop"'
           curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/aktivitas | grep -q 'data-act-row'
+          # Pengguna, Iklan, Data Pasar, Detail simbol (Super Admin) dari database.
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/pengguna?tab=reader" | grep -q 'data-us-row'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/pengguna?tab=reader" | grep -q 'data-us-action="warn"'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/iklan?status=paused" | grep -q 'data-ad-row'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/iklan?id=new" | grep -q 'data-adf-action="save"'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/iklan | grep -q 'data-ad-slot="app_banner"'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/pasar | grep -q 'data-mk-row="BTCUSD"'
+          curl -sf -b /tmp/sjar -A "$DESK" localhost:3000/admin/pasar | grep -q 'data-mk-alert="quota"'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/simbol?s=BTCUSD" | grep -q 'data-lw="BTCUSD"'
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/simbol?new=1" | grep -q 'data-sy="symbol"'
           # Penulis di HP: masuk lewat web, Tulis artikel & Konten tampil responsif, simpan → tampil di Konten.
           curl -sf -c /tmp/jar -A "$MOB" -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"penulis@example.com","password":"Sandi-rahasia1"}' > /dev/null
           ED_HTML=$(curl -sf -b /tmp/jar -A "$MOB" localhost:3000/admin/tulis)

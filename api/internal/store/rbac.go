@@ -105,13 +105,13 @@ type StaffMember struct {
 }
 
 const qAccess = `
-SELECT u.role, r.name, r.is_staff, u.blocked_at IS NOT NULL,
+SELECT u.role, r.name, r.is_staff, (u.blocked_at IS NOT NULL AND (u.blocked_until IS NULL OR u.blocked_until > now())),
        coalesce(json_agg(rp.permission ORDER BY rp.permission) FILTER (WHERE rp.permission IS NOT NULL), '[]')::text
 FROM users u
 JOIN roles r ON r.key = u.role
 LEFT JOIN role_permissions rp ON rp.role = u.role
 WHERE u.id = $1::uuid AND u.deleted_at IS NULL
-GROUP BY u.role, r.name, r.is_staff, u.blocked_at`
+GROUP BY u.role, r.name, r.is_staff, u.blocked_at, u.blocked_until`
 
 // UserAccess membaca peran & izin terkini seorang pengguna.
 func (p *PG) UserAccess(ctx context.Context, userID string) (Access, error) {
@@ -264,7 +264,8 @@ func (p *PG) SetUserRole(ctx context.Context, userID, role string) error {
 	return nil
 }
 
-const qBlockUser = `UPDATE users SET blocked_at = CASE WHEN $2 THEN now() ELSE NULL END WHERE id = $1::uuid AND deleted_at IS NULL`
+const qBlockUser = `UPDATE users SET blocked_at = CASE WHEN $2 THEN now() ELSE NULL END, blocked_until = NULL,
+  block_reason = CASE WHEN $2 THEN block_reason ELSE '' END WHERE id = $1::uuid AND deleted_at IS NULL`
 
 // SetBlocked memblokir/membuka blokir pengguna; blokir juga mencabut semua sesinya.
 func (p *PG) SetBlocked(ctx context.Context, userID string, blocked bool) error {

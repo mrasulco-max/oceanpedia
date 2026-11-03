@@ -179,6 +179,11 @@ type AdSlot struct {
 	Placement string `json:"placement"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
+	// Kampanye tayang di slot ini (nil bila kosong → tampilkan placeholder/house ad).
+	CampaignID  *string `json:"campaign_id"`
+	Advertiser  *string `json:"advertiser"`
+	CreativeURL *string `json:"creative_url"`
+	TargetURL   *string `json:"target_url"`
 }
 
 // Store adalah kontrak penyimpanan yang dipakai handler (memudahkan uji dengan implementasi palsu).
@@ -281,6 +286,28 @@ type Store interface {
 	StaffMembers(ctx context.Context) ([]StaffMember, error)
 	SetUserRole(ctx context.Context, userID, role string) error
 	SetBlocked(ctx context.Context, userID string, blocked bool) error
+	// Operasional admin: pengguna, iklan, data pasar.
+	AdminUsers(ctx context.Context, tab, q string, limit int) ([]AdminUser, UserStats, error)
+	AdminUser(ctx context.Context, id string) (AdminUser, error)
+	UserActivity(ctx context.Context, id string) ([]UserDay, []UserWarning, error)
+	BlockUser(ctx context.Context, id string, until *time.Time, reason string) error
+	UnblockUser(ctx context.Context, id string) error
+	WarnUser(ctx context.Context, id, by, reason string) error
+	Campaigns(ctx context.Context) ([]Campaign, error)
+	CampaignByID(ctx context.Context, id string) (Campaign, error)
+	CreateCampaign(ctx context.Context, in CampaignInput, by string) (string, error)
+	UpdateCampaign(ctx context.Context, id string, in CampaignInput) error
+	SetCampaignStatus(ctx context.Context, id, status, note string) error
+	DeleteCampaign(ctx context.Context, id string) error
+	AdminSlots(ctx context.Context) ([]AdminSlot, error)
+	SetSlotActive(ctx context.Context, code string, on bool) error
+	MarketFeed(ctx context.Context) ([]FeedRow, error)
+	FeedRowBySymbol(ctx context.Context, symbol string) (FeedRow, error)
+	MarketStats(ctx context.Context) (FeedStats, error)
+	CreateInstrument(ctx context.Context, in InstrumentInput) error
+	UpdateInstrument(ctx context.Context, in InstrumentInput) error
+	SetInstrumentActive(ctx context.Context, symbol string, on bool) error
+	SymbolArticles(ctx context.Context, symbol string, limit int) ([]SymbolArticle, error)
 	Invitations(ctx context.Context, now time.Time) ([]Invitation, error)
 	CreateInvitation(ctx context.Context, email, role string, categories []string, by string, expires time.Time) (string, error)
 	RevokeInvitation(ctx context.Context, id string) error

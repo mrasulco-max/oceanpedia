@@ -1,5 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
+import type { Quote } from "./types";
 
 const BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
@@ -158,6 +159,132 @@ export interface AuditPage {
   days: number;
 }
 
+// ---------------------------------------------------------------- operasional: pengguna, iklan, data pasar
+export interface AdminUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  role_name: string;
+  is_staff: boolean;
+  status: "active" | "warned" | "blocked";
+  blocked_at: string | null;
+  blocked_until: string | null;
+  block_reason: string;
+  created_at: string;
+  last_login_at: string | null;
+  verified: boolean;
+  platforms: string[];
+  comments: number;
+  reported: number;
+  watchlist: number;
+  bookmarks: number;
+  warnings: number;
+}
+export interface UserStats {
+  total: number;
+  new_month: number;
+  prev_month: number;
+  active_24h: number;
+  readers: number;
+  staff: number;
+  reported: number;
+  blocked: number;
+  blocked_permanent: number;
+  blocked_temporary: number;
+  warnings_week: number;
+}
+export interface UserDetail {
+  user: AdminUser;
+  activity: { day: string; active: boolean; reported: boolean }[];
+  warnings: { reason: string; issued_by_name: string | null; created_at: string }[];
+}
+export interface Campaign {
+  id: string;
+  name: string;
+  advertiser: string;
+  industry: string;
+  slot_code: string;
+  slot_label: string;
+  slot_width: number;
+  slot_height: number;
+  start_date: string;
+  end_date: string;
+  status: "pending" | "live" | "paused" | "rejected" | "finished";
+  regulated: boolean;
+  docs_company: boolean;
+  docs_license: boolean;
+  docs_creative: boolean;
+  docs_claims: boolean;
+  creative_url: string | null;
+  target_url: string | null;
+  budget_usd: number;
+  impressions: number;
+  clicks: number;
+  note: string;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface AdminSlot {
+  code: string;
+  surface: "web" | "app";
+  placement: string;
+  width: number;
+  height: number;
+  pages: string[];
+  active: boolean;
+  fill: number;
+  live: number;
+}
+export interface AdsState {
+  campaigns: Campaign[];
+  slots: AdminSlot[];
+  counts: Record<Campaign["status"], number>;
+  can_manage: boolean;
+}
+export interface FeedRow {
+  symbol: string;
+  name: string;
+  exchange: string;
+  asset_class: "equity" | "index" | "crypto" | "commodity" | "forex";
+  currency: string;
+  provider_symbol: string;
+  sector: string | null;
+  active: boolean;
+  in_ticker: boolean;
+  saver_mode: boolean;
+  category_slug: string | null;
+  quote: Quote | null;
+  error: string;
+  fetched_at: string | null;
+  latency_ms: number | null;
+  articles: number;
+  watchers: number;
+}
+export interface ProviderUsage {
+  provider: string;
+  calls: number;
+  errors: number;
+  limited: number;
+  latency_ms: number;
+}
+export interface MarketState {
+  data: FeedRow[];
+  stats: { usage: ProviderUsage[]; week: ProviderUsage[]; p95_ms: number; cache_keys: number; cache_fresh: number; watchers: number };
+  alerts: { latency: boolean; rate_limit: boolean; quota: boolean; ws_drop: boolean };
+  daily_credits: number;
+  quote_ttl_s: number;
+  can_manage: boolean;
+}
+export interface SymbolState {
+  instrument: FeedRow;
+  quote: Quote | null;
+  articles: { id: string; slug: string; title: string; status: string; author_name: string; published_at: string | null }[];
+  alerts: { move3: boolean; halt: boolean; volume3x: boolean };
+  can_manage: boolean;
+}
+
 export const adminApi = {
   staff: () => adminGet<{ data: RbacState["staff"] }>(`/staff`),
   categories: (q = "") => adminGet<{ categories: AdminCategory[]; tags: AdminTag[]; tag_total: number; tag_unused: number }>(`/categories?q=${encodeURIComponent(q)}`),
@@ -165,6 +292,11 @@ export const adminApi = {
   media: (filter: string, q = "") => adminGet<MediaLibrary>(`/media/library?filter=${encodeURIComponent(filter)}&q=${encodeURIComponent(q)}&limit=120`),
   audit: (group: string, days: number, before = "") => adminGet<AuditPage>(`/audit?group=${encodeURIComponent(group)}&days=${days}&before=${encodeURIComponent(before)}&limit=60`),
   rbac: () => adminGet<RbacState>("/rbac"),
+  users: (tab: string, q = "") => adminGet<{ data: AdminUser[]; stats: UserStats }>(`/users?tab=${encodeURIComponent(tab)}&q=${encodeURIComponent(q)}&limit=200`),
+  user: (id: string) => adminGet<UserDetail>(`/users/${encodeURIComponent(id)}`),
+  ads: () => adminGet<AdsState>("/ads"),
+  market: () => adminGet<MarketState>("/market"),
+  symbol: (sym: string) => adminGet<SymbolState>(`/market/${encodeURIComponent(sym)}`),
   articles: (status: string, q = "") => adminGet<AdminList>(`/articles?status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&limit=100`),
   article: (id: string) => adminGet<AdminArticle>(`/articles/${encodeURIComponent(id)}`),
 };

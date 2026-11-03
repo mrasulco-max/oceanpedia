@@ -1,5 +1,5 @@
 import "server-only";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ROUTES, type RouteDef } from "@/boards/gen/routes";
 import { loadBoard, type BoardId, type LoadedBoard } from "@/boards/gen/registry";
 import { api, ApiError, safe } from "@/lib/api";
@@ -10,6 +10,7 @@ import { bindContent, bindEditor, bindStaffHeader, type Staff } from "./admin-bi
 import { bindRoles } from "./rbac-bind";
 import { bindCategories, bindCategoryForm, catIcons } from "./cms-bind";
 import { bindActivity, bindComments, bindMedia } from "./mod-bind";
+import { bindAds, bindUsers, bindMarket, bindSymbol, MARKET_TABS, type FeedStatus } from "./ops-bind";
 import { bindAccount, bindLoginExtras, bindRegisterApp, bindRegisterWeb, bindVerify, type OtpMode } from "./auth-bind";
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
@@ -277,6 +278,56 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     if (!rbac) notFound();
     html = bindRoles(html, { rbac, categories: cats.data });
     enhance.push("rbac");
+  } else if (boardId === "admin-users") {
+    const tab = ["reader", "staff", "reported", "blocked"].includes(search.tab ?? "") ? search.tab! : "reader";
+    const q = (search.q ?? "").slice(0, 80);
+    const [list, detail] = await Promise.all([adminApi.users(tab, q), search.id && UUID.test(search.id) ? adminApi.user(search.id) : Promise.resolve(null)]);
+    if (!list) notFound();
+    const first = !detail && list.data[0] ? await adminApi.user(list.data[0].id) : null;
+    html = bindUsers(html, {
+      list: list.data,
+      stats: list.stats,
+      tab,
+      q,
+      detail: detail ?? first,
+      canBan: who.perms.has("users.ban"),
+      canWarn: who.perms.has("users.ban") || who.perms.has("comments.moderate"),
+      canInvite: who.perms.has("rbac.manage"),
+      me: who.id,
+    });
+    enhance.push("ops");
+    title = "Pengguna";
+  } else if (boardId === "admin-ads") {
+    const st = await adminApi.ads();
+    if (!st) notFound();
+    const isNew = search.id === "new";
+    const byId = search.id && UUID.test(search.id) ? st.campaigns.find((c) => c.id === search.id) ?? null : null;
+    const statuses = ["pending", "live", "paused", "rejected", "finished"] as const;
+    const status = (statuses as readonly string[]).includes(search.status ?? "") ? (search.status as (typeof statuses)[number]) : byId?.status ?? (st.counts.pending ? "pending" : "live");
+    const selected = byId ?? st.campaigns.find((c) => c.status === status) ?? null;
+    const form = st.can_manage && isNew ? "new" : st.can_manage && byId && search.edit === "1" ? "edit" : null;
+    html = bindAds(html, { st, status, selected, form });
+    enhance.push("ops");
+    title = form === "new" ? "Kampanye baru" : "Iklan";
+  } else if (boardId === "admin-market") {
+    const st = await adminApi.market();
+    if (!st) notFound();
+    const tab = (MARKET_TABS.map(([k]) => k) as string[]).includes(search.status ?? "") ? (search.status as FeedStatus | "all") : "all";
+    html = bindMarket(html, { st, tab, src: search.src === "binance" ? "binance" : "twelvedata" });
+    enhance.push("ops");
+    title = "Data Pasar";
+  } else if (boardId === "admin-symbol") {
+    const isNew = search.new === "1";
+    const sym = (search.s ?? "").toUpperCase();
+    if (!isNew && !/^[A-Z0-9./:-]{1,24}$/.test(sym)) redirect("/admin/pasar");
+    const [st, cats, mk] = await Promise.all([isNew ? Promise.resolve(null) : adminApi.symbol(sym), safe(api.categories(), { data: [] }), adminApi.market()]);
+    if (!isNew && !st) notFound();
+    if (isNew && !mk?.can_manage) redirect("/admin/pasar");
+    html = bindSymbol(html, { st, categories: cats.data, ttlS: mk?.quote_ttl_s ?? 900, isNew });
+    enhance.push("ops");
+    if (!isNew && st?.instrument.active && !st.instrument.error) enhance.push("lwchart");
+    if (st) ctx.symbol = st.instrument.symbol;
+    title = isNew ? "Simbol baru" : `Simbol ${sym}`;
   } else if (boardId === "admin-categories") {
     const [data, recent] = await Promise.all([adminApi.categories(search.q ?? ""), adminApi.articles("published")]);
     if (!data) notFound();
