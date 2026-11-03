@@ -179,7 +179,7 @@ jobs:
           curl -sf -H "$ED" localhost:8080/v1/admin/categories | jq -e --arg id "$CID" '[.categories[] | select(.id == $id) | (.name == "Uji Kategori CI 2" and .status == "draft" and .in_menu == false)] == [true]'
           IDS=$(curl -sf -H "$ED" localhost:8080/v1/admin/categories | jq -c '[.categories[] | select(.parent_id == null) | .id] | reverse | {ids: .}')
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/categories/reorder -d "$IDS"); test "$code" = 204
-          curl -sf localhost:8080/v1/categories | jq -e 'map(.slug) | index("uji-kategori-ci") == null'
+          curl -sf localhost:8080/v1/categories | jq -e '.data | map(.slug) | index("uji-kategori-ci") == null'
           T1=$(curl -sf -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/tags -d '{"name":"Uji Tag CI"}' | jq -r .id)
           T2=$(curl -sf -X POST -H "$ED" -H "$J" localhost:8080/v1/admin/tags -d '{"name":"Uji Tag CI 2"}' | jq -r .id)
           code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "$ED" -H "$J" "localhost:8080/v1/admin/tags/$T1" -d '{"name":"Uji Tag Satu","slug":"uji-tag-satu"}'); test "$code" = 204
