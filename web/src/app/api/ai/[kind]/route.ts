@@ -29,15 +29,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ kind: string }> }) {
   const { kind } = await params;
-  if (kind !== "ask") return NextResponse.json({ title: "Tidak ditemukan" }, { status: 404 });
+  if (kind !== "ask" && kind !== "chat" && kind !== "chart") return NextResponse.json({ title: "Tidak ditemukan" }, { status: 404 });
   const token = (await cookies()).get("ob_at")?.value;
   if (!token) {
     return NextResponse.json({ type: "about:blank", title: "Perlu masuk", status: 401, detail: "Masuk dulu untuk bertanya ke AI." }, { status: 401 });
   }
-  const res = await fetch(`${BASE}/v1/ai/ask`, {
+  // chart: unggahan multipart diteruskan apa adanya (gambar tidak disimpan).
+  const isForm = kind === "chart";
+  const res = await fetch(`${BASE}/v1/ai/${kind}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
-    body: await req.text(),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": isForm ? req.headers.get("content-type") ?? "" : "application/json", Accept: "application/json" },
+    body: isForm ? await req.arrayBuffer() : await req.text(),
     cache: "no-store",
     signal: AbortSignal.timeout(55000),
   });

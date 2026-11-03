@@ -98,6 +98,8 @@ func (s *Server) Handler() http.Handler {
 
 	// milik pengguna
 	auth("POST /v1/ai/ask", s.askAI)
+	auth("POST /v1/ai/chat", s.aiChat)
+	auth("POST /v1/ai/chart", s.aiChart)
 	auth("GET /v1/me", s.me)
 	auth("PATCH /v1/me", s.updateMe)
 	auth("GET /v1/me/profile", s.profile)

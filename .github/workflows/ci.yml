@@ -139,10 +139,19 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "localhost:8080/v1/billing/invoices/$INV/simulate" -d '{"outcome":"paid"}' | jq -e '.status == "paid"'
           # Analisis AI & batas alert mengikuti paket (token baru membawa klaim plan).
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "localhost:8080/v1/market/instruments/BBCA/ai"); test "$code" = 403
+          # Asisten AI & analisis chart: anonim 401, Free 403.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' localhost:8080/v1/ai/chat -d '{"messages":[{"role":"user","content":"Kondisi pasar?"}]}'); test "$code" = 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/ai/chat -d '{"messages":[{"role":"user","content":"Kondisi pasar?"}]}'); test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -F note=x localhost:8080/v1/ai/chart); test "$code" = 403
           code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/market/instruments/BBCA/ai"); test "$code" = 401
           PTOK=$(curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -r .access_token)
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PTOK" "localhost:8080/v1/market/instruments/BBCA/ai"); test "$code" != 403 && test "$code" != 401
           curl -sf -H "Authorization: Bearer $PTOK" localhost:8080/v1/me/profile | jq -e '.alert_limit == 0'
+          # Plus: Asisten AI terbuka (CI tanpa kunci Gemini → 503, bukan 401/403); validasi input tetap jalan.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PTOK" -H 'Content-Type: application/json' localhost:8080/v1/ai/chat -d '{"messages":[{"role":"user","content":"Kondisi pasar?"}]}'); test "$code" = 503
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PTOK" -H 'Content-Type: application/json' localhost:8080/v1/ai/chat -d '{"messages":[{"role":"assistant","content":"halo"}]}'); test "$code" = 400
+          printf 'bukan gambar' > /tmp/x.txt
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PTOK" -F "file=@/tmp/x.txt;type=image/png" localhost:8080/v1/ai/chart); test "$code" -ge 400 && test "$code" -lt 500
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/billing/subscription | jq -e '.data.plan_code == "essential" and .data.status == "active"'
           curl -sf -H "Authorization: Bearer $TOKEN" "localhost:8080/v1/me/notifications?kind=billing" | jq -e '.data | length == 1'
           curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/billing/subscription/cancel -d '{}' | jq -e '.data.cancel_at_period_end == true'
@@ -442,6 +451,13 @@ jobs:
           ! curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/watchlist | grep -q 'role="complementary" aria-label="Iklan '
           ! curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'khusus pelanggan Ocean Pedia Plus'
           code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/pjar -A "$MOB" localhost:3000/plus/analisis); test "$code" = 200
+          # Asisten AI (/ai): tamu diarahkan masuk, pelanggan Plus dapat obrolan + tombol cepat di beranda.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" localhost:3000/ai); test "$code" = 307
+          curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/ai | grep -q 'Analisis gambar chart'
+          curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/ | grep -q 'data-ai-fab'
+          ! curl -sf -A "$DESK" localhost:3000/ | grep -q 'data-ai-fab'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/pjar -X POST -H 'Content-Type: application/json' localhost:3000/api/ai/chat -d '{"messages":[{"role":"user","content":"Kondisi pasar?"}]}'); test "$code" = 503
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' localhost:3000/api/ai/chat -d '{"messages":[{"role":"user","content":"x"}]}'); test "$code" = 401
           # Halaman tagihan butuh login.
           for p in /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }

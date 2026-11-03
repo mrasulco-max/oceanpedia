@@ -5,6 +5,7 @@ package ai
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,10 +73,65 @@ func (g *Gemini) Text(ctx context.Context, system, prompt string) (string, strin
 	return ans, model, err
 }
 
+// Turn satu giliran percakapan; Image (opsional) dikirim inline (gambar chart dari pengguna).
+type Turn struct {
+	Role      string // user | model
+	Text      string
+	ImageMime string
+	ImageData []byte
+}
+
+func contents(turns []Turn) []map[string]any {
+	out := make([]map[string]any, 0, len(turns))
+	for _, t := range turns {
+		parts := []map[string]any{}
+		if len(t.ImageData) > 0 {
+			parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": t.ImageMime, "data": base64.StdEncoding.EncodeToString(t.ImageData)}})
+		}
+		if t.Text != "" {
+			parts = append(parts, map[string]any{"text": t.Text})
+		}
+		role := "user"
+		if t.Role == "model" {
+			role = "model"
+		}
+		out = append(out, map[string]any{"role": role, "parts": parts})
+	}
+	return out
+}
+
+// ChatText: percakapan multi-giliran (dengan gambar opsional) → jawaban teks.
+func (g *Gemini) ChatText(ctx context.Context, system string, turns []Turn) (string, string, error) {
+	var ans string
+	model, err := g.generateTurns(ctx, system, turns, map[string]any{"temperature": 0.5}, func(t string) error {
+		ans = strings.TrimSpace(t)
+		if ans == "" {
+			return &Error{Code: 500, Message: "jawaban kosong"}
+		}
+		return nil
+	})
+	return ans, model, err
+}
+
+// ChatJSON: seperti JSON tetapi dengan giliran (mis. gambar chart + catatan).
+func (g *Gemini) ChatJSON(ctx context.Context, system string, turns []Turn, schema map[string]any, out any) (string, error) {
+	cfg := map[string]any{"temperature": 0.2, "responseMimeType": "application/json", "responseSchema": schema}
+	return g.generateTurns(ctx, system, turns, cfg, func(text string) error {
+		if err := json.Unmarshal([]byte(text), out); err != nil {
+			return fmt.Errorf("gemini: JSON tidak valid: %w", err)
+		}
+		return nil
+	})
+}
+
 func (g *Gemini) generate(ctx context.Context, system, prompt string, cfg map[string]any, parse func(string) error) (string, error) {
+	return g.generateTurns(ctx, system, []Turn{{Role: "user", Text: prompt}}, cfg, parse)
+}
+
+func (g *Gemini) generateTurns(ctx context.Context, system string, turns []Turn, cfg map[string]any, parse func(string) error) (string, error) {
 	body := map[string]any{
 		"systemInstruction": map[string]any{"parts": []map[string]string{{"text": system}}},
-		"contents":          []map[string]any{{"role": "user", "parts": []map[string]string{{"text": prompt}}}},
+		"contents":          contents(turns),
 		"generationConfig":  cfg,
 	}
 	b, _ := json.Marshal(body)

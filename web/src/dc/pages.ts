@@ -25,6 +25,13 @@ import type { Candle, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
 
+/** Tombol melayang "Asisten AI" (khusus Plus) di halaman yang paling sering dibuka. */
+const AI_FAB_PATHS = new Set(["/", "/market", "/market/[symbol]", "/berita/[slug]", "/watchlist"]);
+function aiFab(app: boolean): string {
+  const bottom = app ? "calc(92px + env(safe-area-inset-bottom))" : "24px";
+  return `<a href="/ai" data-ai-fab aria-label="Buka Asisten AI" style="position: fixed; right: 16px; bottom: ${bottom}; z-index: 40; display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 999px; background: linear-gradient(110deg,#2563EB 0%,#4285F4 50%,#2563EB 100%); color: #FFFFFF; font-size: 14px; font-weight: 500; text-decoration: none; box-shadow: 0 8px 24px rgba(37,99,235,.35)"><span aria-hidden="true">✦</span>Asisten AI</a>`;
+}
+
 export interface Match {
   route: RouteDef;
   params: Record<string, string>;
@@ -421,8 +428,9 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   html = bindCryptoVolume(html, quotes);
   html = bindDataCredits(html);
   if (board.kind !== "admin" && plus) {
-    // Pelanggan Plus: tanpa iklan.
+    // Pelanggan Plus: tanpa iklan + tombol cepat Asisten AI.
     html = removeAdSlots(html);
+    if (AI_FAB_PATHS.has(path)) html += aiFab(board.kind === "app");
   } else if (board.kind !== "admin" && html.includes('role="complementary" aria-label="Iklan ')) {
     const pageKey = path === "/" ? "home" : path.startsWith("/berita/") ? "article" : path.startsWith("/kategori/") ? "category" : path === "/legal" ? "legal" : "other";
     const slots = await safe(api.ads(board.kind === "app" ? "app" : "web", pageKey), { data: [] });

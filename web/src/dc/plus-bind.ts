@@ -102,7 +102,7 @@ export function bindPlusPlans(html: string, d: { plans: PlanInfo[]; sub: SubInfo
   h = h.replace(/PPN\)/, `PPN ${Math.round(d.tax * 100)}%)`);
   if (d.sub) {
     const until = d.sub.current_period_end ? ` · aktif s.d. ${day(d.sub.current_period_end)}` : "";
-    h = h.replace(/<a href="\/plus\/checkout"([^>]*)>Langganan Ocean Pedia Plus Essential<\/a>/, `<a href="/plus/berhasil"$1>Kamu pelanggan Plus ${esc(d.sub.plan_name)}${esc(until)}</a>`);
+    h = h.replace(/<a href="\/plus\/checkout"([^>]*)>Langganan Ocean Pedia Plus Essential<\/a>/, `<a href="/plus/berhasil"$1>Kamu pelanggan Plus ${esc(d.sub.plan_name)}${esc(until)}</a><a href="/ai" data-ai-open style="display: block; margin-top: 10px; text-align: center; padding: 12px 16px; border-radius: 999px; border: 1px solid #BFD6FB; background: #EEF5FF; color: #2F74EB; font-size: 15px; font-weight: 500; text-decoration: none">✦ Buka Asisten AI &amp; analisis chart</a>`);
   } else {
     h = h.replace(/<a href="\/plus\/checkout"([^>]*)>Langganan Ocean Pedia Plus Essential<\/a>/, '<a href="/plus/checkout?plan=essential" data-plus="cta"$1>Langganan Ocean Pedia Plus Essential</a>');
   }
