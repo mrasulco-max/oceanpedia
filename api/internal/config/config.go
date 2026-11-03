@@ -71,6 +71,10 @@ func Load() (Config, error) {
 		MidtransProduction: env("MIDTRANS_PRODUCTION", "false") == "true",
 		APIPublicURL:       strings.TrimRight(env("API_PUBLIC_URL", "https://oceanpedia-api.vercel.app"), "/"),
 	}
+	// Kunci sandbox Midtrans berawalan "SB-": selalu pakai endpoint sandbox walau MIDTRANS_PRODUCTION=true.
+	if strings.HasPrefix(c.MidtransServerKey, "SB-") {
+		c.MidtransProduction = false
+	}
 	var errs []error
 	if c.DatabaseURL == "" {
 		errs = append(errs, errors.New("DATABASE_URL wajib diisi"))
