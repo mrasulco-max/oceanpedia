@@ -146,7 +146,7 @@ export function bindCategories(html: string, opts: { data: CatData; tab: string;
 }
 
 function bindCatDetail(html: string, c: AdminCategory | null, all: AdminCategory[], recent: AdminArticle[], icons: Record<string, string>, canManage: boolean): string {
-  let h = html;
+  const h = html;
   const i = h.indexOf("LIHAT KATEGORI");
   if (i < 0) return h;
   const secStart = h.indexOf("<section", i);

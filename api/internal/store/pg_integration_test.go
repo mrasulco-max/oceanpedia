@@ -179,7 +179,7 @@ func TestPGStore(t *testing.T) {
 	if len(rc) != 4 || rc[0].Kind != "bullish" || rc[0].Count < 1 {
 		t.Fatalf("reactions: %+v", rc)
 	}
-	if c, err := s.AddComment(ctx, u.ID, a.Slug, "Mantap"); err != nil || c.UserName != "Penguji Baru" {
+	if c, err := s.AddComment(ctx, u.ID, a.Slug, "Mantap", "visible", ""); err != nil || c.UserName != "Penguji Baru" {
 		t.Fatalf("comment: %v", err)
 	}
 	promo := "PLUSBARU"
