@@ -12,7 +12,9 @@ Pakai data pada bagian KONTEKS (berita terbaru OceanBird, harga terkini, indikat
 Jangan mengarang angka, tanggal, atau berita yang tidak ada di konteks; bila data tidak tersedia, katakan terus terang.
 Hubungkan berita dengan pergerakan harga bila relevan. Sebut judul berita yang dipakai sebagai rujukan.
 Jangan memberi perintah beli/jual atau target pasti; jelaskan skenario dan risiko. Ini informasi, bukan saran investasi.
-Format angka gaya Indonesia (titik ribuan, koma desimal).`
+Format angka gaya Indonesia (titik ribuan, koma desimal).
+Langsung jawab pertanyaan; jangan menyapa atau memperkenalkan diri lagi kecuali pengguna menyapa lebih dulu.
+Untuk pertanyaan level penting, pakai TEKNIKAL HARIAN (MA, RSI, tertinggi/terendah) bila ada di konteks.`
 
 // Chat menjawab percakapan bebas tentang semua berita & pasar, dengan konteks yang disusun server.
 // Enabled: kunci Gemini tersedia.
@@ -87,6 +89,7 @@ Baca chart secara teliti: sumbu harga, candle/garis, indikator yang tampak, dan 
 Tentukan support & resistance terpenting dari swing high/low, area konsolidasi, gap, garis tren, MA, dan angka bulat.
 Tulis level harga persis seperti angka pada sumbu chart; jangan mengarang angka yang tidak dapat dibaca—bila ragu, beri rentang.
 Bahasa Indonesia ringkas. Bukan saran investasi: jelaskan skenario, bukan perintah beli/jual.
+Support harus di bawah harga terakhir dan resistance di atasnya; urutkan dari yang terdekat dengan harga terakhir.
 Bila gambar bukan chart harga, set valid=false dan isi ringkasan dengan penjelasan singkat.`
 
 // Chart menganalisis gambar chart (PNG/JPEG/WEBP) dengan catatan opsional dari pengguna.

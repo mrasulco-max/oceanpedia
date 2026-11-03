@@ -177,6 +177,54 @@ type chatMsg struct {
 }
 
 // marketContext menyusun konteks: berita terbaru, harga semua instrumen, dan detail instrumen yang disebut.
+// aliasSym: sebutan umum dalam pertanyaan → simbol instrumen.
+var aliasSym = map[string][]string{
+	"XAUUSD": {"EMAS", "GOLD"},
+	"USDIDR": {"RUPIAH", "KURS", "DOLAR AS"},
+	"IHSG":   {"JCI", "INDEKS SAHAM"},
+	"BTCUSD": {"BTC"},
+	"ETHUSD": {"ETH"},
+}
+
+// mentions: pertanyaan (huruf besar) menyebut instrumen lewat simbol, nama depan, atau alias.
+func mentions(q string, in store.Instrument) bool {
+	has := func(w string) bool {
+		if len(w) < 3 {
+			return false
+		}
+		for i := strings.Index(q, w); i >= 0; {
+			end := i + len(w)
+			okL := i == 0 || !isAlnum(q[i-1])
+			okR := end >= len(q) || !isAlnum(q[end])
+			if okL && okR {
+				return true
+			}
+			j := strings.Index(q[i+1:], w)
+			if j < 0 {
+				break
+			}
+			i += 1 + j
+		}
+		return false
+	}
+	if has(in.Symbol) || has(strings.TrimSuffix(strings.TrimSuffix(in.Symbol, "USD"), "IDR")) {
+		return true
+	}
+	if name := strings.ToUpper(strings.TrimSpace(strings.Split(in.Name, "/")[0])); has(name) {
+		return true
+	}
+	for _, a := range aliasSym[in.Symbol] {
+		if has(a) {
+			return true
+		}
+	}
+	return false
+}
+
+func isAlnum(b byte) bool {
+	return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9'
+}
+
 func (s *Server) marketContext(ctx context.Context, question string) string {
 	var sb strings.Builder
 	ins, _ := s.Store.Instruments(ctx, nil)
@@ -203,8 +251,7 @@ func (s *Server) marketContext(ctx context.Context, question string) string {
 				rows[i].q = &v
 			}
 		}(i, in)
-		base := strings.TrimSuffix(strings.TrimSuffix(in.Symbol, "USD"), "IDR")
-		if len(focus) < 3 && (strings.Contains(q, in.Symbol) || (len(base) >= 3 && strings.Contains(q, base)) || (len(in.Name) > 3 && strings.Contains(q, strings.ToUpper(in.Name)))) {
+		if len(focus) < 3 && mentions(q, in) {
 			focus = append(focus, in)
 		}
 	}
