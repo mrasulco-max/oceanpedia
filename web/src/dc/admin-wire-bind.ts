@@ -24,7 +24,8 @@ export function deAlur(html: string): string {
 
 /** Kartu statistik "Detail …" → tab/filter yang sesuai. */
 export function bindDetailCards(html: string, map: Record<string, string>): string {
-  return html.replace(/<a href="#" aria-label="Detail ([^"]+)"/g, (m, label: string) => (map[label] ? `<a href="${map[label]}" aria-label="Detail ${label}"` : m.replace('href="#"', 'href="#" hidden')));
+  // Kartu tanpa halaman detail: ikon tautan disembunyikan (atribut style pertama yang berlaku).
+  return html.replace(/<a href="#" aria-label="Detail ([^"]+)"/g, (_m, label: string) => (map[label] ? `<a href="${map[label]}" aria-label="Detail ${label}"` : `<a href="#" style="display: none" aria-hidden="true" tabindex="-1" aria-label="Detail ${label}"`));
 }
 
 const BTN = "min-height: 42px; box-sizing: border-box; border-radius: 999px; background: #FFFFFF; color: #0B0B0F; border: 1px solid #E3EBF7; font-size: 14px; font-weight: 500; padding: 0 16px";
@@ -51,6 +52,8 @@ export function bindContentExtras(html: string, d: { status: string; cats: strin
 
 /** Live blog: tombol riwayat & sisipan widget harga / kutipan ke isi pembaruan. */
 export function bindLiveExtras(html: string): string {
+  // Tanpa breaking aktif, tombol perpanjang/akhiri tidak berlaku.
+  if (!html.includes('data-live="extend"')) html = html.replace(/<a href="#"([^>]*)>((?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?)(Perpanjang 2 jam|Akhiri breaking)<\/a>/g, "");
   return html
     .replace(/<a href="#"([^>]*)>((?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?)Riwayat<\/a>/, '<a href="/admin/konten?status=published"$1>$2Riwayat</a>')
     .replace(/<a href="#"([^>]*)>((?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?)Widget harga<\/a>/, '<a href="#" data-live-insert="harga"$1>$2Widget harga</a>')
