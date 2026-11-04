@@ -100,6 +100,13 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	if strings.HasPrefix(p.Code, "student") {
+		if _, ok, err := s.Store.StudentStatus(r.Context(), uid(r)); err != nil {
+			return err
+		} else if !ok {
+			return &httpx.Problem{Type: "about:blank", Title: "Verifikasi Student diperlukan", Status: 403, Detail: "Paket Student khusus mahasiswa terverifikasi. Ajukan verifikasi dengan email kampus & NIM di halaman Plus."}
+		}
+	}
 	u, err := s.Store.UserByID(r.Context(), uid(r))
 	if err != nil {
 		return err

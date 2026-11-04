@@ -70,6 +70,8 @@ export const api = {
   topic: (slug: string) => get<{ topic: TopicInfo; articles: ArticleCard[] }>(`/v1/topics/${encodeURIComponent(slug)}`, { revalidate: 120 }),
   plans: () => get<{ data: { code: string; name: string; price_amount: number; currency: string; billing_period: "month" | "year"; min_seats: number; features: string[] }[]; tax_rate: number }>("/v1/plans", { revalidate: 300 }),
   live: () => get<import("@/dc/newsroom-bind").PublicLive>("/v1/live", { revalidate: 15 }),
+  followStat: (kind: "category" | "author", slug: string, token?: string) => get<{ following: boolean; followers: number }>(`/v1/follows/${kind}/${encodeURIComponent(slug)}`, { revalidate: 0, token }),
+  publicStats: () => get<{ articles: number; views: number; newsletter: number; readers: number }>("/v1/stats/public", { revalidate: 600 }),
   shorts: (token?: string) => get<Page<import("@/dc/newsroom-bind").ShortRow>>("/v1/shorts?limit=30", { revalidate: 60, token }),
   shortComments: (id: string, token?: string) => get<Page<import("@/dc/newsroom-bind").ShortComment>>(`/v1/shorts/${encodeURIComponent(id)}/comments?limit=50`, { revalidate: 30, token }),
   events: () => get<Page<EconomicEvent>>("/v1/events?days=2", { revalidate: 60 }),

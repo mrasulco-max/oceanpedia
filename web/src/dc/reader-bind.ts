@@ -761,7 +761,7 @@ export function bindTopic(html: string, d: TopicPage): string {
   h = h.replace(/>Kabar emiten bank, suku bunga, kredit, dan kinerja sektor keuangan(\.?)[^<]*</, (_m, dot: string) => `>Berita dan analisis terbaru seputar ${esc(t.name)}${dot}${dot ? "" : ` · ${fmtCount(t.followers)} pengikut · ${t.article_count} artikel`}<`);
   h = h.replace(/>12,8 rb pengikut · 342 artikel</, `>${fmtCount(t.followers)} pengikut · ${t.article_count} artikel<`);
   // Tombol ikuti (web: tombol statis; app: state u7 diatur dari server).
-  h = h.replace(/<(button|a)([^>]*)>([^<]*<svg[\s\S]*?<\/svg>)?\s*Ikuti topik<\/(button|a)>/, (_m, tag: string, attrs: string, icon: string | undefined) => `<${tag}${attrs} data-topic-follow="${esc(t.slug)}" data-logged="${d.loggedIn ? 1 : 0}" aria-pressed="${t.following}">${icon ?? ""}${t.following ? "Mengikuti" : "Ikuti topik"}</${tag}>`);
+  h = h.replace(/<(button|a)([^>]*)>((?:(?!<\/?(?:a|button)\b)[\s\S])*?)\s*Ikuti topik<\/(button|a)>/, (_m, tag: string, attrs: string, icon: string | undefined) => `<${tag}${attrs} data-topic-follow="${esc(t.slug)}" data-logged="${d.loggedIn ? 1 : 0}" aria-pressed="${t.following}">${icon ?? ""}${t.following ? "Mengikuti" : "Ikuti topik"}</${tag}>`);
   h = h.replace('onClick="{{ u7.m0.pick }}"', `onClick="{{ u7.m0.pick }}" data-topic-follow="${esc(t.slug)}" data-logged="${d.loggedIn ? 1 : 0}"`);
   // Aset terkait: harga nyata, atau bagian disembunyikan bila tak ada.
   const sample = ["BBCA", "BBRI", "BMRI", "BBNI"];
@@ -780,7 +780,7 @@ export function bindTopic(html: string, d: TopicPage): string {
   const sim = ["#SukuBunga", "#Dividen", "#LaporanKeuangan", "#BankIndonesia", "#Kredit"];
   sim.forEach((s, i) => {
     const r = d.related[i];
-    h = h.replace(rx(`<a href="(?:/topik/ihsg|#)"([^>]*)>${s}</a>`), r ? `<a href="/topik/${encodeURIComponent(r.slug)}"$1>#${esc(r.name)}</a>` : "");
+    h = h.replace(rx(`<a((?: class="wl")?) href="(?:/topik/ihsg|#)"([^>]*)>${s}</a>`), r ? `<a$1 href="/topik/${encodeURIComponent(r.slug)}"$2>#${esc(r.name)}</a>` : "");
     if (!r) h = h.replace(rx(`<(span|button)([^>]*)>${s}</(span|button)>`), "");
   });
   // Iklan in-feed contoh (app) dibuang — slot iklan nyata di-bind terpisah.

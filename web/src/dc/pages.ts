@@ -22,6 +22,8 @@ import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } fro
 import { bindCryptoVolume, bindDataCredits, bindMarketApp, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import { bindCoinLogos } from "./kit";
+import { bindContentExtras, bindDetailCards, bindLiveExtras, deAlur, requestsPanel } from "./admin-wire-bind";
+import { bindAds as bindAdsPage, bindAuthorExtras, bindCacheClear, bindCategoryExtras, bindHelp, bindMarketWebExtras, bindPrivacy, bindRetry, bindStudent } from "./wire-bind";
 import type { Candle, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
@@ -31,6 +33,35 @@ const AI_FAB_PATHS = new Set(["/", "/market", "/market/[symbol]", "/berita/[slug
 function aiFab(app: boolean): string {
   const bottom = app ? "calc(92px + env(safe-area-inset-bottom))" : "24px";
   return `<a href="/ai" data-ai-fab aria-label="Buka Asisten AI" style="position: fixed; right: 16px; bottom: ${bottom}; z-index: 40; display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 999px; background: linear-gradient(110deg,#2563EB 0%,#4285F4 50%,#2563EB 100%); color: #FFFFFF; font-size: 14px; font-weight: 500; text-decoration: none; box-shadow: 0 8px 24px rgba(37,99,235,.35)"><span aria-hidden="true">✦</span>Asisten AI</a>`;
+}
+
+/** Footer web: semua tautan menuju halaman nyata; ikon media sosial tanpa akun resmi disembunyikan. */
+const FOOT_CAT: Record<string, string> = { Saham: "/kategori/saham", Komoditas: "/kategori/komoditas", Crypto: "/kategori/crypto", Forex: "/kategori/forex", Ekonomi: "/kategori/ekonomi", Analisis: "/kategori/analisis" };
+const FOOT_MKT: Record<string, string> = { "Saham IDX": "/screener?urut=saham", Crypto: "/screener?urut=crypto", Forex: "/screener?urut=forex", Komoditas: "/screener?urut=komoditas", "Kalender ekonomi": "/kalender", Screener: "/screener" };
+const FOOT_ETC: Record<string, string> = { "Tentang kami": "/tentang", Redaksi: "/tentang#redaksi", "Pasang iklan": "/iklan", Karier: "mailto:help@jalaexplorer.com?subject=Karier%20OceanBird", Kontak: "/bantuan#kontak", "Pusat bantuan": "/bantuan", "Pedoman media siber": "/legal#syarat", "Syarat &amp; Ketentuan": "/legal#syarat", "Kebijakan Privasi": "/legal#privasi", Disclaimer: "/legal#disclaimer" };
+export function bindFooter(html: string): string {
+  const fs = html.lastIndexOf("<footer");
+  if (fs < 0) return html;
+  let f = html.slice(fs);
+  f = f.replace(/<a [^>]*aria-label="(Instagram|X|YouTube|LinkedIn|Facebook|TikTok)"[^>]*href="#"[^>]*>[\s\S]*?<\/a>|<a [^>]*href="#"[^>]*aria-label="(Instagram|X|YouTube|LinkedIn|Facebook|TikTok)"[^>]*>[\s\S]*?<\/a>/g, "");
+  // Kolom "Market" dulu (label Crypto/Forex/Komoditas juga ada di kolom Kategori).
+  f = f.replace(/(<strong[^>]*>Market<\/strong>)([\s\S]*?)(<\/div>)/, (_m, a: string, body: string, c: string) => a + body.replace(/<a([^>]*)href="#"([^>]*)>([^<]+)<\/a>/g, (x, p1: string, p2: string, lab: string) => (FOOT_MKT[lab] ? `<a${p1}href="${FOOT_MKT[lab]}"${p2}>${lab}</a>` : x)) + c);
+  f = f.replace(/<a([^>]*)href="#"([^>]*)>([^<]+)<\/a>/g, (x, p1: string, p2: string, lab: string) => {
+    const to = FOOT_CAT[lab] ?? FOOT_ETC[lab] ?? FOOT_MKT[lab];
+    return to ? `<a${p1}href="${to}"${p2}>${lab}</a>` : x;
+  });
+  return html.slice(0, fs) + f;
+}
+
+/** Lembar bagikan & tombol bagikan: kanal nyata + tautan halaman ini (ditangani enhancer "share"). */
+export function bindShare(html: string, url: string): string {
+  const CH: Record<string, string> = { WhatsApp: "wa", Telegram: "tg", X: "x", "Salin tautan": "copy" };
+  let h = html.replace(/<button onClick="\{\{ (f\d+) \}\}"(?![^>]*data-sh-share)([^>]*)>((?:(?!<\/button>)[\s\S])*?)(WhatsApp|Telegram|X|Salin tautan)<\/button>/g, (_m, f: string, a: string, inner: string, lab: string) => `<button onClick="{{ ${f} }}" data-share="${CH[lab]}"${a}>${inner}${lab}</button>`);
+  h = h.split(">oceanpedia.id/berita/ihsg-menguat-perbankan<").join(`>${esc(url.replace(/^https?:\/\//, ""))}<`);
+  // Web: tombol bagikan & salin tautan.
+  h = h.replace(/<a href="#" aria-label="Bagikan"/g, '<a href="#" data-share="native" aria-label="Bagikan"').replace(/<a href="#" aria-label="Salin tautan"/g, '<a href="#" data-share="copy" aria-label="Salin tautan"');
+  h = h.replace(/<button onClick="\{\{ share \}\}"/g, '<button onClick="{{ share }}" data-share="native"');
+  return h;
 }
 
 /** Ikon lonceng di header: angka/titik merah hanya bila ada notifikasi belum dibaca. */
@@ -175,6 +206,9 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       throw e;
     }
     html = bindAuthor(html, { author: r.author, articles: r.articles });
+    const fst = await safe(api.followStat("author", r.author.slug, token), { following: false, followers: 0 });
+    html = bindAuthorExtras(html, { slug: r.author.slug, followers: fst.followers, following: fst.following, loggedIn: !!user, app: board.kind === "app" });
+    if (board.kind === "app") ctx.state = JSON.stringify({ u: { u6: [fst.following], u7: [fst.following] } });
     title = r.author.name;
     description = r.author.bio || `${r.author.name} · ${r.author.title}`;
   } else if (path === "/topik/[slug]") {
@@ -207,9 +241,16 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const cats = await safe(api.categories(), { data: [] });
     const cat = cats.data.find((c) => c.slug === m.params.slug);
     if (!cat) notFound();
-    const list = await safe(api.articles({ category: cat.slug, limit: 30 }), { data: [] });
+    const cursor = search.sebelum && !Number.isNaN(Date.parse(search.sebelum)) ? search.sebelum : "";
+    const [list, fst] = await Promise.all([
+      safe(api.articles({ category: cat.slug, limit: 30, cursor }), { data: [], next_cursor: null }),
+      safe(api.followStat("category", cat.slug, token), { following: false, followers: 0 }),
+    ]);
     html = html.replace(/(<h1\b[^>]*>)\s*Saham\s*(<\/h1>)/, (_x, o: string, c: string) => `${o}${esc(cat.name)}${c}`);
     html = replaceText(html, "Terbaru di Saham", `Terbaru di ${cat.name}`);
+    const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+    html = bindCategoryExtras(html, { slug: cat.slug, followers: fst.followers, following: fst.following, loggedIn: !!user, total: cat.article_count, today: list.data.filter((a) => new Date(new Date(a.published_at).getTime() + 7 * 3600_000).toISOString().slice(0, 10) === today).length, nextCursor: list.next_cursor ?? null, cursor: cursor || null, app: board.kind === "app" });
+    if (board.kind === "app") ctx.state = JSON.stringify({ u: { u3: [fst.following] } });
     html = bindArticleCards(html, list.data.length ? list.data : all);
     title = cat.name;
     description = cat.description;
@@ -287,6 +328,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   } else if (path === "/plus") {
     const [plans, sub] = await Promise.all([safe(api.plans(), { data: [], tax_rate: 0.11 }), user ? meGetJSON<{ data: SubInfo | null }>("/v1/billing/subscription") : Promise.resolve(null)]);
     html = bindPlusPlans(html, { plans: plans.data, sub: sub?.data ?? null, tax: plans.tax_rate });
+    const stu = user ? await meGetJSON<{ status: string; verified: boolean }>("/v1/me/student") : null;
+    html = bindStudent(html, { loggedIn: !!user, status: stu?.status ?? "", verified: !!stu?.verified });
     enhance.push("plus");
     title = "Ocean Pedia Plus";
   } else if (path === "/plus/checkout") {
@@ -349,6 +392,12 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
         if (path === "/plus/baca") {
           html = bindPlusReadAI(html, a, ai);
           html = bindArticleDetail(html, a);
+          const [cm, rx, bms] = await Promise.all([safe(api.comments(a.slug), { data: [] }), safe(api.reactions(a.slug), { data: [] }), user ? getBookmarks() : Promise.resolve(null)]);
+          const reactions: Record<string, number> = {};
+          for (const r of rx.data) reactions[r.kind] = r.count;
+          const social = { loggedIn: !!user, me: user ? { name: user.full_name, email: user.email } : null, comments: cm.data, reactions, bookmarked: !!bms?.some((b) => b.slug === a.slug), slug: a.slug };
+          html = bindArticleSocialApp(html, social);
+          enhance.push("reader");
         } else {
           html = bindAnalysisPage(html, ai, { kind: "article", title: a.title, href: `/berita/${a.slug}`, image: a.cover_url, slug: a.slug });
         }
@@ -471,6 +520,31 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
 
   // Logo crypto & emas pada lencana simbol.
   html = bindCoinLogos(html);
+
+  // Fitur pembaca lain yang dulu hanya tiruan desain.
+  if (path === "/market" && board.kind === "web") html = bindMarketWebExtras(html, !!user);
+  if (path === "/offline" || boardId === "web-error") html = bindRetry(html);
+  if (path === "/bantuan") html = bindHelp(html);
+  if (path === "/iklan") html = bindAdsPage(html, await safe(api.publicStats(), { articles: 0, views: 0, newsletter: 0, readers: 0 }));
+  if (path === "/legal" && board.kind === "app") html = bindPrivacy(html, !!user);
+  if (path === "/pengaturan") html = bindCacheClear(html);
+  if (path === "/") html = html.replace(/<a href="#" role="tab" aria-selected="true"/, '<a href="/" role="tab" aria-selected="true"');
+  if (path === "/watchlist") html = html.replace(/<a class="wl" href="#"([^>]*)>Lihat semua/, '<a class="wl" href="/market"$1>Lihat semua');
+  if (/data-(follow|wl-sym|reload|faq-|adq|student|privacy|cache-clear)/.test(html)) enhance.push("wire");
+  if (board.kind === "web") html = bindFooter(html);
+
+  // Bagikan: tautan kanonis halaman ini (halaman Plus membagikan artikel/aset publiknya).
+  if (/data-share|>WhatsApp<\/button>|aria-label="Bagikan"|\{\{ share \}\}/.test(html)) {
+    const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://oceanpedia-web.vercel.app").replace(/\/$/, "");
+    let canon = m.route.path.replace(/\[(\w+)\]/g, (_x, k: string) => encodeURIComponent(m.params[k] ?? ""));
+    if (path.startsWith("/plus/") && search.a) canon = `/berita/${encodeURIComponent(search.a)}`;
+    else if (path.startsWith("/plus/") && search.symbol) canon = `/market/${encodeURIComponent(search.symbol)}`;
+    else if (path === "/short" && search.v) canon = `/short?v=${encodeURIComponent(search.v)}`;
+    html = bindShare(html, site + canon);
+    ctx.shareUrl = site + canon;
+    ctx.shareTitle = title;
+    if (html.includes("data-share=")) enhance.push("share");
+  }
 
   // Lencana lonceng: jumlah notifikasi belum dibaca yang sebenarnya (bukan angka contoh desain).
   if (html.includes('aria-label="Notifikasi')) {
@@ -607,6 +681,15 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     if (!rbac) notFound();
     html = bindRoles(html, { rbac, categories: cats.data });
     enhance.push("rbac");
+  } else if ((boardId === "admin-users" || boardId === "admin-ads") && search.tab === "permintaan") {
+    const kind = boardId === "admin-ads" ? "ad" : ["student", "privacy", "ad"].includes(search.jenis ?? "") ? search.jenis! : "";
+    const r = await adminApi.requests(kind);
+    if (!r) notFound();
+    const base = boardId === "admin-ads" ? "/admin/iklan?tab=permintaan" : "/admin/pengguna?tab=permintaan";
+    const open = r.data.filter((x) => x.status === "new" || x.status === "pending").length;
+    html = replaceBody(html, requestsPanel(r.data, boardId === "admin-ads" ? "ad" : kind, base), { subtitle: `${open} menunggu tindakan · verifikasi Student, permintaan data pribadi (UU PDP), dan kerja sama iklan`, actions: `<a href="${boardId === "admin-ads" ? "/admin/iklan" : "/admin/pengguna"}" style="min-height: 44px; display: flex; align-items: center; padding: 0 18px; border-radius: 999px; border: 1px solid #E3EBF7; background: #FFFFFF; font-size: 14px">← Kembali</a>` });
+    enhance.push("newsroom");
+    title = "Permintaan masuk";
   } else if (boardId === "admin-users") {
     const tab = ["reader", "staff", "reported", "blocked"].includes(search.tab ?? "") ? search.tab! : "reader";
     const q = (search.q ?? "").slice(0, 80);
@@ -717,5 +800,31 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   html = bindLogout(html, board.kind !== "admin");
   if (html.includes("data-logout")) enhance.push("logout");
 
+  // Sisa tautan "#" di panel: diagram alur, kartu statistik, konten, live blog, akses ke Permintaan masuk.
+  html = deAlur(html);
+  if (boardId === "admin-comments") html = bindDetailCards(html, { Menunggu: "/admin/komentar?status=pending", Dilaporkan: "/admin/komentar?status=flagged", "Disetujui hari ini": "/admin/komentar?status=visible", "Pengguna diblokir": "/admin/pengguna?tab=blocked" });
+  if (boardId === "admin-users") html = bindDetailCards(html, { "Pengguna terdaftar": "/admin/pengguna?tab=reader", "Aktif harian": "/admin/laporan", "Laporan terbuka": "/admin/pengguna?tab=reported", Diblokir: "/admin/pengguna?tab=blocked" });
+  if (boardId === "admin-market") html = bindDetailCards(html, { "Error 429": "/admin/pasar?status=error", "Cache hit": "/admin/pasar", "Latensi p95": "/admin/pasar", "Koneksi WS": "/admin/pasar?status=live" });
+  if (boardId === "admin-live" && search.tab !== "short") html = bindLiveExtras(html);
+  if (boardId === "admin-content") {
+    const status = CONTENT_STATUS.has(search.status ?? "") ? search.status! : "review";
+    const [list, staff] = await Promise.all([adminApi.articles(status), adminApi.staff()]);
+    const arts = list?.data ?? [];
+    const selId = search.id && UUID.test(search.id) ? search.id : arts[0]?.id ?? null;
+    html = bindContentExtras(html, {
+      status,
+      cats: [...new Set(arts.map((a) => a.category_name))].sort(),
+      authors: [...new Set(arts.map((a) => a.author_name))].sort(),
+      staff: (staff?.data ?? []).filter((x) => !x.blocked_at).map((x) => ({ id: x.id, name: x.full_name, role: x.role_name })),
+      selectedId: selId,
+      total: list?.counts?.[status] ?? arts.length,
+    });
+    if (!enhance.includes("newsroom")) enhance.push("newsroom");
+  }
+  if ((boardId === "admin-users" || boardId === "admin-ads") && search.tab !== "permintaan" && who.perms.has(boardId === "admin-ads" ? "ads.manage" : "users.read")) {
+    const pend = await adminApi.requests(boardId === "admin-ads" ? "ad" : "");
+    const n = (pend?.data ?? []).filter((x) => (boardId === "admin-ads" || x.kind !== "ad") && (x.status === "new" || x.status === "pending")).length;
+    html = html.replace(/(<span style="margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px">)/, `$1<a href="/admin/${boardId === "admin-ads" ? "iklan" : "pengguna"}?tab=permintaan" style="min-height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-radius: 999px; border: 1px solid ${n ? "#FB7A3C" : "#E3EBF7"}; background: #FFFFFF; color: #0B0B0F; font-size: 14px; font-weight: 500">Permintaan masuk${n ? ` <span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #FB7A3C; color: #FFFFFF; font-size: 12px; display: inline-flex; align-items: center; justify-content: center">${n}</span>` : ""}</a>`);
+  }
   return { board, boardId, html, title, description, enhance, ctx };
 }

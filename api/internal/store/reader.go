@@ -109,8 +109,14 @@ WITH first AS (
   SELECT a.id, a.slug, a.title, a.excerpt, a.is_breaking FROM articles a JOIN first f ON f.article_id = a.id
   WHERE a.status = 'published' AND a.published_at <= now()
 ), topic AS (
-  SELECT DISTINCT ON (ut.user_id) ut.user_id, t.name AS tag
-  FROM art JOIN article_tags at ON at.article_id = art.id JOIN user_topics ut ON ut.tag_id = at.tag_id JOIN tags t ON t.id = at.tag_id
+  SELECT DISTINCT ON (x.user_id) x.user_id, x.tag FROM (
+    SELECT ut.user_id, 'Topik ' || t.name AS tag
+    FROM art JOIN article_tags at ON at.article_id = art.id JOIN user_topics ut ON ut.tag_id = at.tag_id JOIN tags t ON t.id = at.tag_id
+    UNION ALL
+    SELECT ua.user_id, 'Penulis ' || au.name FROM art JOIN articles a2 ON a2.id = art.id JOIN user_authors ua ON ua.author_id = a2.author_id JOIN authors au ON au.id = a2.author_id
+    UNION ALL
+    SELECT uc.user_id, 'Kategori ' || c.name FROM art JOIN articles a3 ON a3.id = art.id JOIN user_categories uc ON uc.category_id = a3.category_id JOIN categories c ON c.id = a3.category_id
+  ) x ORDER BY x.user_id
 ), breaking AS (
   SELECT u.id AS user_id FROM users u, art
   WHERE art.is_breaking AND u.deleted_at IS NULL AND coalesce((u.preferences->>'breaking')::boolean, true)
@@ -120,7 +126,7 @@ WITH first AS (
 ), ins AS (
   INSERT INTO notifications (user_id, channel, template, payload, status, sent_at)
   SELECT r.user_id, 'in_app', CASE WHEN r.tag IS NULL THEN 'breaking' ELSE 'topic' END,
-    jsonb_build_object('title', CASE WHEN r.tag IS NULL THEN 'BREAKING: ' || art.title ELSE 'Topik ' || r.tag || ': artikel baru' END,
+    jsonb_build_object('title', CASE WHEN r.tag IS NULL THEN 'BREAKING: ' || art.title ELSE r.tag || ': artikel baru' END,
       'body', CASE WHEN r.tag IS NULL THEN art.excerpt ELSE art.title END, 'link', '/berita/' || art.slug),
     'sent', now()
   FROM rcpt r, art

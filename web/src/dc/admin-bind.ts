@@ -364,7 +364,7 @@ export function bindContent(html: string, opts: { list: AdminList; status: strin
       .replace(pill(r, "Review"), statusPill[ds] ?? statusPill.draft!);
     // Tombol detail → pilih baris ini.
     r = r.replace(/<button aria-label="(Tutup|Buka) detail" aria-expanded="(true|false)"/, `<button data-select="/admin/konten?status=${status}&amp;id=${a.id}" aria-label="${isSel ? "Detail terbuka" : "Buka detail"}" aria-expanded="${isSel}"`);
-    r = r.replace("<div ", `<div data-row="${a.id}" `);
+    r = r.replace("<div ", `<div data-row="${a.id}" data-cat="${esc(a.category_name)}" data-author="${esc(a.author_name)}" `);
     return r;
   };
   const body = list.data.length
