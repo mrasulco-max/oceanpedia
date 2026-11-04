@@ -70,7 +70,8 @@ export function focusText(html: string): string {
       .replace(/^IDX$/, "AS")
       .replace("Berdasarkan watchlist: BBCA, BTC, Emas", "Berdasarkan watchlist: AAPL, BTC, Emas")
       .replace(/^★ BBCA$/, "★ AAPL")
-      .replace(/^dividen BBRI$/, "dividen AAPL")}<`);
+      .replace(/^dividen BBRI$/, "dividen AAPL")
+      .replace(/^Laporan keuangan Q3 BBCA$/, "Laporan keuangan kuartalan")}<`);
 }
 
 /** Tombol melayang "Aurora AI" (khusus Plus) di halaman yang paling sering dibuka. */
