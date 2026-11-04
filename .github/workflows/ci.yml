@@ -654,6 +654,11 @@ jobs:
           ! curl -sf -A "$DESK" "localhost:3000/short?v=$YT" | grep -q '>Untuk kamu</button>'
           ! curl -sf -A "$MOB" "localhost:3000/short?v=$YT" | grep -q 'src="/img/news-'
           ! curl -sf -A "$DESK" "localhost:3000/short?v=$YT" | grep -q '30 Oktober 2026'
+          # Beranda: bagian Ocean Short memakai video nyata dari dashboard → buka detail /short?v=….
+          curl -sf -A "$MOB" localhost:3000/ | grep -q 'href="/short?v='
+          curl -sf -A "$DESK" localhost:3000/ | grep -q 'href="/short?v='
+          ! curl -sf -A "$MOB" localhost:3000/ | grep -q 'Kenapa emas turun hari ini?'
+          ! curl -sf -A "$DESK" localhost:3000/ | grep -q 'Kenapa emas turun hari ini?'
           # Halaman tagihan butuh login.
           for p in /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }
