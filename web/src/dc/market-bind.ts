@@ -17,14 +17,15 @@ const LABELS: Record<string, string> = {
   Emas: "XAUUSD", "XAU/USD": "XAUUSD", XAUUSD: "XAUUSD", XAU: "XAUUSD",
   "USD/IDR": "USDIDR", USDIDR: "USDIDR",
   IHSG: "IHSG", LQ45: "LQ45", BBCA: "BBCA", BBRI: "BBRI", BMRI: "BMRI", TLKM: "TLKM", ASII: "ASII", GOTO: "GOTO",
+  IDX30: "IDX30", IDX80: "IDX80",
   AAPL: "AAPL", MSFT: "MSFT", NVDA: "NVDA", TSLA: "TSLA", AMZN: "AMZN", GOOGL: "GOOGL", META: "META",
   "EUR/USD": "EURUSD", EURUSD: "EURUSD", "GBP/USD": "GBPUSD", GBPUSD: "GBPUSD", "USD/JPY": "USDJPY", USDJPY: "USDJPY", "AUD/USD": "AUDUSD", AUDUSD: "AUDUSD",
 };
 
 // Fokus pasar saham AS & forex: contoh desain bertema IDX (IHSG, BBCA, …) yang tidak punya data diganti
 // instrumen aktif yang berbeda di setiap baris — label, nama, bursa, dan angka nyata.
-const IDX_SAMPLE = new Set(["IHSG", "LQ45", "BBCA", "BBRI", "BMRI", "TLKM", "ASII", "GOTO"]);
-const IDX_TEXT = /^(IDX|Bank Central Asia( Tbk)?|Bank Rakyat Indonesia( Tbk)?|Bank Mandiri( Tbk)?|Telkom Indonesia( Tbk)?|Astra International( Tbk)?|GoTo Gojek Tokopedia( Tbk)?|Indeks Harga Saham Gabungan|Indeks LQ45)$/;
+const IDX_SAMPLE = new Set(["IHSG", "LQ45", "BBCA", "BBRI", "BMRI", "TLKM", "ASII", "GOTO", "IDX30", "IDX80"]);
+const IDX_TEXT = /^(IDX|Bank Central Asia( Tbk)?|Bank Rakyat Indonesia( Tbk)?|Bank Mandiri( Tbk)?|Telkom Indonesia( Tbk)?|Astra International( Tbk)?|GoTo Gojek Tokopedia( Tbk)?|Indeks Harga Saham Gabungan|Indeks LQ45|\d+ saham (unggulan|likuid|teraktif|paling likuid))$/;
 const SUBSTITUTES: [string, string, string, string][] = [
   ["AAPL", "AAPL", "Apple Inc.", "NASDAQ"],
   ["MSFT", "MSFT", "Microsoft Corp.", "NASDAQ"],
@@ -147,11 +148,14 @@ export function bindQuotes(html: string, quotes: Map<string, Quote>): string {
       const t = val(texts[j]!);
       const other = LABELS[t];
       if (other && other !== sym) break;
-      if (price < 0 && PRICE.test(t)) price = j;
-      else if (price >= 0 && abs < 0 && ABS.test(t)) abs = j;
-      else if (price >= 0 && PCT.test(t)) {
+      // Urutan desain bisa harga → (selisih) → persen, atau persen → harga (kartu indeks).
+      if (price < 0 && PRICE.test(t)) {
+        price = j;
+        if (pct >= 0) break;
+      } else if (price >= 0 && abs < 0 && ABS.test(t)) abs = j;
+      else if (pct < 0 && PCT.test(t)) {
         pct = j;
-        break;
+        if (price >= 0) break;
       }
     }
     if (price < 0 || pct < 0) continue;
@@ -167,7 +171,7 @@ export function bindQuotes(html: string, quotes: Map<string, Quote>): string {
     setText(texts[pct]!, fmtPct(val(texts[pct]!), q.change_percent));
     const ot = openTag(texts[pct]!);
     if (ot >= 0) parts[ot] = recolor(parts[ot]!, up);
-    k = pct;
+    k = Math.max(pct, price);
   }
   return parts.join("");
 }
