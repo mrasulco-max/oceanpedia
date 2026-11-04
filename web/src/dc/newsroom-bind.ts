@@ -1,6 +1,6 @@
 import "server-only";
 import { esc as esc0 } from "./bind";
-import { ago, blocks, closeOf, compact, emptyRow, fmtDate, num, pill, recolorAvatar, rx, statCard } from "./kit";
+import { ago, blocks, closeOf, compact, emptyRow, fmtDate, num, pill, recolorAvatar, rx, statCard, threaded } from "./kit";
 import { initials } from "./bind";
 
 /**
@@ -534,6 +534,7 @@ export interface ShortComment {
   flag_reason?: string | null;
   mine: boolean;
   created_at: string;
+  parent_id?: string;
 }
 export interface ShortCtx {
   loggedIn: boolean;
@@ -547,10 +548,10 @@ const SVGX = "(?:<svg(?:(?!<\\/svg>)[\\s\\S])*<\\/svg>)?";
 /** Baris komentar short (dirender server; enhancer "shorts" menangani kirim/hapus). */
 function shortCommentRows(list: ShortComment[], dark: boolean): string {
   if (!list.length) return `<p data-sh-empty style="margin: 0; font-size: 14px; color: #5F6B7D">Belum ada komentar. Jadilah yang pertama.</p>`;
-  return list
+  return threaded(list)
     .map(
-      (c) =>
-        `<div data-sh-comment="${esc(c.id)}" style="display: flex; gap: 10px; align-items: flex-start"><span style="flex: none; width: 32px; height: 32px; border-radius: 999px; background: ${dark ? "#E5ECFF" : "#E5ECFF"}; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">${esc(initials(c.user_name))}</span><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px"><span style="display: flex; gap: 6px; align-items: baseline; font-size: 13px"><strong style="font-weight: 500">${esc(c.user_name)}</strong><span style="color: #5F6B7D">· ${esc(ago(c.created_at))}</span>${c.mine ? `<button type="button" data-sh="comment-del" data-cid="${esc(c.id)}" style="margin-left: auto; border: 0; background: transparent; color: #B42318; font-size: 12px; cursor: pointer">Hapus</button>` : ""}</span><p style="margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word">${esc(c.body)}</p></div></div>`,
+      ({ c, reply }) =>
+        `<div data-sh-comment="${esc(c.id)}"${reply ? " data-reply" : ""} style="display: flex; gap: 10px; align-items: flex-start${reply ? "; padding-left: 42px" : ""}"><span style="flex: none; width: 32px; height: 32px; border-radius: 999px; background: ${dark ? "#E5ECFF" : "#E5ECFF"}; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">${esc(initials(c.user_name))}</span><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px"><span style="display: flex; gap: 6px; align-items: baseline; font-size: 13px"><strong style="font-weight: 500">${esc(c.user_name)}</strong><span style="color: #5F6B7D">· ${esc(ago(c.created_at))}</span>${c.mine ? `<button type="button" data-sh="comment-del" data-cid="${esc(c.id)}" style="margin-left: auto; border: 0; background: transparent; color: #B42318; font-size: 12px; cursor: pointer">Hapus</button>` : ""}</span><p style="margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word">${esc(c.body)}</p><button type="button" data-sh="reply" data-id="${esc(c.parent_id || c.id)}" data-name="${esc(c.user_name)}" style="align-self: flex-start; border: 0; background: transparent; padding: 0; color: #2F74EB; font-size: 12px; font-weight: 500; cursor: pointer">Balas</button></div></div>`
     )
     .join("");
 }

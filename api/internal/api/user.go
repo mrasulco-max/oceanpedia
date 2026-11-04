@@ -315,6 +315,21 @@ func (s *Server) verifyOTP(w http.ResponseWriter, r *http.Request) error {
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
 	}
+	// Langkah kedua dengan aplikasi autentikator: challenge dari langkah pertama + kode TOTP.
+	if in.Challenge != "" {
+		if tu, err := s.Store.UserByEmail(r.Context(), strings.TrimSpace(strings.ToLower(in.Email))); err == nil && s.checkToken(in.Challenge, "2fa", tu.ID) {
+			if secret := s.totpSecret(r, tu.ID); secret != "" {
+				if !auth.VerifyTOTP(secret, in.Code, s.Now()) {
+					return httpx.Validation(map[string]string{"code": "Kode autentikator salah atau kedaluwarsa."})
+				}
+				s.audit2(r, tu.ID, "auth.2fa", map[string]any{"method": "totp", "remember": in.Remember})
+				if in.Remember {
+					r = withDevice(r, s.signToken("td", tu.ID, 30*24*time.Hour))
+				}
+				return s.issue(w, r, tu, http.StatusOK)
+			}
+		}
+	}
 	u, err := s.checkCode(r.Context(), in.Email, in.Code)
 	if err != nil {
 		return err
@@ -325,6 +340,10 @@ func (s *Server) verifyOTP(w http.ResponseWriter, r *http.Request) error {
 			return err
 		} else if need {
 			if !s.checkToken(in.Challenge, "2fa", u.ID) {
+				// Autentikator aktif: masuk dengan kode email dilanjutkan kode aplikasi.
+				if s.totpSecret(r, u.ID) != "" {
+					return s.startTwoFactor(r, u)
+				}
 				return httpx.Forbidden("Akun staf wajib masuk dengan kata sandi, lalu kode verifikasi.")
 			}
 			s.audit2(r, u.ID, "auth.2fa", map[string]any{"remember": in.Remember})
@@ -621,7 +640,8 @@ func (s *Server) react(w http.ResponseWriter, r *http.Request) error {
 
 func (s *Server) addComment(w http.ResponseWriter, r *http.Request) error {
 	var in struct {
-		Body string `json:"body"`
+		Body     string `json:"body"`
+		ParentID string `json:"parent_id"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
@@ -630,14 +650,23 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) error {
 	if n := utf8.RuneCountInString(in.Body); n < 1 || n > 2000 {
 		return httpx.Validation(map[string]string{"body": "Komentar 1–2000 karakter."})
 	}
+	if in.ParentID != "" && !uuidRe.MatchString(in.ParentID) {
+		return httpx.Validation(map[string]string{"parent_id": "Komentar yang dibalas tidak valid."})
+	}
 	u, err := s.Store.UserByID(r.Context(), uid(r))
 	if err != nil {
 		return err
 	}
 	status, reason := s.screenComment(r, in.Body, s.Now().Sub(u.CreatedAt))
-	c, err := s.Store.AddComment(r.Context(), uid(r), r.PathValue("slug"), in.Body, status, reason)
+	c, err := s.Store.AddComment(r.Context(), uid(r), r.PathValue("slug"), in.Body, status, reason, in.ParentID)
 	if err != nil {
+		if in.ParentID != "" && errors.Is(err, httpx.ErrNotFound) {
+			return httpx.NotFound("Komentar yang dibalas tidak ditemukan.")
+		}
 		return err
+	}
+	if c.ParentID != "" && c.Status == "visible" {
+		s.notifyReply(r, "article", c.ParentID, c.UserName, c.Body)
 	}
 	httpx.JSON(w, http.StatusCreated, c)
 	return nil

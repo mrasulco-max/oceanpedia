@@ -5,7 +5,8 @@
  */
 import type { Cleanup, Env } from "./enhancers";
 import { toast } from "./toast";
-import { applyDisplay, displayFromPrefs } from "@/lib/display-prefs";
+import { applyDisplay, currentDisplay, FONT_PREFS, mergeDisplay, type FontSize } from "@/lib/display-prefs";
+import { totpDialog } from "./totp-dialog";
 
 type Res = { ok: boolean; status: number; data: { detail?: string; title?: string; errors?: Record<string, string> } & Record<string, unknown> };
 
@@ -69,36 +70,58 @@ export function profile(host: HTMLElement, { router, ctx }: Env): Cleanup {
   // Salin preferensi tampilan akun ke perangkat ini (cookie) saat halaman dibuka.
   if (ctx.prefs) {
     try {
-      applyDisplay(displayFromPrefs(JSON.parse(ctx.prefs) as Record<string, unknown>));
+      applyDisplay(mergeDisplay(currentDisplay(), JSON.parse(ctx.prefs) as Record<string, unknown>));
     } catch {
       /* abaikan */
     }
   }
-  let tfa = ctx.tfa === "1" ? 0 : 2;
+  // Indeks pilihan 2 langkah: 0 = email, 1 = aplikasi autentikator, 2 = mati.
+  let tfa = Number(ctx.tfa ?? 2);
   let lang = "";
   const onState = (e: Event) => {
     const st = ((e as CustomEvent).detail ?? {}) as { u?: Record<string, boolean[]>; o?: Record<string, number[]> };
     const prefs = prefsFromState(st);
     // Tema, animasi & video otomatis langsung diterapkan di perangkat ini.
-    if (prefs.theme || "reduce_motion" in prefs || "autoplay_video" in prefs) applyDisplay(displayFromPrefs(prefs));
-    if (prefs.language === "en" && lang !== "en") toast(host, "Tampilan bahasa Inggris segera hadir; pilihanmu sudah disimpan.");
-    lang = String(prefs.language ?? "");
+    // Bahasa, zona waktu & format angka dirender server: muat ulang setelah tersimpan.
+    const before = currentDisplay();
+    const next = mergeDisplay(before, prefs);
+    applyDisplay(next);
+    const rerender = !!lang && (next.lang !== before.lang || next.zone !== before.zone || next.num !== before.num);
+    lang = "x";
     // Verifikasi 2 langkah (email) untuk pembaca.
     const t = st.o?.tfa?.[0];
     if (t != null && t !== tfa) {
-      if (t === 1) toast(host, "Aplikasi autentikator segera hadir. Gunakan verifikasi lewat email.");
-      else {
-        const on = t === 0;
-        void call("PATCH", "/api/me", { two_factor: on }).then((r) => toast(host, r.ok ? (on ? "Verifikasi 2 langkah aktif: kode dikirim ke email setiap masuk di perangkat baru." : "Verifikasi 2 langkah dimatikan.") : msg(r, "Gagal menyimpan."), r.ok ? "ok" : "error"));
-      }
+      const prev = tfa;
       tfa = t;
+      void (async () => {
+        // Keluar dari autentikator: konfirmasi dengan kode/kata sandi lebih dulu.
+        if (prev === 1 && !(await totpDialog("disable"))) {
+          tfa = prev;
+          return router.refresh();
+        }
+        if (t === 1) {
+          if (!(await totpDialog("enable"))) {
+            tfa = prev;
+            return router.refresh();
+          }
+          toast(host, "Aplikasi autentikator aktif: setiap masuk di perangkat baru, masukkan kode dari aplikasi.", "ok");
+          return router.refresh();
+        }
+        const on = t === 0;
+        const r = await call("PATCH", "/api/me", { two_factor: on });
+        toast(host, r.ok ? (on ? "Verifikasi 2 langkah aktif: kode dikirim ke email setiap masuk di perangkat baru." : "Verifikasi 2 langkah dimatikan.") : msg(r, "Gagal menyimpan."), r.ok ? "ok" : "error");
+        router.refresh();
+      })();
     }
     const s = JSON.stringify(prefs);
     if (s === last) return; // mis. lembar dibuka/ditutup tanpa perubahan
     window.clearTimeout(timer);
     timer = window.setTimeout(async () => {
       const r = await call("PATCH", "/api/me", { preferences: prefs }).catch(() => null);
-      if (r?.ok) last = s;
+      if (r?.ok) {
+        last = s;
+        if (rerender) router.refresh();
+      }
       else toast(host, r ? msg(r, "Preferensi gagal disimpan.") : "Koneksi bermasalah. Preferensi belum tersimpan.");
     }, 400);
   };
@@ -106,6 +129,29 @@ export function profile(host: HTMLElement, { router, ctx }: Env): Cleanup {
   offs.push(() => {
     host.removeEventListener("dc:state", onState);
     window.clearTimeout(timer);
+  });
+
+  // ---------------------------------------------------------------- ukuran huruf artikel (slider)
+  const FONT_LABEL = ["Kecil", "Sedang", "Besar", "Sangat besar"];
+  let fontTimer = 0;
+  const onFontInput = (e: Event) => {
+    const el = e.target instanceof HTMLInputElement && e.target.matches("[data-font-size]") ? e.target : null;
+    if (!el) return;
+    const i = Math.min(3, Math.max(0, Number(el.value))) as FontSize;
+    el.setAttribute("aria-valuetext", FONT_LABEL[i]!);
+    const lab = host.querySelector<HTMLElement>("[data-font-label]");
+    if (lab) lab.textContent = FONT_LABEL[i]!;
+    applyDisplay({ ...currentDisplay(), font: i });
+    window.clearTimeout(fontTimer);
+    fontTimer = window.setTimeout(async () => {
+      const r = await call("PATCH", "/api/me", { preferences: { font_size: FONT_PREFS[i] } }).catch(() => null);
+      toast(host, r?.ok ? `Ukuran huruf artikel: ${FONT_LABEL[i]}` : "Ukuran huruf belum tersimpan. Coba lagi.", r?.ok ? "ok" : "error");
+    }, 350);
+  };
+  host.addEventListener("input", onFontInput);
+  offs.push(() => {
+    host.removeEventListener("input", onFontInput);
+    window.clearTimeout(fontTimer);
   });
 
   // ---------------------------------------------------------------- klik

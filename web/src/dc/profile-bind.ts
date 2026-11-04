@@ -55,6 +55,11 @@ export function bindProfileApp(html: string, p: Profile): string {
   h = h.replace(/<span([^>]*)>1 terpicu<\/span>/, (_m, a: string) => (p.stats.alerts_triggered ? `<span${a}>${p.stats.alerts_triggered} terpicu</span>` : ""));
   h = h.replace(">8 artikel untuk dibaca nanti<", `>${p.stats.bookmarks ? plural(p.stats.bookmarks, "artikel untuk dibaca nanti") : "Belum ada artikel tersimpan"}<`);
   h = h.split(">IHSG, The Fed, Bitcoin<").join(`>${esc(topicsText(p))}<`);
+  // Ulas aplikasi (belum di toko aplikasi) → kirim masukan lewat Pusat bantuan.
+  h = h.replace(/<a href="[^"]*"((?:(?!<\/a>)[\s\S])*?Ulas Aplikasi)/, '<a href="/bantuan#kontak"$1').replace(/>Beri rating di Play Store \/ App Store</, ">Kirim masukan untuk tim OceanBird<");
+  // Bahasa & wilayah sesuai pengaturan.
+  const zl: Record<string, string> = { "Asia/Jakarta": "WIB", "Asia/Makassar": "WITA", "Asia/Jayapura": "WIT" };
+  h = h.replace(/>Bahasa Indonesia · WIB</, `>${p.preferences.language === "en" ? "English" : "Bahasa Indonesia"} · ${zl[String(p.preferences.timezone ?? "")] ?? "WIB"}<`);
   // Menu Jurnal Trading setelah "Topik yang Diikuti".
   h = h.replace(/(Topik yang Diikuti(?:(?!<\/a>)[\s\S])*?<\/a>)/, `$1${journalItemApp()}`);
   // Lembar "Edit profil": nilai asli, email hanya-baca (perubahan email perlu verifikasi).
@@ -79,6 +84,8 @@ export function bindProfileWeb(html: string, p: Profile, alertLimit: number): st
     const to = nav[label.trim()];
     return to ? `<a href="${to}"${attrs}>${icon ?? ""}${label}</a>` : whole;
   });
+  // Menu samping: Privasi & data setelah Keamanan.
+  h = h.replace(/(<a href="\/pengaturan"([^>]*)>(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Keamanan<\/a>)/, (_m, whole: string, attrs: string) => `${whole}<a href="/akun/data"${attrs}>${JOURNAL_ICON.replace('width="24" height="24"', 'width="20" height="20"').replace(/<path d="M8 15l2.5-3 2 2 3.5-4.5"\/>/, '<path d="M12 8v5M12 16h.01"/>')}Privasi &amp; data</a>`);
   // Menu samping: Jurnal Trading setelah Price alert.
   h = h.replace(/(<a href="\/alert"([^>]*)>(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Price alert<\/a>)/, (_m, whole: string, attrs: string) => `${whole}<a href="/jurnal" data-journal-link${attrs}>${JOURNAL_ICON.replace('width="24" height="24"', 'width="20" height="20"')}Jurnal Trading</a>`);
   h = h.replace(/color: \[[\d, ]+\]; (font-size: 14px; font-weight: 500">(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Keluar)/, "color: #DC2626; $1");
@@ -115,7 +122,7 @@ export function bindProfileWeb(html: string, p: Profile, alertLimit: number): st
 }
 
 // Pengaturan aplikasi (app-21): kunci state desain ↔ preferensi.
-export const SWITCH_PREFS: [string, string, boolean][] = [["u2", "reduce_motion", false], ["u3", "autoplay_video", true], ["u4", "breaking", true], ["u5", "price_alert", true], ["u6", "topics_notif", true], ["u7", "morning_digest", true], ["u8", "comment_replies", false]];
+export const SWITCH_PREFS: [string, string, boolean][] = [["u2", "reduce_motion", false], ["u3", "autoplay_video", true], ["u4", "breaking", true], ["u5", "price_alert", true], ["u6", "topics_notif", true], ["u7", "morning_digest", true], ["u8", "comment_replies", true]];
 export const OPTION_PREFS: [string, string, string[]][] = [
   ["quiet", "quiet_hours", ["off", "21-06", "22-06", "23-07"]],
   ["lang", "language", ["id", "en"]],
@@ -130,12 +137,16 @@ export function settingsState(p: Profile): string {
   const o: Record<string, number[]> = {};
   const theme = p.preferences.theme;
   if (typeof theme === "string" && THEMES.includes(theme)) u.u1 = THEMES.map((t) => t === theme);
-  for (const [k, key] of SWITCH_PREFS) if (typeof p.preferences[key] === "boolean") u[k] = [p.preferences[key] as boolean];
+  for (const [k, key, def] of SWITCH_PREFS) {
+    if (typeof p.preferences[key] === "boolean") u[k] = [p.preferences[key] as boolean];
+    // Balasan komentar: bawaan aktif (sama dengan server) bila belum pernah diatur.
+    else if (key === "comment_replies") u[k] = [def];
+  }
   for (const [k, key, vals] of OPTION_PREFS) {
     const i = vals.indexOf(String(p.preferences[key] ?? ""));
     if (i >= 0) o[k] = [i];
   }
-  o.tfa = [p.two_factor ? 0 : 2];
+  o.tfa = [p.totp ? 1 : p.two_factor ? 0 : 2];
   return JSON.stringify({ u, o });
 }
 
@@ -155,8 +166,17 @@ export function bindSettingsApp(html: string, p: Profile, sessions: Session[]): 
   h = h.replace(/(Ulangi kata sandi baru)<input type="password"/, '$1<input type="password" data-pw-confirm autocomplete="new-password"');
   h = h.replace(/<button onClick="\{\{ f9 \}\}"([^>]*)>Simpan kata sandi<\/button>/, '<button data-pw-save$1>Simpan kata sandi</button>');
   // Verifikasi 2 langkah lewat email (kode saat masuk di perangkat baru); autentikator menyusul.
-  h = h.replace(/>Aktif lewat SMS</, ">Aktif lewat email<").replace(/>Aktif lewat aplikasi autentikator</, ">Aplikasi autentikator (segera hadir)<");
-  h = h.replace(/>English</, ">English (segera hadir)<");
+  h = h.replace(/>Aktif lewat SMS</, ">Aktif lewat email<").replace(/>Aktif lewat aplikasi autentikator</, ">Aplikasi autentikator<").replace(/>Aplikasi autentikator \(segera hadir\)</, ">Aplikasi autentikator<");
+  h = h.replace(/>English \(segera hadir\)</, ">English (beta)<").replace(/>English</, ">English (beta)<");
+  // Ukuran huruf artikel: slider desain → pilihan 4 tingkat yang tersimpan di akun.
+  const fi = Math.max(0, ["small", "medium", "large", "xlarge"].indexOf(String(p.preferences.font_size ?? "medium")));
+  const FL = ["Kecil", "Sedang", "Besar", "Sangat besar"];
+  h = h.replace(/(Ukuran huruf artikel<\/strong><span style="font-size: 13px; color: #5F6B7D")>Sedang</, `$1 data-font-label data-dc-keep>${FL[fi]}<`);
+  h = h.replace(/<span style="flex: 1; position: relative; height: 4px; border-radius: 999px; background: #E3EAF4">(?:(?!<\/span><\/span>)[\s\S])*<\/span><\/span>/, `<input type="range" min="0" max="3" step="1" value="${fi}" data-font-size data-dc-keep aria-label="Ukuran huruf artikel" aria-valuetext="${FL[fi]}" style="flex: 1; accent-color: #4285F4; height: 22px; cursor: pointer">`);
+  // Ulas aplikasi: belum ada di toko aplikasi → kirim masukan.
+  h = h.replace(/>Beri rating di Play Store \/ App Store</, ">Kirim masukan untuk tim OceanBird<");
+  // Privasi & data: unduh data & hapus akun mandiri.
+  h = h.replace(/<a href="[^"]*"((?:(?!<\/a>)[\s\S])*?Privasi &(?:amp;)? data)/, '<a href="/akun/data"$1');
   // Perangkat aktif.
   h = h.replace(">2 perangkat aktif<", `>${sessions.length} perangkat aktif<`);
   h = h.replace(/(aria-label="Riwayat masuk"[\s\S]*?<\/div><div style="display: flex; flex-direction: column">)([\s\S]*?)(<\/div><\/div><div role="dialog")/, (_m, head: string, rows: string, tail: string) => {

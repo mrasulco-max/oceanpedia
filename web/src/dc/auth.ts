@@ -191,6 +191,17 @@ export function auth(host: HTMLElement, { router, ctx }: Env): Cleanup {
         window.clearInterval(timer);
         router.push(next);
         router.refresh();
+      } else if (r.status === 403 && String(r.data.type ?? "").includes("two-factor-required")) {
+        // Aplikasi autentikator aktif: lanjut ke kode dari aplikasi.
+        const er = (r.data.errors ?? {}) as Record<string, string>;
+        try {
+          sessionStorage.setItem("ob_2fa", er.challenge ?? "");
+        } catch {
+          /* penyimpanan diblokir */
+        }
+        window.clearInterval(timer);
+        toast(host, r.data.detail ?? "Masukkan kode dari aplikasi autentikator.", "ok");
+        router.push(`/admin/masuk/verifikasi?email=${encodeURIComponent(er.email ?? email)}&next=${encodeURIComponent(next)}${er.method === "totp" ? "&m=totp" : ""}`);
       } else {
         toast(host, problemText(r.data, "Kode salah atau kedaluwarsa."));
         setCode("");

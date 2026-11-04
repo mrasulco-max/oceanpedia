@@ -91,6 +91,12 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /v1/me/student", s.studentStatus)
 	auth("POST /v1/me/student", s.studentApply)
 	auth("POST /v1/me/privacy-requests", s.privacyRequest)
+	auth("GET /v1/me/export", s.exportMe)
+	auth("GET /v1/me/2fa", s.twoFAStatus)
+	auth("POST /v1/me/2fa/totp/setup", s.totpSetup)
+	auth("POST /v1/me/2fa/totp/enable", s.totpEnable)
+	auth("POST /v1/me/2fa/totp/disable", s.totpDisable)
+	auth("POST /v1/me/delete", s.deleteMe)
 	// Jurnal Trading: semua jenis akun yang masuk.
 	auth("GET /v1/me/journal", s.journalList)
 	auth("POST /v1/me/journal", s.journalCreate)

@@ -73,7 +73,8 @@ function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
         toast(host, data.detail ?? "Kode verifikasi dikirim ke email Anda.", "ok");
         // Staf ke panel; pembaca yang mengaktifkan 2 langkah kembali ke halaman asal.
         const nx = ctx.requireStaff === "1" ? (ctx.next?.startsWith("/admin") ? ctx.next : "/admin") : ctx.next && /^\/(?!\/)/.test(ctx.next) ? ctx.next : "/";
-        router.push(`/admin/masuk/verifikasi?email=${encodeURIComponent(data.errors?.email ?? email)}&next=${encodeURIComponent(nx)}`);
+        const m = data.errors?.method === "totp" ? "&m=totp" : "";
+        router.push(`/admin/masuk/verifikasi?email=${encodeURIComponent(data.errors?.email ?? email)}&next=${encodeURIComponent(nx)}${m}`);
         return;
       }
       if (!res.ok) {

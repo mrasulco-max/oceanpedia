@@ -273,18 +273,42 @@ SELECT user_id, 'in_app', 'topic',
   'sent', now()
 FROM due RETURNING 1`
 
-// DispatchReminders mengirim pengingat kalender yang jatuh tempo; mengembalikan jumlahnya.
+// Rilis data berdampak tinggi (preferensi "high_impact", bawaan aktif): sekali per event, 15 menit sebelum
+// rilis, kecuali pengguna sudah memasang pengingat untuk event itu.
+const qDueHighImpact = `
+WITH ev AS (
+  UPDATE economic_events e SET high_notified_at = now()
+  WHERE e.high_notified_at IS NULL AND e.impact = 'high' AND e.scheduled_at BETWEEN now() - interval '5 minutes' AND now() + interval '15 minutes'
+  RETURNING e.id, e.title, e.country, e.scheduled_at, e.forecast
+)
+INSERT INTO notifications (user_id, channel, template, payload, status, sent_at)
+SELECT u.id, 'in_app', 'topic',
+  jsonb_build_object('title', 'Data berdampak tinggi: ' || ev.title, 'body', 'Rilis ' || ev.country || ' pukul ' || to_char(ev.scheduled_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI') || ' WIB' || coalesce(' · perkiraan ' || ev.forecast, ''), 'link', '/kalender'),
+  'sent', now()
+FROM ev CROSS JOIN users u
+WHERE u.deleted_at IS NULL AND coalesce((u.preferences->>'high_impact')::boolean, true)
+  AND NOT EXISTS (SELECT 1 FROM event_reminders r WHERE r.user_id = u.id AND r.event_id = ev.id)
+RETURNING 1`
+
+// DispatchReminders mengirim pengingat kalender yang jatuh tempo dan notifikasi rilis berdampak tinggi;
+// mengembalikan jumlah notifikasi.
 func (p *PG) DispatchReminders(ctx context.Context) (int, error) {
-	rows, err := p.DB.QueryContext(ctx, qDueReminders)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
 	n := 0
-	for rows.Next() {
-		n++
+	for _, q := range []string{qDueReminders, qDueHighImpact} {
+		rows, err := p.DB.QueryContext(ctx, q)
+		if err != nil {
+			return n, err
+		}
+		for rows.Next() {
+			n++
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return n, err
+		}
 	}
-	return n, rows.Err()
+	return n, nil
 }
 
 // ======================================================================= topik (tag)
@@ -332,6 +356,6 @@ func readerQueries() map[string]string {
 	return map[string]string{
 		"notifications": qNotifications, "notif_counts": qNotifCounts, "read_notifs": qReadNotifs, "notify": qNotify,
 		"notify_article": qNotifyArticle, "alert_jobs": qAlertJobs, "alert_seen": qAlertSeen, "alert_fired": qAlertFired,
-		"ad_impression": qAdImpression, "reminders": qReminders, "remind_on": qRemindOn, "remind_off": qRemindOff, "due_reminders": qDueReminders, "ad_click": qAdClick, "topic": qTopic,
+		"ad_impression": qAdImpression, "reminders": qReminders, "remind_on": qRemindOn, "remind_off": qRemindOff, "due_reminders": qDueReminders, "due_high_impact": qDueHighImpact, "ad_click": qAdClick, "topic": qTopic,
 	}
 }

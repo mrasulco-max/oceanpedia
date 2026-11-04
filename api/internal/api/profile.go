@@ -35,6 +35,7 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	p.TOTP = s.totpSecret(r, uid(r)) != ""
 	plan := ""
 	if p.Plan != nil {
 		plan = *p.Plan
@@ -50,7 +51,7 @@ var prefSchema = map[string][]string{
 	"breaking": nil, "morning_digest": nil, "high_impact": nil, "promo": nil, "price_alert": nil, "topics_notif": nil,
 	"comment_replies": nil, "reduce_motion": nil, "autoplay_video": nil,
 	"theme":         {"light", "dark", "system"},
-	"font_size":     {"small", "medium", "large"},
+	"font_size":     {"small", "medium", "large", "xlarge"},
 	"quiet_hours":   {"off", "21-06", "22-06", "23-07"},
 	"language":      {"id", "en"},
 	"timezone":      {"Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"},

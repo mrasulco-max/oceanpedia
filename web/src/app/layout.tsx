@@ -3,7 +3,7 @@ import "./globals.css";
 
 import { cookies } from "next/headers";
 import { currentOrigin } from "@/lib/origin";
-import { parseDisplay } from "@/lib/display-prefs";
+import { FONT_KEYS, parseDisplay } from "@/lib/display-prefs";
 
 // metadataBase mengikuti domain yang sedang dipakai (tautan & gambar Open Graph saat dibagikan).
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,7 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Tema & animasi dari preferensi akun (disalin ke cookie ob_prefs) — dirender server, tanpa kedip.
   const d = parseDisplay((await cookies()).get("ob_prefs")?.value);
   return (
-    <html lang="id" data-theme={d.theme} data-motion={d.reduceMotion ? "reduce" : undefined}>
+    <html lang={d.lang} data-theme={d.theme} data-motion={d.reduceMotion ? "reduce" : undefined} data-font={FONT_KEYS[d.font]}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />

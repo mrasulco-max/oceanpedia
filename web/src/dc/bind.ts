@@ -73,16 +73,17 @@ export function bindArticleDetail(html: string, a: Article): string {
     let first = true;
     mid = mid.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/g, (whole, o: string, inner: string, c: string) => {
       if (/<(div|img|svg)\b/.test(inner) || inner.includes("data-ai-")) return whole; // kartu Analisis AI diisi binder AI
+      const ob = o.replace(/^<p\b/, "<p data-ab");
       if (first) {
         first = false;
-        return `${o}${esc(a.excerpt)}${c}`;
+        return `${ob}${esc(a.excerpt)}${c}`;
       }
-      if (pi < paras.length) return `${o}${richParagraph(paras[pi++]!)}${c}`;
+      if (pi < paras.length) return `${ob}${richParagraph(paras[pi++]!)}${c}`;
       return ""; // desain punya paragraf lebih banyak dari artikel → sembunyikan sisanya
     });
     // Isi lebih panjang dari jumlah paragraf desain → tambahkan setelah paragraf terakhir yang terisi.
     if (pi < paras.length) {
-      const rest = paras.slice(pi).map((p) => `<p style="margin: 0 0 16px">${richParagraph(p)}</p>`).join("");
+      const rest = paras.slice(pi).map((p) => `<p data-ab style="margin: 0 0 16px">${richParagraph(p)}</p>`).join("");
       const lastP = mid.lastIndexOf("</p>");
       if (lastP >= 0) mid = mid.slice(0, lastP + 4) + rest + mid.slice(lastP + 4);
     }

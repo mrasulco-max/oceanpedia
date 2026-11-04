@@ -456,10 +456,12 @@ func (s *Server) moderateComments(w http.ResponseWriter, r *http.Request) error 
 			return httpx.Validation(map[string]string{"ids": "Id komentar tidak valid."})
 		}
 	}
+	notify := s.pendingReplies(r, "article", in.IDs, in.Status)
 	n, err := s.Store.SetCommentStatus(r.Context(), in.IDs, in.Status, claims(r).Sub)
 	if err != nil {
 		return err
 	}
+	notify()
 	action := "comment.approve"
 	if in.Status == "hidden" {
 		action = "comment.hide"

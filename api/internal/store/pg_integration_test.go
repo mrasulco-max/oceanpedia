@@ -179,9 +179,28 @@ func TestPGStore(t *testing.T) {
 	if len(rc) != 4 || rc[0].Kind != "bullish" || rc[0].Count < 1 {
 		t.Fatalf("reactions: %+v", rc)
 	}
-	if c, err := s.AddComment(ctx, u.ID, a.Slug, "Mantap", "visible", ""); err != nil || c.UserName != "Penguji Baru" {
+	if c, err := s.AddComment(ctx, u.ID, a.Slug, "Mantap", "visible", "", ""); err != nil || c.UserName != "Penguji Baru" {
 		t.Fatalf("comment: %v", err)
 	}
+	// Balasan satu tingkat: membalas sebuah balasan diikat ke komentar utamanya.
+	top, err := s.AddComment(ctx, u.ID, a.Slug, "Komentar utama", "visible", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1, err := s.AddComment(ctx, u.ID, a.Slug, "Balasan", "visible", "", top.ID)
+	if err != nil || r1.ParentID != top.ID {
+		t.Fatalf("balasan: %+v %v", r1, err)
+	}
+	if r2, err := s.AddComment(ctx, u.ID, a.Slug, "Balasan ke balasan", "visible", "", r1.ID); err != nil || r2.ParentID != top.ID {
+		t.Fatalf("balasan bertingkat: %+v %v", r2, err)
+	}
+	if _, err := s.AddComment(ctx, u.ID, a.Slug, "x", "visible", "", "00000000-0000-0000-0000-000000000000"); err == nil {
+		t.Fatal("induk tak dikenal harus ditolak")
+	}
+	if cs, err := s.Comments(ctx, a.Slug, 50); err != nil || len(cs) < 3 {
+		t.Fatalf("daftar komentar: %d %v", len(cs), err)
+	}
+
 	promo := "PLUSBARU"
 	inv, err := s.CreateInvoice(ctx, u.ID, store.Invoice{PlanCode: "essential", Subtotal: 59000, Discount: 49100, TaxRate: 0.11, TaxAmount: 1089, Total: 10989, Currency: "IDR", PromoCode: &promo})
 	if err != nil || inv.Total != 10989 || len(inv.Number) < 20 {

@@ -494,7 +494,8 @@ func (s *Server) addShortComment(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	var in struct {
-		Body string `json:"body"`
+		Body     string `json:"body"`
+		ParentID string `json:"parent_id"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
@@ -502,6 +503,9 @@ func (s *Server) addShortComment(w http.ResponseWriter, r *http.Request) error {
 	in.Body = strings.TrimSpace(in.Body)
 	if n := utf8.RuneCountInString(in.Body); n < 1 || n > 1000 {
 		return httpx.Validation(map[string]string{"body": "Komentar 1–1000 karakter."})
+	}
+	if in.ParentID != "" && !uuidRe.MatchString(in.ParentID) {
+		return httpx.Validation(map[string]string{"parent_id": "Komentar yang dibalas tidak valid."})
 	}
 	u, err := s.Store.UserByID(r.Context(), uid(r))
 	if err != nil {
@@ -511,9 +515,15 @@ func (s *Server) addShortComment(w http.ResponseWriter, r *http.Request) error {
 	if status != "visible" && status != "pending" && status != "flagged" && status != "hidden" {
 		status = "visible"
 	}
-	c, err := s.Store.AddShortComment(r.Context(), id, uid(r), in.Body, status, reason)
+	c, err := s.Store.AddShortComment(r.Context(), id, uid(r), in.Body, status, reason, in.ParentID)
 	if err != nil {
+		if in.ParentID != "" && errors.Is(err, httpx.ErrNotFound) {
+			return httpx.NotFound("Komentar yang dibalas tidak ditemukan.")
+		}
 		return err
+	}
+	if c.ParentID != "" && c.Status == "visible" {
+		s.notifyReply(r, "short", c.ParentID, c.UserName, c.Body)
 	}
 	httpx.JSON(w, http.StatusCreated, c)
 	return nil
@@ -584,9 +594,11 @@ func (s *Server) shortCommentStatus(w http.ResponseWriter, r *http.Request) erro
 	if !slices.Contains([]string{"visible", "hidden"}, in.Status) {
 		return httpx.Validation(map[string]string{"status": "Status tidak dikenal."})
 	}
+	notify := s.pendingReplies(r, "short", []string{id}, in.Status)
 	if err := s.Store.SetShortCommentStatus(r.Context(), id, in.Status, claims(r).Sub); err != nil {
 		return err
 	}
+	notify()
 	s.audit(r, "short_comment."+in.Status, id, nil)
 	w.WriteHeader(http.StatusNoContent)
 	return nil
