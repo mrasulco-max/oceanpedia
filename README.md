@@ -59,9 +59,89 @@ Pertama kali, jalankan `cd api && go mod tidy` lalu commit `go.sum`, dan `cd web
 - **Data pribadi**: mengikuti UU No. 27/2022 (PDP) — lihat halaman Legal.
 - **Kode**: gofmt/vet, TypeScript strict, ESLint, Conventional Commits.
 
-## Tahap berikutnya
+## Status fitur
 
-Pembayaran (Midtrans/Xendit) + webhook, notifikasi email & WhatsApp, admin redaksi, halaman Cari/Watchlist/Akun/Short, aplikasi native (Expo) memakai API yang sama, deploy (Vercel + Postgres terkelola).
+Ringkasan fitur yang **sudah terintegrasi** (frontend ↔ API ↔ database) dan yang **belum**. Perbarui tabel ini setiap kali menambah atau menyelesaikan fitur.
+
+Keterangan: ✅ berfungsi penuh · ⚠️ berfungsi sebagian / butuh tindakan · ❌ belum dibuat
+
+Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api.vercel.app` · DB Supabase (schema `app`).
+
+### Layanan eksternal
+
+| Layanan | Kegunaan | Variabel env (server saja) | Status | Catatan |
+|---|---|---|---|---|
+| Supabase PostgreSQL | Database utama | `DATABASE_URL` | ✅ | Migrasi `api/migrations`, RLS + policy `api_all` untuk role `oceanpedia_api` |
+| Twelve Data (+ Binance untuk crypto) | Harga, candle, kurs | `TWELVEDATA_API_KEY` | ⚠️ | Crypto, emas, kurs IDR live. **Saham IDX, IHSG, LQ45 belum ada data** di paket sekarang |
+| Google Gemini | Aurora AI (analisis berita/market, percakapan, analisis gambar chart) | `GEMINI_API_KEY`, `GEMINI_MODELS` | ✅ | Khusus pelanggan Plus & staf |
+| Bird | OTP email, email transaksional & newsletter | `BIRD_API_KEY`, `BIRD_EMAIL_KEY`, `BIRD_API_URL`, `OTP_EMAIL_FROM` | ⚠️ | Domain `mail.psi.id` belum terverifikasi (DKIM & return-path) → email bisa gagal/masuk spam |
+| Midtrans Snap | Pembayaran langganan (QRIS, GoPay, VA) | `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_PRODUCTION` | ⚠️ | Kode siap, tetapi Server Key ditolak (401) → perlu buat ulang di dashboard Midtrans |
+| Vercel | Hosting web (Next.js) & API (Go) | — | ✅ | Deploy otomatis dari `main` |
+
+### Fitur pembaca (web & app)
+
+| Nama fitur | Halaman | API | Tabel database | Status | Catatan |
+|---|---|---|---|---|---|
+| Beranda, berita terbaru & terpopuler | `/` | `GET /v1/home`, `/v1/articles` | `articles`, `categories`, `authors` | ✅ | Desktop = UI web, ponsel = UI app |
+| Detail berita, reaksi, komentar, laporkan komentar | `/berita/[slug]` | `/v1/articles/{slug}…`, `/v1/comments/{id}/report` | `articles`, `reactions`, `comments`, `comment_reports` | ✅ | Komentar akun baru melalui moderasi |
+| Kategori, penulis, topik (+ ikuti) | `/kategori/[slug]`, `/penulis/[slug]`, `/topik/[slug]` | `/v1/categories`, `/v1/authors/{slug}`, `/v1/topics/{slug}`, `/v1/me/categories|authors|topics` | `user_categories`, `user_authors`, `user_topics`, `tags` | ✅ | Paginasi kursor |
+| Bagikan + pratinjau media sosial | semua halaman konten | `/api/og` | — | ✅ | URL mengikuti domain aktif; gambar sampul atau kartu 1200×630 otomatis |
+| Market, detail instrumen, grafik, screener | `/market`, `/market/[symbol]`, `/screener` | `/v1/market/instruments`, `/quotes`, `/candles` | `instruments`, `market_cache` | ⚠️ | Data IDX belum tersedia (lihat Twelve Data) |
+| Watchlist | `/watchlist` | `/v1/me/watchlist` | `watchlists`, `watchlist_items` | ✅ | |
+| Price alert + notifikasi | `/alert`, `/notifikasi` | `/v1/me/alerts`, `/v1/me/notifications` | `price_alerts`, `notifications` | ✅ | Batas alert mengikuti paket; jam tenang menahan email |
+| Kalender ekonomi + pengingat | `/kalender` | `/v1/events`, `/v1/me/reminders` | `economic_events`, `event_reminders` | ✅ | |
+| Pencarian | `/cari` | `/v1/search` | `articles`, `instruments`, `authors`, `tags` | ✅ | |
+| Artikel tersimpan | `/tersimpan` | `/v1/me/bookmarks` | `bookmarks` | ✅ | |
+| Ocean Short (video): suka, simpan, bagikan, komentar | `/short` | `/v1/shorts…` | `shorts`, `short_likes`, `short_saves`, `short_comments` | ✅ | Belum ada konten video di produksi (unggah lewat admin) |
+| Live blog | `/live` | `/v1/live` | `live_blogs`, `live_posts` | ✅ | |
+| Newsletter (berlangganan/berhenti) | `/newsletter` | `/v1/newsletter/*` | `newsletter_subscribers`, `newsletter_issues` | ⚠️ | Pengiriman bergantung domain email Bird |
+| Daftar, masuk, OTP, lupa sandi, sesi perangkat | `/daftar`, `/masuk`, `/verifikasi` | `/v1/auth/*`, `/v1/me/sessions` | `users`, `auth_codes`, `refresh_tokens` | ✅ | Token di cookie `httpOnly` |
+| Verifikasi 2 langkah (email) | `/pengaturan` | `PATCH /v1/me` (`two_factor`) | `users.preferences` | ✅ | Opsional untuk pembaca, wajib untuk staf |
+| Profil & foto profil | `/akun` | `/v1/me`, `/v1/me/avatar` | `users`, `media` | ✅ | Kartu "Kenali minat pasarmu" hilang otomatis saat kelengkapan 100% |
+| Pengaturan: tema terang/gelap/sistem, kurangi animasi, video otomatis, notifikasi, ringkasan pagi | `/pengaturan` | `PATCH /v1/me` | `users.preferences`, `newsletter_subscribers` | ✅ | Tema diterapkan di server (cookie `ob_prefs`) |
+| **Jurnal Trading** | `/jurnal` (menu di profil) | `GET/POST /v1/me/journal`, `PUT/DELETE /v1/me/journal/{id}` | `trading_journal` | ✅ | Semua jenis akun. P/L + biaya, R dari stop loss, P/L belum terealisasi, win rate, profit factor, kurva ekuitas, ekspor CSV |
+| Aurora AI (asisten) | `/ai` + tombol melayang | `/v1/ai/chat`, `/v1/ai/chart`, `/v1/ai/ask` | — | ✅ | Plus. Kirim tautan berita yang diminta & chart candlestick sesuai timeframe/rentang |
+| Analisis Aurora AI di artikel & market | `/berita/[slug]`, `/market/[symbol]` | `/v1/articles/{slug}/ai`, `/v1/market/instruments/{symbol}/ai` | `articles` (cache analisis) | ✅ | Plus |
+| Langganan Plus & checkout | `/plus`, `/plus/checkout` … | `/v1/plans`, `/v1/billing/*` | `subscription_plans`, `subscriptions`, `invoices`, `payments` | ⚠️ | Menunggu Midtrans Server Key yang valid |
+| Verifikasi Student | `/plus` | `/v1/me/student` | `student_verifications` | ✅ | Ditinjau admin |
+| Pasang iklan (formulir & media kit) | `/iklan` | `POST /v1/ads/inquiries` | `ad_inquiries` | ✅ | |
+| Permintaan data pribadi (UU PDP) | `/legal` | `POST /v1/me/privacy-requests` | `privacy_requests` | ⚠️ | Ekspor/hapus data diproses manual oleh admin |
+| Pusat bantuan, tentang, legal | `/bantuan`, `/tentang`, `/legal` | — | — | ✅ | Kontak WhatsApp CS dari desain |
+
+### Fitur admin & redaksi (`/admin`)
+
+| Nama fitur | Halaman | Tabel database | Status | Catatan |
+|---|---|---|---|---|
+| Masuk staf + 2 langkah, lupa sandi, sesi | `/admin/masuk…` | `users`, `auth_codes` | ✅ | |
+| Dashboard & feed aktivitas | `/admin`, `/admin/aktivitas` | `audit_log` | ✅ | |
+| Tulis/edit/terbitkan artikel, versi, penugasan editor | `/admin/tulis`, `/admin/konten`, `/admin/versi` | `articles`, `article_versions`, `article_tags`, `article_instruments` | ✅ | Ekspor CSV, jadwal terbit |
+| Kategori & tag | `/admin/kategori` | `categories`, `category_redirects`, `tags` | ✅ | |
+| Moderasi komentar & kata terlarang | `/admin/komentar` | `comments`, `comment_reports`, `moderation_words`, `user_warnings` | ✅ | |
+| Live blog | `/admin/live` | `live_blogs`, `live_posts` | ✅ | |
+| Newsletter | `/admin/newsletter` | `newsletter_issues`, `newsletter_subscribers` | ⚠️ | Pengiriman bergantung domain email Bird |
+| Media | `/admin/media` | `media` | ✅ | |
+| Pasar & simbol | `/admin/pasar`, `/admin/simbol` | `instruments`, `market_usage` | ✅ | |
+| Iklan & permintaan iklan | `/admin/iklan` | `ad_slots`, `ad_campaigns`, `ad_inquiries` | ✅ | |
+| Pengguna, role & izin, undangan staf | `/admin/pengguna`, `/admin/role` | `users`, `roles`, `permissions`, `role_permissions`, `staff_invitations`, `staff_desks` | ✅ | Tab "Permintaan" untuk Student & data pribadi |
+| Laporan, kondisi sistem, pengaturan | `/admin/laporan`, `/admin/kondisi`, `/admin/pengaturan` | `app_settings` | ✅ | |
+| Ocean Short (kelola video) | `/admin/konten` | `shorts` | ✅ | Video lewat URL |
+
+### Belum dibuat / belum lengkap
+
+| Nama fitur | Status | Yang dibutuhkan | Prioritas |
+|---|---|---|---|
+| Pembayaran Midtrans | ⚠️ Kode siap | Buat ulang Server Key, simpan di Vercel (`oceanpedia-api`) | Tinggi |
+| Domain email `mail.psi.id` | ⚠️ Menunggu DNS | TXT DKIM `bird-214-1026._domainkey.mail` & CNAME `send.mail → eu1.bounce.bird.com` | Tinggi |
+| Data saham IDX, IHSG, LQ45 | ❌ | Sumber data IDX (paket Twelve Data lebih tinggi atau penyedia lain) | Tinggi |
+| Bahasa Inggris | ❌ | Terjemahan antarmuka (opsi masih "segera hadir") | Sedang |
+| 2 langkah lewat aplikasi autentikator (TOTP) | ❌ | Implementasi TOTP + QR (opsi masih "segera hadir") | Sedang |
+| Zona waktu & format angka dari pengaturan | ⚠️ | Disimpan di database, belum diterapkan ke seluruh tampilan | Sedang |
+| Balasan komentar | ❌ | Komentar bertingkat + notifikasi balasan | Sedang |
+| Ekspor/hapus data pribadi otomatis | ⚠️ | Saat ini diproses manual oleh admin | Rendah |
+| Notifikasi WhatsApp | ❌ | Integrasi WhatsApp (Bird) | Rendah |
+| Akun media sosial resmi | ❌ | Ikon sosial disembunyikan sampai akun resmi tersedia | Rendah |
+| Aplikasi native (Expo) | ❌ | Memakai API yang sama | Rendah |
+| Konten awal (artikel, Ocean Short) | ⚠️ | Isi lewat dashboard admin | Sedang |
 
 ---
 PT Nusantara Entertainment Asia · Menara Cakrawala Lt. 12 Unit A05, Jakarta Pusat · corpcom@jalaexplorer.com
