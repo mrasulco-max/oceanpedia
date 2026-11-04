@@ -944,6 +944,15 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   // Market app: kartu ringkasan IHSG (nilai transaksi, naik/turun, asing) khusus IDX — tidak ditampilkan.
   if (boardId === "app-08") html = html.replace(/<a [^>]*>(?:(?!<\/a>)[\s\S])*?IHSG · Indeks Harga Saham Gabungan(?:(?!<\/a>)[\s\S])*?<\/a>\s*/, "");
   html = focusText(auroraText(html));
+  // Kartu "Ringkasan pasar": tab Sektor & Asing (data khusus bursa IDX) tidak ditampilkan.
+  html = html.replace(/<button role="tab" aria-selected="\{\{ ov\.i[12]\.pr \}\}" onClick="\{\{ ov\.i[12]\.pick \}\}"[^>]*>(?:Sektor|Asing)<\/button>/g, "");
+  // Stempel waktu contoh "Saham … · 30 Okt 2026 · 15:05 WIB" → waktu sekarang (WIB).
+  html = html.replace(/>Saham (?:AS|IDX) · \d{1,2} \w{3} \d{4} · \d{2}:\d{2} WIB</g, () => {
+    const now = new Date();
+    const d = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric" }).format(now).replace(".", "");
+    const t = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(now).replace(".", ":");
+    return `>Saham AS · ${d} · ${t} WIB<`;
+  });
   title = auroraText(title);
   // Bahasa, format angka & zona waktu pilihan pengguna (halaman pembaca).
   if (board.kind !== "admin") {

@@ -43,6 +43,8 @@ const SUBSTITUTES: [string, string, string, string][] = [
 const PRICE = /^(US\$|\$|Rp ?)?\d{1,3}(\.\d{3})*(,\d+)?$/;
 const PCT = /^(▲|▼)?\s?[+−-]?\d+(,\d+)?%$/;
 const ABS = /^[+−-]\d{1,3}(\.\d{3})*(,\d+)?$/;
+// Gabungan selisih & persen, mis. "▲ +60,72 (+0,84%)" atau "▼ −1,20 (−0,50%) hari ini".
+const COMBO = /^(▲|▼)?\s?[+−-]?\d{1,3}(\.\d{3})*(,\d+)?\s\([+−-]?\d+(,\d+)?%\)(\s.*)?$/;
 
 // Pasangan warna naik ↔ turun yang dipakai desain.
 const UP_DOWN: [string, string][] = [
@@ -153,12 +155,21 @@ export function bindQuotes(html: string, quotes: Map<string, Quote>): string {
         price = j;
         if (pct >= 0) break;
       } else if (price >= 0 && abs < 0 && ABS.test(t)) abs = j;
-      else if (pct < 0 && PCT.test(t)) {
+      else if (pct < 0 && (PCT.test(t) || COMBO.test(t))) {
         pct = j;
         if (price >= 0) break;
       }
     }
-    if (price < 0 || pct < 0) continue;
+    if (price < 0 || pct < 0) {
+      // Pengganti contoh IDX yang tidak bisa diikat: jangan tampilkan angka contoh di bawah label baru.
+      if (swapped)
+        for (let j = k + 1; j < Math.min(k + 6, texts.length); j++) {
+          const t = val(texts[j]!);
+          if (LABELS[t]) break;
+          if (PRICE.test(t) || PCT.test(t) || COMBO.test(t) || ABS.test(t)) setText(texts[j]!, "—");
+        }
+      continue;
+    }
     const up = q.change_percent >= 0;
     const ps = val(texts[price]!);
     // Pengganti contoh IDX dalam dolar: awalan "Rp" desain menjadi "$".
@@ -168,9 +179,22 @@ export function bindQuotes(html: string, quotes: Map<string, Quote>): string {
       const ot = openTag(texts[abs]!);
       if (ot >= 0) parts[ot] = recolor(parts[ot]!, up);
     }
-    setText(texts[pct]!, fmtPct(val(texts[pct]!), q.change_percent));
+    const pt = val(texts[pct]!);
+    if (COMBO.test(pt)) {
+      // "▲ +60,72 (+0,84%) hari ini": selisih & persen nyata, akhiran desain dipertahankan.
+      const tail = / \(([+−-]?\d+(?:,\d+)?%)\)(\s.*)?$/.exec(pt)?.[2] ?? "";
+      const absT = pt.replace(/^(▲|▼)?\s?/, "").split(" (")[0]!;
+      setText(texts[pct]!, `${up ? "▲" : "▼"} ${fmtAbs(absT.startsWith("+") || absT.startsWith("−") || absT.startsWith("-") ? absT : `+${absT}`, q.change, ps, q.price)} (${fmtPct("+0,00%", q.change_percent)})${tail}`);
+    } else setText(texts[pct]!, fmtPct(pt, q.change_percent));
     const ot = openTag(texts[pct]!);
     if (ot >= 0) parts[ot] = recolor(parts[ot]!, up);
+    // "Kemarin" + harga → penutupan sebelumnya.
+    for (let j = Math.max(pct, price) + 1; j < Math.min(Math.max(pct, price) + 4, texts.length); j++) {
+      if (val(texts[j]!) === "Kemarin" && j + 1 < texts.length && PRICE.test(val(texts[j + 1]!))) {
+        setText(texts[j + 1]!, fmtPrice(swapped ? val(texts[j + 1]!).replace(/^Rp ?/, "$") : val(texts[j + 1]!), q.previous_close));
+        break;
+      }
+    }
     k = Math.max(pct, price);
   }
   return parts.join("");
