@@ -133,6 +133,7 @@ export function bindQuotes(html: string, quotes: Map<string, Quote>): string {
         const t = val(texts[j]!);
         if (LABELS[t]) break;
         if (IDX_TEXT.test(t)) setText(texts[j]!, t === "IDX" ? sub[3] : sub[2]);
+        else if (/^IDX · /.test(t)) setText(texts[j]!, t.replace(/^IDX/, sub[3]));
       }
       sym = sub[0];
       swapped = true;
