@@ -60,7 +60,7 @@ export const api = {
   comments: (slug: string) => get<Page<{ id: string; user_name: string; body: string; created_at: string }>>(`/v1/articles/${encodeURIComponent(slug)}/comments?limit=50`, { revalidate: 0 }),
   reactions: (slug: string) => get<Page<{ kind: string; count: number }>>(`/v1/articles/${encodeURIComponent(slug)}/reactions`, { revalidate: 0 }),
   related: (slug: string) => get<Page<ArticleCard>>(`/v1/articles/${encodeURIComponent(slug)}/related?limit=6`, { revalidate: 120 }),
-  instruments: () => get<Page<Instrument>>("/v1/market/instruments", { revalidate: 3600 }),
+  instruments: () => get<Page<Instrument>>("/v1/market/instruments", { revalidate: 300 }),
   quotes: (symbols: string[]) => get<Page<QuoteItem>>(`/v1/market/quotes?symbols=${symbols.join(",")}`, { revalidate: 15 }),
   instrument: (symbol: string) =>
     get<{ instrument: Instrument; quote: Quote | null; news: ArticleCard[]; error?: string }>(`/v1/market/instruments/${encodeURIComponent(symbol)}`, { revalidate: 15 }),
