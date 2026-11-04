@@ -19,7 +19,7 @@ import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArtic
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
-import { bindCryptoVolume, bindDataCredits, bindMarketApp, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
+import { bindCryptoVolume, bindDataCredits, bindMarketApp, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import { bindCoinLogos } from "./kit";
 import { bindContentExtras, bindDetailCards, bindLiveExtras, deAlur, requestsPanel } from "./admin-wire-bind";
@@ -46,6 +46,23 @@ export function auroraText(s: string): string {
   return s
     .replace(/>([^<]*)</g, (_m, t: string) => `>${swap(t)}<`)
     .replace(/(placeholder|title)="([^"]*)"/g, (_m, k: string, v: string) => `${k}="${swap(v)}"`);
+}
+
+/** Beranda app tanpa "Sekilas per kategori" dan "Polling pembaca". */
+export function removeHomeExtras(html: string): string {
+  return html
+    .replace(/<div[^>]*><h2[^>]*>(?:(?!<\/h2>)[\s\S])*?Sekilas per kategori<\/h2><\/div><div[^>]*>(?:(?!<\/div>)[\s\S])*?<\/div>/, "")
+    .replace(/<section aria-label="Polling pembaca"[\s\S]*?<\/section>/, "");
+}
+
+/** Fokus pasar: saham AS & forex (data saham IDX belum tersedia) — label lama "Saham IDX" diganti. */
+export function focusText(html: string): string {
+  return html.replace(/>([^<]*)</g, (_m, t: string) =>
+    `>${t
+      .replace(/\bSaham IDX\b/g, "Saham AS")
+      .replace(/\bsaham IDX\b/g, "saham AS")
+      .replace(/\bBursa IDX\b/g, "Bursa AS")
+      .replace("#IHSG · #TheFed · #Bitcoin", "#SahamAS · #TheFed · #Bitcoin")}<`);
 }
 
 /** Tombol melayang "Aurora AI" (khusus Plus) di halaman yang paling sering dibuka. */
@@ -147,8 +164,8 @@ function dedupe(list: (ArticleCard | null | undefined)[]): ArticleCard[] {
   return out;
 }
 
-const KNOWN_SYMBOLS = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "GOTO", "ANTM", "ADRO", "UNVR", "ICBP", "INDF", "IHSG", "LQ45", "BTC", "ETH", "SOL", "BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "USDIDR", "EUR/IDR", "SGD/IDR", "XAU/USD", "USD/IDR"];
-const SYMBOL_ALIAS: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", "EUR/IDR": "EURIDR", "SGD/IDR": "SGDIDR", "XAU/USD": "XAUUSD", "USD/IDR": "USDIDR" };
+const KNOWN_SYMBOLS = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "GOTO", "ANTM", "ADRO", "UNVR", "ICBP", "INDF", "IHSG", "LQ45", "BTC", "ETH", "SOL", "BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "USDIDR", "EUR/IDR", "SGD/IDR", "XAU/USD", "USD/IDR", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
+const SYMBOL_ALIAS: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", "EUR/IDR": "EURIDR", "SGD/IDR": "SGDIDR", "XAU/USD": "XAUUSD", "USD/IDR": "USDIDR", "EUR/USD": "EURUSD", "GBP/USD": "GBPUSD", "USD/JPY": "USDJPY", "AUD/USD": "AUDUSD" };
 
 /** Baris pasar yang menautkan ke contoh BBCA diarahkan ke simbolnya masing-masing. */
 function bindSymbolLinks(html: string): string {
@@ -301,8 +318,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     if (info.quote) html = bindMarketDetail(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote, candles);
     html = bindDetail(html, board.kind === "app" ? "app" : "web", { inst: info.instrument, quote: info.quote, candles, short });
     // Grafik interaktif tanpa logo (Lightweight Charts) dengan data nyata: kripto real-time dari Binance,
-    // emas & valas dari Twelve Data. Saham IDX memakai widget TradingView sampai ada sumber data IDX.
-    const tv = TV_SYMBOL[sym];
+    // emas & valas dari Twelve Data. Saham AS & forex mayor memakai widget TradingView (tanpa kredit data).
+    const tv = TV_SYMBOL[sym] ?? tvSymbolFor(info.instrument);
     if (LIVE_CHART.has(sym)) {
       html = bindLiveChart(html, board.kind === "app" ? "app" : "web", info.instrument, info.quote);
       enhance.push("lwchart");
@@ -453,8 +470,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   } else if (path === "/alert") {
     const ins = await safe(api.instruments(), { data: [] });
     const wl = user ? (await getWatchlist()) ?? [] : [];
-    const want = (search.symbol ?? wl[0]?.symbol ?? "BBCA").toUpperCase();
-    const inst = ins.data.find((i) => i.symbol === want) ?? ins.data.find((i) => i.symbol === "BBCA") ?? ins.data[0];
+    const want = (search.symbol ?? wl[0]?.symbol ?? "AAPL").toUpperCase();
+    const inst = ins.data.find((i) => i.symbol === want) ?? ins.data.find((i) => i.symbol === "AAPL") ?? ins.data[0];
     if (!inst) notFound();
     const [qs, cs, alerts, pr] = await Promise.all([
       safe(api.quotes([inst.symbol]), { data: [] }),
@@ -522,8 +539,9 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     html = bindMarketApp(html, ins.data, quotes);
     enhance.push("mkt");
   }
-  html = bindSymbolLinks(html);
+  // Harga dulu (contoh IDX diganti instrumen aktif), lalu tautan baris mengikuti label barunya.
   html = bindQuotes(html, quotes);
+  html = bindSymbolLinks(html);
   html = bindCryptoVolume(html, quotes);
   html = bindDataCredits(html);
   if (board.kind !== "admin" && plus) {
@@ -857,7 +875,11 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const n = (pend?.data ?? []).filter((x) => (boardId === "admin-ads" || x.kind !== "ad") && (x.status === "new" || x.status === "pending")).length;
     html = html.replace(/(<span style="margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px">)/, `$1<a href="/admin/${boardId === "admin-ads" ? "iklan" : "pengguna"}?tab=permintaan" style="min-height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-radius: 999px; border: 1px solid ${n ? "#FB7A3C" : "#E3EBF7"}; background: #FFFFFF; color: #0B0B0F; font-size: 14px; font-weight: 500">Permintaan masuk${n ? ` <span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #FB7A3C; color: #FFFFFF; font-size: 12px; display: inline-flex; align-items: center; justify-content: center">${n}</span>` : ""}</a>`);
   }
-  html = auroraText(html);
+  // Beranda app: bagian "Sekilas per kategori" dan "Polling pembaca" tidak ditampilkan.
+  if (boardId === "app-05") html = removeHomeExtras(html);
+  // Market app: kartu ringkasan IHSG (nilai transaksi, naik/turun, asing) khusus IDX — tidak ditampilkan.
+  if (boardId === "app-08") html = html.replace(/<a [^>]*>(?:(?!<\/a>)[\s\S])*?IHSG · Indeks Harga Saham Gabungan(?:(?!<\/a>)[\s\S])*?<\/a>\s*/, "");
+  html = focusText(auroraText(html));
   title = auroraText(title);
   return { board, boardId, html, title, description, enhance, ctx };
 }

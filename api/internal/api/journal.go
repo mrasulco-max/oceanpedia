@@ -64,8 +64,35 @@ func round(v float64, d int) float64 {
 
 func ptr(v float64) *float64 { return &v }
 
+// defaultContract: satuan per 1 lot menurut kebiasaan broker — forex 100.000 unit mata uang dasar,
+// emas (XAU) 100 troy oz, perak (XAG) 5.000 oz; saham, crypto, dan lainnya 1 (jumlah = lembar/unit).
+func defaultContract(market, symbol string) float64 {
+	switch {
+	case strings.HasPrefix(symbol, "XAU"):
+		return 100
+	case strings.HasPrefix(symbol, "XAG"):
+		return 5000
+	case market == "forex":
+		return 100000
+	}
+	return 1
+}
+
+// quoteToPnL mengubah nilai dalam mata uang kuotasi pasangan forex ke mata uang P/L catatan.
+// Mis. USDJPY dicatat dalam USD: selisih harga (dalam JPY) dibagi harga → USD. Selain itu nilai tetap.
+func quoteToPnL(e store.JournalEntry, v, price float64) float64 {
+	sym := strings.ReplaceAll(e.Symbol, "/", "")
+	if len(sym) == 6 && price > 0 && e.Currency == sym[:3] && e.Currency != sym[3:] {
+		return v / price
+	}
+	return v
+}
+
 func journalCalc(e store.JournalEntry) journalItem {
 	it := journalItem{JournalEntry: e}
+	if it.ContractSize <= 0 {
+		it.ContractSize = 1
+	}
 	if e.ExitPrice == nil {
 		return it
 	}
@@ -73,12 +100,14 @@ func journalCalc(e store.JournalEntry) journalItem {
 	if e.Side == "short" {
 		dir = -1
 	}
+	cs := it.ContractSize
 	move := dir * (*e.ExitPrice - e.EntryPrice)
-	pnl := move*e.Quantity - e.Fees
+	// P/L = selisih harga × lot × ukuran kontrak (dikonversi bila perlu) − biaya.
+	pnl := quoteToPnL(e, move*e.Quantity*cs, *e.ExitPrice) - e.Fees
 	it.PnL = ptr(round(pnl, 8))
 	it.PnLPct = ptr(round(move/e.EntryPrice*100, 4))
 	if e.StopLoss != nil {
-		if risk := math.Abs(e.EntryPrice-*e.StopLoss) * e.Quantity; risk > 0 {
+		if risk := quoteToPnL(e, math.Abs(e.EntryPrice-*e.StopLoss)*e.Quantity*cs, *e.StopLoss); risk > 0 {
 			it.RMult = ptr(round(pnl/risk, 2))
 		}
 	}
@@ -182,16 +211,18 @@ type journalIn struct {
 	EntryPrice float64  `json:"entry_price"`
 	ExitPrice  *float64 `json:"exit_price"`
 	Quantity   float64  `json:"quantity"`
-	Fees       float64  `json:"fees"`
-	StopLoss   *float64 `json:"stop_loss"`
-	TakeProfit *float64 `json:"take_profit"`
-	OpenedAt   string   `json:"opened_at"`
-	ClosedAt   string   `json:"closed_at"`
-	Strategy   string   `json:"strategy"`
-	Emotion    string   `json:"emotion"`
-	Notes      string   `json:"notes"`
-	Tags       []string `json:"tags"`
-	Rating     *int     `json:"rating"`
+	// ContractSize: satuan per lot; kosong = bawaan menurut pasar (forex 100.000, emas 100, lainnya 1).
+	ContractSize *float64 `json:"contract_size"`
+	Fees         float64  `json:"fees"`
+	StopLoss     *float64 `json:"stop_loss"`
+	TakeProfit   *float64 `json:"take_profit"`
+	OpenedAt     string   `json:"opened_at"`
+	ClosedAt     string   `json:"closed_at"`
+	Strategy     string   `json:"strategy"`
+	Emotion      string   `json:"emotion"`
+	Notes        string   `json:"notes"`
+	Tags         []string `json:"tags"`
+	Rating       *int     `json:"rating"`
 }
 
 func parseWhen(s string) (time.Time, bool) {
@@ -252,6 +283,14 @@ func (s *Server) validJournal(in journalIn) (store.JournalEntry, error) {
 		errs["fees"] = "Biaya tidak boleh negatif."
 	}
 	e.EntryPrice, e.Quantity, e.Fees = in.EntryPrice, in.Quantity, in.Fees
+	e.ContractSize = defaultContract(e.Market, e.Symbol)
+	if in.ContractSize != nil {
+		if c := *in.ContractSize; c > 0 && c <= 10_000_000 && !math.IsInf(c, 0) {
+			e.ContractSize = c
+		} else {
+			errs["contract_size"] = "Ukuran kontrak harus antara 0 dan 10.000.000."
+		}
+	}
 	e.ExitPrice, e.StopLoss, e.TakeProfit = posOrNil(in.ExitPrice), posOrNil(in.StopLoss), posOrNil(in.TakeProfit)
 	now := s.Now()
 	e.OpenedAt = now

@@ -181,9 +181,19 @@ type chatMsg struct {
 var aliasSym = map[string][]string{
 	"XAUUSD": {"EMAS", "GOLD"},
 	"USDIDR": {"RUPIAH", "KURS", "DOLAR AS"},
-	"IHSG":   {"JCI", "INDEKS SAHAM"},
 	"BTCUSD": {"BTC"},
 	"ETHUSD": {"ETH"},
+	"AAPL":   {"APPLE", "IPHONE"},
+	"MSFT":   {"MICROSOFT"},
+	"NVDA":   {"NVIDIA"},
+	"TSLA":   {"TESLA"},
+	"AMZN":   {"AMAZON"},
+	"GOOGL":  {"GOOGLE", "ALPHABET"},
+	"META":   {"FACEBOOK", "META PLATFORMS"},
+	"EURUSD": {"EURO", "EUR/USD"},
+	"GBPUSD": {"POUND", "STERLING", "CABLE", "GBP/USD"},
+	"USDJPY": {"YEN", "USD/JPY"},
+	"AUDUSD": {"AUSSIE", "AUD/USD"},
 }
 
 // mentions: pertanyaan (huruf besar) menyebut instrumen lewat simbol, nama depan, atau alias.

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
   const title = (q.get("t") ?? "Berita & Data Pasar").slice(0, 140);
   const kicker = (q.get("k") ?? "OceanBird").slice(0, 40).toUpperCase();
-  const sub = (q.get("s") ?? "Saham IDX · Komoditas · Crypto · Forex").slice(0, 90);
+  const sub = (q.get("s") ?? "Saham AS · Forex · Komoditas · Crypto").slice(0, 90);
   const logo = new URL("/logo.png", req.nextUrl.origin).toString();
   return new ImageResponse(
     (

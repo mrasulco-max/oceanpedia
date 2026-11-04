@@ -259,6 +259,9 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"","side":"x","entry_price":0,"quantity":0}'); test "$code" = 422
           code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$SU" localhost:8080/v1/me/journal/$JID); test "$code" = 404
           code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$RB" localhost:8080/v1/me/journal/$JID); test "$code" = 204
+          # Lot: emas 0,01 lot (100 oz/lot) 4000 → 4010 = 10 USD; EURUSD 0,1 lot +50 pip = 50 USD.
+          curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"XAUUSD","market":"komoditas","side":"long","currency":"USD","entry_price":4000,"quantity":0.01,"take_profit":4010,"exit_price":4010}' | jq -e '.pnl == 10 and .contract_size == 100'
+          curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"EURUSD","market":"forex","side":"long","currency":"USD","entry_price":1.1,"quantity":0.1,"exit_price":1.105}' | jq -e '(.pnl - 50 | fabs) < 0.000001 and .contract_size == 100000'
           REQS=$(curl -sf -H "$SU" localhost:8080/v1/admin/requests)
           echo "$REQS" | jq -e '[.data[].kind] | (index("ad") != null) and (index("student") != null) and (index("privacy") != null)'
           STID=$(echo "$REQS" | jq -r '[.data[] | select(.kind == "student")][0].id')
@@ -578,6 +581,9 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' localhost:3000/api/ai/chat -d '{"messages":[{"role":"user","content":"x"}]}'); test "$code" = 401
           # Jurnal Trading: tamu diarahkan masuk; pengguna masuk dapat halaman + menu di profil (web & app).
           code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" localhost:3000/jurnal); test "$code" = 307
+          # Beranda app tanpa "Sekilas per kategori" & "Polling pembaca".
+          ! curl -sf -A "$MOB" localhost:3000/ | grep -q 'Polling pembaca'
+          ! curl -sf -A "$MOB" localhost:3000/ | grep -q 'Sekilas per kategori'
           curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/jurnal | grep -q 'Jurnal Trading'
           curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/akun | grep -q 'href="/jurnal"'
           curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/akun | grep -q 'href="/jurnal"'

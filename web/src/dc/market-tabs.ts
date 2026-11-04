@@ -1,5 +1,5 @@
 /**
- * Enhancer Market aplikasi ("mkt"): tab Saham IDX · Crypto · Forex · Komoditas dan urutan
+ * Enhancer Market aplikasi ("mkt"): tab Saham AS · Crypto · Forex · Komoditas dan urutan
  * Top gainer · Top loser · Teraktif mengikuti state desain (u1/u2), tanpa memuat ulang halaman.
  */
 import type { Cleanup, Env } from "./enhancers";

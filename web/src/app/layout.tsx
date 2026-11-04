@@ -12,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const base: Metadata = {
   title: { default: "OceanBird — Berita & Data Pasar", template: "%s · OceanBird" },
-  description: "Berita dan data pasar saham IDX, komoditas, crypto, dan forex secara real-time.",
+  description: "Berita dan data pasar saham AS, forex, komoditas, dan crypto secara real-time.",
   openGraph: { type: "website", locale: "id_ID", siteName: "OceanBird" },
   twitter: { card: "summary_large_image" },
   robots: { index: true, follow: true },

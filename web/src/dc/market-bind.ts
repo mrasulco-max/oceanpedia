@@ -17,7 +17,27 @@ const LABELS: Record<string, string> = {
   Emas: "XAUUSD", "XAU/USD": "XAUUSD", XAUUSD: "XAUUSD", XAU: "XAUUSD",
   "USD/IDR": "USDIDR", USDIDR: "USDIDR",
   IHSG: "IHSG", LQ45: "LQ45", BBCA: "BBCA", BBRI: "BBRI", BMRI: "BMRI", TLKM: "TLKM", ASII: "ASII", GOTO: "GOTO",
+  AAPL: "AAPL", MSFT: "MSFT", NVDA: "NVDA", TSLA: "TSLA", AMZN: "AMZN", GOOGL: "GOOGL", META: "META",
+  "EUR/USD": "EURUSD", EURUSD: "EURUSD", "GBP/USD": "GBPUSD", GBPUSD: "GBPUSD", "USD/JPY": "USDJPY", USDJPY: "USDJPY", "AUD/USD": "AUDUSD", AUDUSD: "AUDUSD",
 };
+
+// Fokus pasar saham AS & forex: contoh desain bertema IDX (IHSG, BBCA, …) yang tidak punya data diganti
+// instrumen aktif yang berbeda di setiap baris — label, nama, bursa, dan angka nyata.
+const IDX_SAMPLE = new Set(["IHSG", "LQ45", "BBCA", "BBRI", "BMRI", "TLKM", "ASII", "GOTO"]);
+const IDX_TEXT = /^(IDX|Bank Central Asia( Tbk)?|Bank Rakyat Indonesia( Tbk)?|Bank Mandiri( Tbk)?|Telkom Indonesia( Tbk)?|Astra International( Tbk)?|GoTo Gojek Tokopedia( Tbk)?|Indeks Harga Saham Gabungan|Indeks LQ45)$/;
+const SUBSTITUTES: [string, string, string, string][] = [
+  ["AAPL", "AAPL", "Apple Inc.", "NASDAQ"],
+  ["MSFT", "MSFT", "Microsoft Corp.", "NASDAQ"],
+  ["NVDA", "NVDA", "NVIDIA Corp.", "NASDAQ"],
+  ["TSLA", "TSLA", "Tesla Inc.", "NASDAQ"],
+  ["AMZN", "AMZN", "Amazon.com Inc.", "NASDAQ"],
+  ["GOOGL", "GOOGL", "Alphabet Inc.", "NASDAQ"],
+  ["META", "META", "Meta Platforms Inc.", "NASDAQ"],
+  ["EURUSD", "EUR/USD", "Euro / Dolar AS", "Forex"],
+  ["GBPUSD", "GBP/USD", "Pound / Dolar AS", "Forex"],
+  ["USDJPY", "USD/JPY", "Dolar AS / Yen", "Forex"],
+  ["AUDUSD", "AUD/USD", "Dolar Australia / Dolar AS", "Forex"],
+];
 
 const PRICE = /^(US\$|\$|Rp ?)?\d{1,3}(\.\d{3})*(,\d+)?$/;
 const PCT = /^(▲|▼)?\s?[+−-]?\d+(,\d+)?%$/;
@@ -92,8 +112,31 @@ export function bindQuotes(html: string, quotes: Map<string, Quote>): string {
     for (let j = i - 1; j >= 0; j--) if (parts[j]!.startsWith("<") && !parts[j]!.startsWith("</")) return j;
     return -1;
   };
+  const subFor = new Map<string, (typeof SUBSTITUTES)[number]>();
+  const used = new Set<string>();
   for (let k = 0; k < texts.length; k++) {
-    const sym = LABELS[val(texts[k]!)];
+    let swapped = false;
+    let sym = LABELS[val(texts[k]!)];
+    if (sym && IDX_SAMPLE.has(sym) && !quotes.has(sym)) {
+      // Contoh IDX tanpa data → instrumen aktif (konsisten untuk label yang sama di satu halaman).
+      let sub = subFor.get(sym);
+      if (!sub) {
+        sub = SUBSTITUTES.find(([s]) => quotes.has(s) && !used.has(s));
+        if (sub) {
+          subFor.set(sym, sub);
+          used.add(sub[0]);
+        }
+      }
+      if (!sub) continue;
+      setText(texts[k]!, sub[1]);
+      for (let j = k + 1; j < Math.min(k + 5, texts.length); j++) {
+        const t = val(texts[j]!);
+        if (LABELS[t]) break;
+        if (IDX_TEXT.test(t)) setText(texts[j]!, t === "IDX" ? sub[3] : sub[2]);
+      }
+      sym = sub[0];
+      swapped = true;
+    }
     const q = sym ? quotes.get(sym) : undefined;
     if (!sym || !q) continue;
     let price = -1;
@@ -113,7 +156,8 @@ export function bindQuotes(html: string, quotes: Map<string, Quote>): string {
     if (price < 0 || pct < 0) continue;
     const up = q.change_percent >= 0;
     const ps = val(texts[price]!);
-    setText(texts[price]!, fmtPrice(ps, q.price));
+    // Pengganti contoh IDX dalam dolar: awalan "Rp" desain menjadi "$".
+    setText(texts[price]!, fmtPrice(swapped ? ps.replace(/^Rp ?/, "$") : ps, q.price));
     if (abs >= 0) {
       setText(texts[abs]!, fmtAbs(val(texts[abs]!), q.change, ps, q.price));
       const ot = openTag(texts[abs]!);
@@ -324,9 +368,17 @@ export function bindMarketDetail(html: string, kind: "web" | "app", inst: Instru
 export const TV_SYMBOL: Record<string, string> = {
   BBCA: "IDX:BBCA", BBRI: "IDX:BBRI", BMRI: "IDX:BMRI", TLKM: "IDX:TLKM", ASII: "IDX:ASII", GOTO: "IDX:GOTO",
   IHSG: "IDX:COMPOSITE", LQ45: "IDX:LQ45",
+  EURUSD: "FX:EURUSD", GBPUSD: "FX:GBPUSD", USDJPY: "FX:USDJPY", AUDUSD: "FX:AUDUSD",
   BTCUSD: "BINANCE:BTCUSDT", ETHUSD: "BINANCE:ETHUSDT", XAUUSD: "OANDA:XAUUSD", USDIDR: "FX_IDC:USDIDR",
   SOLUSD: "BINANCE:SOLUSDT", BNBUSD: "BINANCE:BNBUSDT", XRPUSD: "BINANCE:XRPUSDT", DOGEUSD: "BINANCE:DOGEUSDT", EURIDR: "FX_IDC:EURIDR", SGDIDR: "FX_IDC:SGDIDR",
 };
+
+/** Simbol TradingView untuk instrumen di luar daftar: saham AS (NASDAQ/NYSE) dan forex. */
+export function tvSymbolFor(i: Instrument): string | undefined {
+  if (i.asset_class === "equity" && /^(NASDAQ|NYSE|AMEX)$/.test(i.exchange)) return `${i.exchange}:${i.symbol}`;
+  if (i.asset_class === "forex" && i.symbol.length === 6) return `FX:${i.symbol}`;
+  return undefined;
+}
 
 /**
  * Area grafik Detail Market menjadi wadah widget TradingView (Advanced Real-Time Chart).
@@ -428,7 +480,7 @@ function badgeLabel(i: Instrument): string {
 }
 /**
  * Daftar Market aplikasi: semua instrumen dengan harga nyata, dikelompokkan per tab
- * (Saham IDX · Crypto · Forex · Komoditas) dan diurutkan (top gainer/loser/teraktif) oleh enhancer "mkt".
+ * (Saham AS · Crypto · Forex · Komoditas) dan diurutkan (top gainer/loser/teraktif) oleh enhancer "mkt".
  */
 export function bindMarketApp(html: string, instruments: Instrument[], quotes: Map<string, Quote>): string {
   const rowStart = '<a href="/market/BBCA" style="display: flex; align-items: center; gap: 12px; min-height: 64px';
@@ -449,7 +501,7 @@ export function bindMarketApp(html: string, instruments: Instrument[], quotes: M
         .replace(/(font-size: 9px; font-weight: 700">)[^<]*(<\/span>)/, `$1${esc(label)}$2`)
         .replace(/(<strong style="font-size: 15px; font-weight: 500">)[^<]*(<\/strong>)/, `$1${esc(label)}$2`)
         .replace(/(text-overflow: ellipsis">)[^<]*(<\/span>)/, `$1${esc(i.name)}$2`)
-        .replace(/(font-size: 14px; font-weight: 500; color: #0B0B0F">)[^<]*(<\/span>)/, `$1${q ? esc(i.asset_class === "equity" ? new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(q.price) : fmtPrice("1.234,56", q.price)) : "—"}$2`)
+        .replace(/(font-size: 14px; font-weight: 500; color: #0B0B0F">)[^<]*(<\/span>)/, `$1${q ? esc(i.asset_class === "equity" && i.currency === "IDR" ? new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(q.price) : fmtPrice("1.234,56", q.price)) : "—"}$2`)
         .replace(/(white-space: nowrap">)▲ \+2,15%(<\/span>)/, `$1${q ? esc(fmtPct("▲ +2,15%", chg)) : "—"}$2`);
       if (!up) {
         r = r.replace("color: #166534; background: #DCF5E4", "color: #991B1B; background: #FDE2E2").replace('stroke="#16A34A"', 'stroke="#DC2626"');
