@@ -662,6 +662,65 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
   return meta + h;
 }
 
+// ======================================================================= Beranda: Ocean Short
+/**
+ * Bagian Ocean Short di beranda (web & aplikasi) memakai video nyata dari dashboard redaksi:
+ * kartu video & lingkaran "story" membuka halaman detail /short?v=… (pemutar layar penuh, geser atas/bawah).
+ * Tanpa video yang tayang, bagian ini disembunyikan (tidak ada data contoh).
+ */
+export function bindHomeShorts(html: string, list: ShortRow[], app: boolean): string {
+  let h = html;
+  const label = (s: ShortRow) => {
+    const t = (s.symbol || s.category || s.title || "Short").trim();
+    const a = Array.from(t);
+    return a.length > 10 ? `${a.slice(0, 9).join("")}…` : t;
+  };
+  const card = (tpl: string, s: ShortRow) =>
+    tpl
+      .replace('href="/short"', `href="/short?v=${esc(s.id)}"`)
+      .replace(/<img src="[^"]*"([^>]*)>/, (_m, rest: string) => shortThumb(s, rest))
+      .replace(/(<\/svg>)\d+:\d\d(<\/span>)/, `$1${dur(s.duration_s || 0)}$2`)
+      .replace(/>▶ \d+:\d\d</, `>▶ ${dur(s.duration_s || 0)}<`)
+      .replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`);
+
+  // Kartu video (aplikasi: geser horizontal; web: grid 4 kolom).
+  const cardStart = app ? '<a href="/short" style="position: relative; flex: none; width: 140px; height: 230px;' : '<a href="/short" style="position: relative; height: 290px;';
+  const cards = blocks(h, cardStart, "a");
+  if (cards.length) {
+    const head = h.lastIndexOf('<div style="display: flex; align-items: center; justify-content: space-between;', h.lastIndexOf(app ? ">Short</h2>" : "Ocean Short</h2>", cards[0]!.start));
+    if (!list.length) {
+      // Sembunyikan judul + daftar kartu.
+      let end = cards[cards.length - 1]!.end;
+      if (h.startsWith("</div>", end)) end += 6;
+      if (head >= 0) h = h.slice(0, head) + h.slice(end);
+    } else {
+      const n = app ? Math.min(list.length, 10) : Math.min(list.length, 4);
+      const built = list.slice(0, n).map((s) => card(cards[0]!.html, s)).join("");
+      h = h.slice(0, cards[0]!.start) + built + h.slice(cards[cards.length - 1]!.end);
+    }
+  }
+  if (app) {
+    // Lingkaran story yang mengarah ke Short → video nyata (label: simbol/kategori/judul).
+    const st = blocks(h, '<a href="/short" style="flex: none; width: 70px;', "a");
+    if (st.length) {
+      const built = list.slice(0, Math.max(st.length, 6)).map((s) =>
+        st[0]!.html
+          .replace('href="/short"', `href="/short?v=${esc(s.id)}" aria-label="${esc(s.title)}"`)
+          .replace(/<img src="[^"]*"([^>]*)>/, (_m, rest: string) => shortThumb(s, rest))
+          .replace(/(white-space: nowrap">)[^<]*(<\/span><\/a>)$/, `$1${esc(label(s))}$2`),
+      ).join("");
+      // Story terpisah satu sama lain (bukan berurutan) → ganti satu per satu, sisanya dihapus.
+      let out = "", from = 0;
+      st.forEach((b, i) => {
+        out += h.slice(from, b.start) + (i === 0 ? built : "");
+        from = b.end;
+      });
+      h = out + h.slice(from);
+    }
+  }
+  return h;
+}
+
 // ======================================================================= admin: Ocean Short
 export function shortsAdminPanel(list: ShortRow[], comments: ShortComment[], filter: string): string {
   const sum = (k: "views" | "likes" | "comments" | "saves" | "shares") => list.reduce((a, s) => a + (s[k] ?? 0), 0);
