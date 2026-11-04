@@ -62,7 +62,15 @@ export function focusText(html: string): string {
       .replace(/\bSaham IDX\b/g, "Saham AS")
       .replace(/\bsaham IDX\b/g, "saham AS")
       .replace(/\bBursa IDX\b/g, "Bursa AS")
-      .replace("#IHSG · #TheFed · #Bitcoin", "#SahamAS · #TheFed · #Bitcoin")}<`);
+      .replace("#IHSG · #TheFed · #Bitcoin", "#SahamAS · #TheFed · #Bitcoin")
+      .replace(/^#IHSG$/, "#SahamAS")
+      .replace(/^SAHAM IDX$/, "SAHAM AS")
+      .replace(/^IDX · /, "AS · ")
+      .replace(/ · IDX$/, " · Bursa AS")
+      .replace(/^IDX$/, "AS")
+      .replace("Berdasarkan watchlist: BBCA, BTC, Emas", "Berdasarkan watchlist: AAPL, BTC, Emas")
+      .replace(/^★ BBCA$/, "★ AAPL")
+      .replace(/^dividen BBRI$/, "dividen AAPL")}<`);
 }
 
 /** Tombol melayang "Aurora AI" (khusus Plus) di halaman yang paling sering dibuka. */
