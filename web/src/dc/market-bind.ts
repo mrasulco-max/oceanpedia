@@ -417,3 +417,49 @@ export function bindCryptoVolume(html: string, quotes: Map<string, Quote>): stri
     .replace(">$421 M<", `>${usd("ETHUSD")}<`)
     .replace(">$78 M<", `>${usd("SOLUSD")}<`);
 }
+
+// ======================================================================= Market aplikasi (app-08): tab kelas aset
+const TAB_CLASS: Instrument["asset_class"][][] = [["equity", "index"], ["crypto"], ["forex"], ["commodity"]];
+/** Label lencana: BTCUSD → BTC, XAUUSD → XAU, USDIDR → USD/IDR, saham tetap. */
+function badgeLabel(i: Instrument): string {
+  if (i.asset_class === "forex" && i.symbol.length === 6) return `${i.symbol.slice(0, 3)}/${i.symbol.slice(3)}`;
+  if (i.asset_class === "crypto" || i.asset_class === "commodity") return i.symbol.replace(/(USDT|USD|IDR)$/, "") || i.symbol;
+  return i.symbol;
+}
+/**
+ * Daftar Market aplikasi: semua instrumen dengan harga nyata, dikelompokkan per tab
+ * (Saham IDX · Crypto · Forex · Komoditas) dan diurutkan (top gainer/loser/teraktif) oleh enhancer "mkt".
+ */
+export function bindMarketApp(html: string, instruments: Instrument[], quotes: Map<string, Quote>): string {
+  const rowStart = '<a href="/market/BBCA" style="display: flex; align-items: center; gap: 12px; min-height: 64px';
+  const first = html.indexOf(rowStart);
+  const allLink = html.indexOf('<a href="/cari" style="display: flex; justify-content: center; padding: 12px 0;', first);
+  if (first < 0 || allLink < 0) return html;
+  const tpl = html.slice(first, html.indexOf("</a>", first) + 4).replace(/; ">/, '; border-top: 1px solid #E3EAF4">');
+  const rows = instruments
+    .map((i) => {
+      const q = quotes.get(i.symbol);
+      const cls = TAB_CLASS.findIndex((c) => c.includes(i.asset_class));
+      const chg = q?.change_percent ?? 0;
+      const up = chg >= 0;
+      const label = badgeLabel(i);
+      let r = tpl
+        .replace('href="/market/BBCA"', `href="/market/${encodeURIComponent(i.symbol)}" data-mk-row data-mk-cls="${cls}" data-mk-chg="${q ? chg : ""}" data-mk-vol="${q?.volume ?? 0}"`)
+        .replace('style="display: flex; align-items: center; gap: 12px; min-height: 64px', `style="display: ${cls === 0 ? "flex" : "none"}; align-items: center; gap: 12px; min-height: 64px`)
+        .replace(/(font-size: 9px; font-weight: 700">)[^<]*(<\/span>)/, `$1${esc(label)}$2`)
+        .replace(/(<strong style="font-size: 15px; font-weight: 500">)[^<]*(<\/strong>)/, `$1${esc(label)}$2`)
+        .replace(/(text-overflow: ellipsis">)[^<]*(<\/span>)/, `$1${esc(i.name)}$2`)
+        .replace(/(font-size: 14px; font-weight: 500; color: #0B0B0F">)[^<]*(<\/span>)/, `$1${q ? esc(i.asset_class === "equity" ? new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(q.price) : fmtPrice("1.234,56", q.price)) : "—"}$2`)
+        .replace(/(white-space: nowrap">)▲ \+2,15%(<\/span>)/, `$1${q ? esc(fmtPct("▲ +2,15%", chg)) : "—"}$2`);
+      if (!up) {
+        r = r.replace("color: #166534; background: #DCF5E4", "color: #991B1B; background: #FDE2E2").replace('stroke="#16A34A"', 'stroke="#DC2626"');
+        r = r.replace(/points="([^"]+)"/, (_m, pts: string) => `points="${pts.split(" ").map((p) => { const [x, y] = p.split(","); return `${x},${(28 - Number(y)).toFixed(1)}`; }).join(" ")}"`);
+      }
+      return r;
+    })
+    .join("");
+  const list = `<div data-mk-list style="display: flex; flex-direction: column">${rows || '<p style="margin: 16px 0; font-size: 14px; color: #5F6B7D">Data pasar belum tersedia.</p>'}</div>`;
+  const link = html.slice(allLink, html.indexOf("</a>", allLink) + 4).replace('href="/cari"', 'href="/screener?urut=saham" data-mk-all');
+  const end = html.indexOf("</a>", allLink) + 4;
+  return html.slice(0, first) + list + link + html.slice(end);
+}
