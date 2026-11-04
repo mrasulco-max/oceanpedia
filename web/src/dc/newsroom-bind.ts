@@ -2,6 +2,7 @@ import "server-only";
 import { esc as esc0 } from "./bind";
 import { ago, blocks, closeOf, compact, emptyRow, fmtDate, num, pill, recolorAvatar, rx, statCard, threaded } from "./kit";
 import { initials } from "./bind";
+import { shortMedia, type ShortMedia } from "@/lib/short-media";
 
 /**
  * Binder panel redaksi lanjutan: Dashboard, Riwayat versi, Breaking & live, Newsletter,
@@ -572,14 +573,37 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     h = h.replace(/>28 Okt 2026 · 12,4 rb ditonton</, `>${esc(fmtDate(cur.created_at))} · ${compact(cur.views)} ditonton<`);
     h = h.replace(/>0:23 \/ 0:58</, `>${dur(cur.duration_s)}<`);
     h = h.replace(/>Saham(<\/span><span style="font-size: 13px; color: #5F6B7D">)/, `>${esc(cur.category || "Ocean Short")}$1`);
-    if (cur.video_url) {
-      const vid = `<video data-short="${cur.id}" src="${esc(cur.video_url)}"${cur.cover_url ? ` poster="${esc(cur.cover_url)}"` : ""} controls playsinline preload="metadata" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #0B0B0F; z-index: 1"></video>`;
-      h = h.replace(/<span style="position: absolute; left: 50%; top: 45%; transform: translate\(-50%, -50%\);[^"]*">▶<\/span>/, vid);
-    } else if (cur.cover_url) h = h.replace(/src="\/img\/news-1\.jpg"/, `src="${esc(cur.cover_url)}"`);
+    const md = shortMedia(cur.video_url, cur.cover_url);
+    if (!app) {
+      const player = shortPlayer(cur.id, md, false);
+      if (player) h = h.replace(/<span style="position: absolute; left: 50%; top: 45%; transform: translate\(-50%, -50%\);[^"]*">▶<\/span>/, player);
+      h = h.replace(/<img src="\/img\/news-1\.jpg"([^>]*border-radius: 28px[^>]*)>/, (_m, rest: string) => shortThumb(cur, rest));
+    } else {
+      // Aplikasi: video layar penuh menggantikan gambar contoh; tombol putar & progres nyata.
+      const player = shortPlayer(cur.id, md, true);
+      h = h.replace(/<img src="\/img\/news-1\.jpg" alt="" style="position: absolute; inset: 0;[^"]*">/, player || (md.poster ? `<img src="${esc(md.poster)}" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block">` : ""));
+      // Gradasi tidak menghalangi sentuhan ke pemutar.
+      h = h.replace('<span aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(180deg,', '<span aria-hidden="true" style="pointer-events: none; position: absolute; inset: 0; background: linear-gradient(180deg,');
+      const playBtn = /<div style="position: absolute; left: 50%; top: 46%; transform: translate\(-50%, -50%\); width: 76px;[^"]*" aria-hidden="true">(<svg[\s\S]*?<\/svg>)<\/div>/;
+      const prog = /<span role="progressbar" aria-label="Posisi video" aria-valuenow="40"([^>]*)><span style="display: block; width: 40%;/;
+      if (md.kind === "file") {
+        h = h.replace(playBtn, (_m, svg: string) => `<button type="button" data-sh-play aria-label="Putar video" style="position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: 76px; height: 76px; border-radius: 999px; border: 0; background: rgba(255,255,255,.22); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2">${svg}</button>`);
+        h = h.replace(prog, '<span role="progressbar" data-sh-prog aria-label="Posisi video" aria-valuenow="0"$1><span data-sh-bar style="display: block; width: 0%;');
+      } else {
+        // Pemutar platform / tanpa video: tombol putar & progres contoh disembunyikan.
+        h = h.replace(playBtn, "");
+        h = h.replace(/<div style="position: absolute; left: 20px; right: 20px; bottom: 30px; display: flex; align-items: center; gap: 10px; color: #FFFFFF; font-size: 11px">[\s\S]*?<\/span><\/span><span[^>]*>[^<]*<\/span><\/div>/, "");
+      }
+    }
   }
   const id = cur?.id ?? "";
   const n = (k: "likes" | "comments", v: number) => `<span data-sh-n="${k}">${compact(v)}</span>`;
-  const meta = `<span data-sh-meta hidden data-id="${esc(id)}" data-url="${esc(url)}" data-title="${esc(cur?.title ?? "Ocean Short")}" data-logged="${sc.loggedIn ? 1 : 0}" data-login="${esc(login)}" data-liked="${cur?.liked ? 1 : 0}" data-saved="${cur?.saved ? 1 : 0}" data-likes="${cur?.likes ?? 0}" data-comments="${cur?.comments ?? 0}"></span>`;
+  // Geser atas/bawah ala Reels: video sebelumnya & berikutnya dalam urutan daftar.
+  const ix = cur ? list.findIndex((x) => x.id === cur.id) : -1;
+  const prevId = ix > 0 ? list[ix - 1]!.id : "";
+  const nextId = ix >= 0 && ix < list.length - 1 ? list[ix + 1]!.id : "";
+  const nextVid = nextId ? shortMedia(list[ix + 1]!.video_url, null) : null;
+  const meta = `<span data-sh-meta hidden data-prev="${esc(prevId)}" data-next="${esc(nextId)}" data-app="${app ? 1 : 0}"${nextVid?.kind === "file" ? ` data-next-src="${esc(nextVid.src)}"` : ""} data-id="${esc(id)}" data-url="${esc(url)}" data-title="${esc(cur?.title ?? "Ocean Short")}" data-logged="${sc.loggedIn ? 1 : 0}" data-login="${esc(login)}" data-liked="${cur?.liked ? 1 : 0}" data-saved="${cur?.saved ? 1 : 0}" data-likes="${cur?.likes ?? 0}" data-comments="${cur?.comments ?? 0}"></span>`;
   h = h.replace(/>Maya Lestari</g, ">Redaksi OceanBird<").replace(/>ML</, ">OB<").replace(/>Analis Saham</, ">Ocean Short<");
   const rest = list.filter((x) => x.id !== cur?.id);
   if (!app) {
@@ -599,13 +623,13 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     const nx = blocks(h, '<a href="#" style="display: flex; gap: 12px; align-items: center">', "a");
     if (nx.length) {
       const tpl = nx[0]!.html;
-      const built = rest.slice(0, 3).map((s) => tpl.replace('href="#"', `href="/short?v=${s.id}"`).replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`).replace(/(<span style="font-size: 12px; color: #5F6B7D">)[^<]*(<)/, `$1${dur(s.duration_s)} · ${compact(s.views)}$2`).replace(/src="\/img\/news-\d\.jpg"/, s.cover_url ? `src="${esc(s.cover_url)}"` : '$&')).join("");
+      const built = rest.slice(0, 3).map((s) => tpl.replace('href="#"', `href="/short?v=${s.id}"`).replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`).replace(/(<span style="font-size: 12px; color: #5F6B7D">)[^<]*(<)/, `$1${dur(s.duration_s)} · ${compact(s.views)}$2`).replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/, (_m, rest: string) => shortThumb(s, rest))).join("");
       h = h.slice(0, nx[0]!.start) + (built || '<span style="font-size: 13px; color: #5F6B7D">Belum ada video lain.</span>') + h.slice(nx[nx.length - 1]!.end);
     }
     const more = blocks(h, '<a href="#" style="position: relative; height: 340px;', "a");
     if (more.length) {
       const tpl = more[0]!.html;
-      const built = rest.slice(3, 11).map((s) => tpl.replace('href="#"', `href="/short?v=${s.id}"`).replace(/>▶ \d:\d\d</, `>▶ ${dur(s.duration_s)}<`).replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`).replace(/src="\/img\/news-\d\.jpg"/, s.cover_url ? `src="${esc(s.cover_url)}"` : '$&')).join("");
+      const built = rest.slice(3, 11).map((s) => tpl.replace('href="#"', `href="/short?v=${s.id}"`).replace(/>▶ \d:\d\d</, `>▶ ${dur(s.duration_s)}<`).replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`).replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/, (_m, rest: string) => shortThumb(s, rest))).join("");
       h = h.slice(0, more[0]!.start) + built + h.slice(more[more.length - 1]!.end);
       if (!built) h = h.replace(/<h2([^>]*)>Lainnya<\/h2>/, "<h2$1></h2>");
     }
@@ -625,6 +649,15 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     h = h.replace(/<button aria-label="Kirim komentar" onClick="\{\{ f5 \}\}"/, '<button aria-label="Kirim komentar" data-sh="comment-send" onClick="{{ f5 }}"');
     h = h.replace(/<a href="\/penulis\/maya-lestari"[^>]*>[\s\S]*?<\/a>/, "");
     h = h.replace(/<span style="display: flex; gap: 8px"><a href="\/market\/BBCA"[\s\S]*?<\/span>/, cur?.symbol ? `<span style="display: flex; gap: 8px"><a href="/market/${encodeURIComponent(cur.symbol)}" style="padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 12px; font-weight: 500">${esc(cur.symbol)}</a></span>` : "");
+  }
+  // Data contoh desain: tab kategori (tidak berfungsi) & foto contoh tanpa video.
+  h = h.replace(/<div style="margin: 20px 0"><div role="tablist" class="ob-scroll"[^>]*>[\s\S]*?<\/div><\/div>/, "");
+  h = h.replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/g, (_m, rest: string) => `<span aria-hidden="true" style="${/style="([^"]*)"/.exec(rest)?.[1] ?? ""}; background: linear-gradient(160deg, #1E293B, #0B0B0F)"></span>`);
+  if (app && cur) {
+    // Tombol geser (juga untuk pemutar platform yang menahan sentuhan): ▲ sebelumnya / ▼ berikutnya.
+    const nav = (dir: "prev" | "next", id2: string) => (id2 ? `<a href="/short?v=${esc(id2)}" data-sh-nav="${dir}" aria-label="${dir === "prev" ? "Video sebelumnya" : "Video berikutnya"}" style="width: 40px; height: 40px; border-radius: 999px; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; color: #FFFFFF"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir === "prev" ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"}"/></svg></a>` : "");
+    const pair = nav("prev", prevId) + nav("next", nextId);
+    if (pair) h = h.replace(/<span style="width: 40px"><\/span><\/div>/, `<span style="width: 40px"></span></div><div data-sh-navs style="position: absolute; right: 14px; top: 76px; z-index: 3; display: flex; flex-direction: column; gap: 8px">${pair}</div>`);
   }
   return meta + h;
 }
@@ -663,11 +696,34 @@ export function shortsAdminPanel(list: ShortRow[], comments: ShortComment[], fil
 <section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 12px"><h2 style="margin: 0; font-size: 18px; font-weight: 700">Short baru</h2>
 <div style="display: flex; flex-wrap: wrap; gap: 12px">${inp("title", "Judul", "IHSG dalam 60 detik", 'maxlength="140"')}${inp("symbol", "Simbol (opsional)", "BBCA")}${inp("duration", "Durasi (detik)", "58", 'inputmode="numeric"')}</div>
 <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #5F6B7D">Keterangan<textarea data-shf="caption" rows="2" maxlength="500" style="border-radius: 14px; border: 1px solid #E3EBF7; padding: 10px 12px; font-size: 14px; font-family: inherit"></textarea></label>
-<div style="display: flex; flex-wrap: wrap; gap: 12px">${inp("video", "Video (unggah atau URL https MP4/WebM)", "https://… atau unggah")}<label data-shv-pick style="flex: 0 0 auto; align-self: flex-end; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; border: 1px solid #2F74EB; color: #2F74EB; font-size: 14px; cursor: pointer">Unggah video<input type="file" data-shf="video-file" accept="video/mp4,video/webm,video/quicktime" hidden></label>${inp("cover", "URL sampul", "https://… atau unggah")}<label style="flex: 0 0 auto; align-self: flex-end; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; border: 1px solid #E3EBF7; font-size: 14px; cursor: pointer">Unggah sampul<input type="file" data-shf="cover-file" accept="image/png,image/jpeg,image/webp" hidden></label></div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px">${inp("video", "Video: unggah berkas, URL file (MP4/MOV/WebM…), atau tautan YouTube/TikTok/Instagram/Vimeo/Facebook/Drive", "https://youtube.com/shorts/… atau unggah")}<label data-shv-pick style="flex: 0 0 auto; align-self: flex-end; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; border: 1px solid #2F74EB; color: #2F74EB; font-size: 14px; cursor: pointer">Unggah video<input type="file" data-shf="video-file" accept="video/*,.mp4,.m4v,.mov,.webm,.ogv,.3gp,.3g2,.mkv,.avi,.mpeg,.mpg" hidden></label>${inp("cover", "URL sampul", "https://… atau unggah")}<label style="flex: 0 0 auto; align-self: flex-end; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; border: 1px solid #E3EBF7; font-size: 14px; cursor: pointer">Unggah sampul<input type="file" data-shf="cover-file" accept="image/png,image/jpeg,image/webp" hidden></label></div>
 <div data-shv-progress hidden style="display: flex; flex-direction: column; gap: 6px"><span data-shv-label style="font-size: 13px; color: #5F6B7D">Mengunggah video…</span><span style="height: 6px; border-radius: 999px; background: #E3EBF7; overflow: hidden"><span data-shv-bar style="display: block; height: 100%; width: 0%; background: #2F74EB; transition: width .2s"></span></span></div>
 <div style="display: flex; gap: 10px; flex-wrap: wrap"><button type="button" data-sha="create" data-status="draft" style="min-height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid #E3EBF7; background: #FFFFFF; font-size: 14px">Simpan draf</button><button type="button" data-sha="create" data-status="published" class="ob-anim" style="min-height: 46px; padding: 0 20px; border-radius: 999px; border: 0; background: linear-gradient(110deg, #2563EB 0%, #4285F4 35%, #63A4FA 55%, #4285F4 75%, #2563EB 100%); color: #FFFFFF; font-size: 14px">Tayangkan</button></div></section>
 <section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px"><h2 style="margin: 0 0 6px; font-size: 18px; font-weight: 700">Semua Short</h2>${rows}</section>
 <section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 8px"><span style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center"><h2 style="margin: 0; font-size: 18px; font-weight: 700; flex: 1">Komentar Short</h2>${tabs}</span>${crow}</section></div>`;
+}
+
+/** Gambar kecil Short di daftar: sampul, thumbnail platform, atau bingkai pertama video unggahan. */
+function shortThumb(s: { video_url: string | null; cover_url: string | null }, rest: string): string {
+  const md = shortMedia(s.video_url, s.cover_url);
+  if (md.poster) return `<img src="${esc(md.poster)}"${rest}>`;
+  if (md.kind === "file") return `<video src="${esc(md.src.includes("#") ? md.src : `${md.src}#t=0.1`)}" muted playsinline preload="metadata" aria-hidden="true"${rest.replace(/\s?alt="[^"]*"/, "")}></video>`;
+  // Tanpa sampul: blok gelap polos (bukan foto contoh).
+  const st = /style="([^"]*)"/.exec(rest)?.[1] ?? "position: absolute; inset: 0; width: 100%; height: 100%";
+  return `<span aria-hidden="true" style="${st}; background: linear-gradient(160deg, #1E293B, #0B0B0F)"></span>`;
+}
+
+/** Pemutar Short: <video> untuk berkas langsung, iframe pemutar resmi untuk YouTube/TikTok/Instagram/Vimeo dll. */
+function shortPlayer(id: string, md: ShortMedia, app: boolean): string {
+  const box = "position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0B0B0F; z-index: 1";
+  if (md.kind === "file") {
+    // "#t=0.1" agar bingkai pertama tampil sebagai sampul bila tidak ada gambar sampul.
+    const src = md.poster || md.src.includes("#") ? md.src : `${md.src}#t=0.1`;
+    return `<video data-short="${esc(id)}" src="${esc(src)}"${md.poster ? ` poster="${esc(md.poster)}"` : ""}${app ? " loop" : " controls"} playsinline webkit-playsinline preload="metadata" style="${box}; object-fit: ${app ? "cover" : "contain"}"></video>`;
+  }
+  if (md.kind === "embed")
+    return `<iframe data-short="${esc(id)}" data-sh-embed="${esc(md.provider)}" src="${esc(md.src)}" title="Video ${esc(md.provider)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="${box}${app ? "; top: 64px; height: calc(100% - 64px - 150px)" : ""}"></iframe>`;
+  return "";
 }
 
 /** Batas keterangan Ocean Short sebelum dilipat (gaya TikTok: "… selengkapnya"). */

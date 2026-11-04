@@ -953,6 +953,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const t = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(now).replace(".", ":");
     return `>Saham AS · ${d} · ${t} WIB<`;
   });
+  // Tanggal contoh di bilah atas situs ("Jumat, 30 Oktober 2026") → tanggal hari ini (WIB).
+  html = html.replace(/>(?:Senin|Selasa|Rabu|Kamis|Jumat|Sabtu|Minggu), 30 Oktober 2026</g, () => `>${new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date())}<`);
   title = auroraText(title);
   // Bahasa, format angka & zona waktu pilihan pengguna (halaman pembaca).
   if (board.kind !== "admin") {

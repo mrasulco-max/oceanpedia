@@ -92,6 +92,239 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
   offs.push(() => host.removeEventListener("dc:state", apply));
   apply();
 
+  // Pemutar aplikasi (layar penuh): ketuk untuk putar/jeda, progres & waktu nyata, pesan bila format tak didukung.
+  const mmss = (t: number) => (Number.isFinite(t) && t > 0 ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}` : "0:00");
+  const vid = () => host.querySelector<HTMLVideoElement>("video[data-short]");
+  const sync = () => {
+    const v = vid();
+    if (!v) return;
+    const btn = host.querySelector<HTMLElement>("[data-sh-play]");
+    if (btn) {
+      btn.style.opacity = v.paused ? "1" : "0";
+      btn.style.pointerEvents = v.paused ? "auto" : "none";
+      btn.setAttribute("aria-label", v.paused ? "Putar video" : "Jeda video");
+    }
+    const pct = v.duration > 0 ? (v.currentTime / v.duration) * 100 : 0;
+    const bar = host.querySelector<HTMLElement>("[data-sh-bar]");
+    if (bar) bar.style.width = `${pct}%`;
+    const prog = host.querySelector<HTMLElement>("[data-sh-prog]");
+    if (prog) {
+      prog.setAttribute("aria-valuenow", String(Math.round(pct)));
+      const time = prog.nextElementSibling as HTMLElement | null;
+      if (time && v.duration > 0) time.textContent = `${mmss(v.currentTime)} / ${mmss(v.duration)}`;
+    }
+  };
+  const onMedia = (e: Event) => {
+    if (!(e.target instanceof HTMLVideoElement) || !e.target.matches("video[data-short]")) return;
+    if (e.type === "error") {
+      const v = e.target;
+      if (v.dataset.failed) return;
+      v.dataset.failed = "1";
+      const note = document.createElement("div");
+      note.setAttribute("role", "alert");
+      note.style.cssText = "position: absolute; left: 24px; right: 24px; top: 40%; z-index: 3; padding: 14px 16px; border-radius: 16px; background: rgba(11,11,15,.82); color: #FFFFFF; font-size: 14px; line-height: 1.5; text-align: center";
+      note.textContent = "Video tidak bisa diputar di perangkat ini. Coba buka di browser lain, atau minta redaksi mengunggah ulang dalam format MP4 (H.264).";
+      v.parentElement?.appendChild(note);
+      return;
+    }
+    sync();
+  };
+  for (const ev of ["play", "pause", "timeupdate", "loadedmetadata", "ended", "error"]) {
+    host.addEventListener(ev, onMedia, true);
+    offs.push(() => host.removeEventListener(ev, onMedia, true));
+  }
+  const toggle = () => {
+    const v = vid();
+    if (!v) return;
+    // Diputar otomatis tanpa suara → ketukan pertama menyalakan suara.
+    if (!v.paused && v.muted && v.dataset.autoMuted) {
+      v.muted = false;
+      delete v.dataset.autoMuted;
+      return;
+    }
+    if (v.paused) void v.play().catch(() => undefined);
+    else v.pause();
+  };
+
+  // ------------------------------------------------ Geser atas/bawah ala Reels (tampilan aplikasi)
+  const SH_DIR = "ob-sh-dir";
+  const metaNow = () => host.querySelector<HTMLElement>("[data-sh-meta]");
+  const stage = () => host.querySelector<HTMLElement>(":scope > :not([data-sh-meta])");
+  let navigating = false;
+  const go = (dir: "next" | "prev") => {
+    const m = metaNow();
+    const target = dir === "next" ? m?.dataset.next : m?.dataset.prev;
+    const st = stage();
+    if (!target) {
+      // Ujung daftar: pantulan kecil + info.
+      if (st) {
+        st.style.transition = "transform .25s cubic-bezier(.2,.8,.2,1)";
+        st.style.transform = "translateY(0)";
+      }
+      toast(host, dir === "next" ? "Ini video terakhir." : "Ini video pertama.");
+      return;
+    }
+    if (navigating) return;
+    navigating = true;
+    vid()?.pause();
+    try {
+      sessionStorage.setItem(SH_DIR, dir);
+    } catch {
+      /* penyimpanan diblokir */
+    }
+    if (st) {
+      st.style.transition = "transform .28s cubic-bezier(.4,0,.2,1), opacity .28s";
+      st.style.transform = `translateY(${dir === "next" ? "-100%" : "100%"})`;
+      st.style.opacity = "0.4";
+    }
+    window.setTimeout(() => router.push(`/short?v=${encodeURIComponent(target)}`, { scroll: false }), 200);
+  };
+  // Video berikutnya: siapkan halaman & awal video agar perpindahan terasa instan.
+  const warm = () => {
+    const m = metaNow();
+    if (m?.dataset.next) router.prefetch?.(`/short?v=${encodeURIComponent(m.dataset.next)}`);
+    if (m?.dataset.prev) router.prefetch?.(`/short?v=${encodeURIComponent(m.dataset.prev)}`);
+    const src = m?.dataset.nextSrc;
+    if (src && !onMeteredConnection() && !document.querySelector(`link[data-sh-warm="${CSS.escape(src)}"]`)) {
+      const l = document.createElement("link");
+      l.rel = "preload";
+      l.as = "video";
+      l.href = src;
+      l.dataset.shWarm = src;
+      document.head.appendChild(l);
+    }
+  };
+  let shownId = "";
+  // Masuk dari geseran: geser masuk dari arah yang sesuai, lalu putar otomatis.
+  const enter = () => {
+    const m = metaNow();
+    const cid = m?.dataset.id ?? "";
+    if (!cid || cid === shownId) return;
+    shownId = cid;
+    navigating = false;
+    let dir: string | null = null;
+    try {
+      dir = sessionStorage.getItem(SH_DIR);
+      sessionStorage.removeItem(SH_DIR);
+    } catch {
+      /* penyimpanan diblokir */
+    }
+    const st = stage();
+    if (st && m?.dataset.app === "1") {
+      host.style.background = "#0B0B0F";
+      host.style.overflow = "hidden";
+      st.style.transition = "none";
+      st.style.opacity = "1";
+      st.style.transform = dir ? `translateY(${dir === "next" ? "100%" : "-100%"})` : "translateY(0)";
+      if (dir) {
+        void st.offsetHeight;
+        st.style.transition = "transform .3s cubic-bezier(.2,.8,.2,1)";
+        st.style.transform = "translateY(0)";
+      }
+    }
+    warm();
+    const v = vid();
+    // Diputar otomatis tanpa suara (preferensi video otomatis): ketukan pertama menyalakan suara.
+    if (v && v.muted && v.autoplay) v.dataset.autoMuted = "1";
+    const auto = dir !== null || (m?.dataset.app === "1" && !onMeteredConnection() && !/(?:^|;\s*)ob_prefs=[^;]*a%3D0/.test(document.cookie));
+    if (v && auto && m?.dataset.app === "1") {
+      void v.play().catch(() => {
+        // Browser menolak suara tanpa interaksi → putar tanpa suara; ketuk untuk suara.
+        v.muted = true;
+        v.dataset.autoMuted = "1";
+        void v.play().catch(() => undefined);
+      });
+    }
+  };
+  enter();
+  const onState = () => enter();
+  host.addEventListener("dc:state", onState);
+  offs.push(() => host.removeEventListener("dc:state", onState));
+
+  // Sentuhan: seret mengikuti jari; lepas > 18% tinggi layar atau sapuan cepat → pindah video.
+  let y0 = 0, x0 = 0, t0 = 0, dy = 0, dragging = false, locked: "y" | "x" | null = null;
+  const blocked = (t: EventTarget | null) =>
+    t instanceof Element && !!t.closest('[role="dialog"], input, textarea, select, [data-sh-list], .ob-scroll, iframe');
+  const sheetOpen = () => [...host.querySelectorAll<HTMLElement>('[role="dialog"]')].some((d) => {
+    const r = d.getBoundingClientRect();
+    return r.height > 0 && r.top < window.innerHeight - 40;
+  });
+  const onStart = (e: TouchEvent) => {
+    if (metaNow()?.dataset.app !== "1" || e.touches.length !== 1 || blocked(e.target) || sheetOpen()) return;
+    y0 = e.touches[0]!.clientY;
+    x0 = e.touches[0]!.clientX;
+    t0 = performance.now();
+    dy = 0;
+    locked = null;
+    dragging = true;
+  };
+  const onMove = (e: TouchEvent) => {
+    if (!dragging) return;
+    const ddy = e.touches[0]!.clientY - y0;
+    const ddx = e.touches[0]!.clientX - x0;
+    if (!locked && Math.abs(ddy) + Math.abs(ddx) > 8) locked = Math.abs(ddy) > Math.abs(ddx) ? "y" : "x";
+    if (locked !== "y") return;
+    e.preventDefault();
+    const m = metaNow();
+    // Tanpa video di arah itu: tarikan diredam (efek karet).
+    dy = (ddy < 0 && !m?.dataset.next) || (ddy > 0 && !m?.dataset.prev) ? ddy * 0.25 : ddy;
+    const st = stage();
+    if (st) {
+      st.style.transition = "none";
+      st.style.transform = `translateY(${dy}px)`;
+    }
+  };
+  const onEnd = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (locked !== "y") return;
+    const v = Math.abs(dy) / Math.max(1, performance.now() - t0);
+    const far = Math.abs(dy) > window.innerHeight * 0.18 || (v > 0.5 && Math.abs(dy) > 40);
+    if (far) go(dy < 0 ? "next" : "prev");
+    else {
+      const st = stage();
+      if (st) {
+        st.style.transition = "transform .25s cubic-bezier(.2,.8,.2,1)";
+        st.style.transform = "translateY(0)";
+      }
+    }
+  };
+  host.addEventListener("touchstart", onStart, { passive: true });
+  host.addEventListener("touchmove", onMove, { passive: false });
+  host.addEventListener("touchend", onEnd);
+  host.addEventListener("touchcancel", onEnd);
+  // Roda tetikus / touchpad & tombol panah (desktop yang membuka tampilan aplikasi, dan papan ketik).
+  let wheelLock = 0;
+  const onWheel = (e: WheelEvent) => {
+    if (metaNow()?.dataset.app !== "1" || blocked(e.target) || sheetOpen() || Math.abs(e.deltaY) < 30) return;
+    e.preventDefault();
+    const now = Date.now();
+    if (now < wheelLock) return;
+    wheelLock = now + 700;
+    go(e.deltaY > 0 ? "next" : "prev");
+  };
+  host.addEventListener("wheel", onWheel, { passive: false });
+  const onArrow = (e: KeyboardEvent) => {
+    if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]")) return;
+    if (metaNow()?.dataset.app !== "1" || sheetOpen()) return;
+    if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === "j") {
+      e.preventDefault();
+      go("next");
+    } else if (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "k") {
+      e.preventDefault();
+      go("prev");
+    }
+  };
+  window.addEventListener("keydown", onArrow);
+  offs.push(() => {
+    host.removeEventListener("touchstart", onStart);
+    host.removeEventListener("touchmove", onMove);
+    host.removeEventListener("touchend", onEnd);
+    host.removeEventListener("touchcancel", onEnd);
+    host.removeEventListener("wheel", onWheel);
+    window.removeEventListener("keydown", onArrow);
+  });
+
   const run = async (fn: () => Promise<void>) => {
     if (busy) return;
     busy = true;
@@ -146,6 +379,17 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
     };
     const el = <T extends HTMLElement = HTMLElement>(sel: string) => t.closest<T>(sel);
 
+    if (el("[data-sh-play]") || (t instanceof HTMLVideoElement && t.matches("video[data-short]:not([controls])"))) {
+      stop();
+      toggle();
+      return;
+    }
+    const navBtn = el("[data-sh-nav]");
+    if (navBtn) {
+      stop();
+      go(navBtn.dataset.shNav === "prev" ? "prev" : "next");
+      return;
+    }
     const capBtn = el('[data-sh="cap"]');
     if (capBtn) {
       stop();

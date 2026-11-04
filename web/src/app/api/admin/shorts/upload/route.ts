@@ -5,8 +5,8 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 const BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
 /** Jenis & ukuran berkas yang boleh diunggah langsung dari panel redaksi ke Vercel Blob. */
-const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
-const MAX_VIDEO = 200 * 1024 * 1024; // 200 MB
+const VIDEO_TYPES = ["video/mp4", "video/x-m4v", "video/quicktime", "video/webm", "video/ogg", "video/3gpp", "video/3gpp2", "video/x-matroska", "video/x-msvideo", "video/avi", "video/mpeg"];
+const MAX_VIDEO = 500 * 1024 * 1024; // 500 MB
 
 const problem = (status: number, title: string, detail: string) =>
   NextResponse.json({ type: "about:blank", title, status, detail }, { status, headers: { "Cache-Control": "no-store" } });
