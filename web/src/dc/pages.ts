@@ -42,15 +42,18 @@ const FOOT_ETC: Record<string, string> = { "Tentang kami": "/tentang", Redaksi: 
 export function bindFooter(html: string): string {
   const fs = html.lastIndexOf("<footer");
   if (fs < 0) return html;
-  let f = html.slice(fs);
-  f = f.replace(/<a [^>]*aria-label="(Instagram|X|YouTube|LinkedIn|Facebook|TikTok)"[^>]*href="#"[^>]*>[\s\S]*?<\/a>|<a [^>]*href="#"[^>]*aria-label="(Instagram|X|YouTube|LinkedIn|Facebook|TikTok)"[^>]*>[\s\S]*?<\/a>/g, "");
+  // Ikon media sosial (bar atas & footer) tanpa akun resmi → disembunyikan; kartu iklan native contoh → halaman Pasang iklan.
+  html = html.replace(/<a href="#" aria-label="(Instagram|X|YouTube|LinkedIn|Facebook|TikTok)"[^>]*>[\s\S]*?<\/a>/g, "");
+  html = html.replace(/<a href="#"( style="[^"]*"><span style="[^"]*border: 1p[^"]*">(?:(?!<\/a>)[\s\S])*?>native<)/g, '<a href="/iklan"$1');
+  const fs2 = html.lastIndexOf("<footer");
+  let f = html.slice(fs2);
   // Kolom "Market" dulu (label Crypto/Forex/Komoditas juga ada di kolom Kategori).
   f = f.replace(/(<strong[^>]*>Market<\/strong>)([\s\S]*?)(<\/div>)/, (_m, a: string, body: string, c: string) => a + body.replace(/<a([^>]*)href="#"([^>]*)>([^<]+)<\/a>/g, (x, p1: string, p2: string, lab: string) => (FOOT_MKT[lab] ? `<a${p1}href="${FOOT_MKT[lab]}"${p2}>${lab}</a>` : x)) + c);
   f = f.replace(/<a([^>]*)href="#"([^>]*)>([^<]+)<\/a>/g, (x, p1: string, p2: string, lab: string) => {
     const to = FOOT_CAT[lab] ?? FOOT_ETC[lab] ?? FOOT_MKT[lab];
     return to ? `<a${p1}href="${to}"${p2}>${lab}</a>` : x;
   });
-  return html.slice(0, fs) + f;
+  return html.slice(0, fs2) + f;
 }
 
 /** Lembar bagikan & tombol bagikan: kanal nyata + tautan halaman ini (ditangani enhancer "share"). */
@@ -803,7 +806,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   // Sisa tautan "#" di panel: diagram alur, kartu statistik, konten, live blog, akses ke Permintaan masuk.
   html = deAlur(html);
   if (boardId === "admin-comments") html = bindDetailCards(html, { Menunggu: "/admin/komentar?status=pending", Dilaporkan: "/admin/komentar?status=flagged", "Disetujui hari ini": "/admin/komentar?status=visible", "Pengguna diblokir": "/admin/pengguna?tab=blocked" });
-  if (boardId === "admin-users") html = bindDetailCards(html, { "Pengguna terdaftar": "/admin/pengguna?tab=reader", "Aktif harian": "/admin/laporan", "Laporan terbuka": "/admin/pengguna?tab=reported", Diblokir: "/admin/pengguna?tab=blocked" });
+  if (boardId === "admin-users") html = bindDetailCards(html, { "Pengguna terdaftar": "/admin/pengguna?tab=reader", "Aktif harian": "/admin/laporan", "Aktif 24 jam": "/admin/laporan", "Laporan terbuka": "/admin/pengguna?tab=reported", Dilaporkan: "/admin/pengguna?tab=reported", Diblokir: "/admin/pengguna?tab=blocked" });
+  if (boardId === "admin-ads") html = bindDetailCards(html, { "Kampanye tayang": "/admin/iklan?status=live", CTR: "/admin/laporan", "Fill rate": "/admin/laporan", "Kontrak aktif": "/admin/iklan?status=live", "Pendapatan bulan ini": "/admin/laporan" });
   if (boardId === "admin-market") html = bindDetailCards(html, { "Error 429": "/admin/pasar?status=error", "Cache hit": "/admin/pasar", "Latensi p95": "/admin/pasar", "Koneksi WS": "/admin/pasar?status=live" });
   if (boardId === "admin-live" && search.tab !== "short") html = bindLiveExtras(html);
   if (boardId === "admin-content") {
