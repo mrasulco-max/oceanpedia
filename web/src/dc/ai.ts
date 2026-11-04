@@ -45,7 +45,7 @@ export function ai(host: HTMLElement, { router }: Env): Cleanup {
         /* coba lagi */
       }
       if (tries < 6) timers.push(window.setTimeout(attempt, 4000));
-      else for (const e of els) e.textContent = "Analisis AI belum tersedia. Coba muat ulang sebentar lagi.";
+      else for (const e of els) e.textContent = "Analisis Aurora AI belum tersedia. Coba muat ulang sebentar lagi.";
     };
     void attempt();
   });
@@ -85,11 +85,11 @@ export function ai(host: HTMLElement, { router }: Env): Cleanup {
       const j = (await r.json().catch(() => ({}))) as { answer?: string; detail?: string; title?: string };
       if (r.ok && j.answer) ans.textContent = j.answer;
       else if (r.status === 401) {
-        ans.textContent = "Masuk dulu untuk bertanya ke AI. ";
+        ans.textContent = "Masuk dulu untuk bertanya ke Aurora AI. ";
         const a = el("a", "color: #2F74EB; font-weight: 500", "Masuk");
         a.setAttribute("href", `/masuk?next=${encodeURIComponent(location.pathname + location.search)}`);
         ans.appendChild(a);
-      } else ans.textContent = j.detail || j.title || "AI sedang sibuk. Coba lagi sebentar lagi.";
+      } else ans.textContent = j.detail || j.title || "Aurora AI sedang sibuk. Coba lagi sebentar lagi.";
     } catch {
       ans.textContent = "Koneksi terputus. Coba lagi.";
     } finally {

@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 
 /**
- * Asisten AI Ocean Pedia (khusus Plus): percakapan bebas tentang semua berita & pergerakan pasar,
- * plus analisis gambar chart (support, resistance, pola, skenario). Semua lewat BFF /api/ai/*.
+ * Aurora AI (khusus Plus): percakapan bebas tentang semua berita & pergerakan pasar — dengan tautan berita
+ * yang dirujuk dan chart harga yang diminta — plus analisis gambar chart (support, resistance, pola, skenario).
+ * Semua lewat BFF /api/ai/*.
  */
 
 type Level = { harga: string; kekuatan: string; catatan: string };
@@ -26,7 +27,10 @@ type Chart = {
   risiko: string;
   keyakinan: string;
 };
-type Msg = { role: "user" | "assistant"; content: string; image?: string; chart?: Chart; error?: boolean };
+type NewsLink = { title: string; url: string; category?: string; published_at?: string; cover_url?: string | null };
+type Candle = { t: string; o: number; h: number; l: number; c: number; v?: number };
+type MarketChart = { symbol: string; name: string; currency: string; interval: string; label: string; url: string; candles: Candle[]; last: number; change_pct: number };
+type Msg = { role: "user" | "assistant"; content: string; image?: string; chart?: Chart; links?: NewsLink[]; charts?: MarketChart[]; error?: boolean };
 
 const SUGGEST = [
   "Bagaimana kondisi pasar hari ini?",
@@ -34,14 +38,28 @@ const SUGGEST = [
   "Analisis pergerakan Bitcoin minggu ini",
   "Apa dampak kebijakan The Fed ke rupiah dan saham bank?",
   "Aset mana yang paling naik dan turun hari ini?",
+  "Tampilkan chart Bitcoin 3 bulan",
+  "Kirim link berita terbaru tentang emas",
 ];
 const BLUE = "linear-gradient(110deg,#2563EB 0%,#4285F4 35%,#63A4FA 55%,#4285F4 75%,#2563EB 100%)";
 
 /** Teks AI → paragraf & daftar (tanpa HTML mentah). */
 function Rich({ text }: { text: string }) {
   const blocks = text.replace(/\r/g, "").split(/\n{2,}/);
-  const inline = (s: string, k: string) =>
+  const bold = (s: string, k: string) =>
     s.split(/(\*\*[^*]+\*\*)/g).map((p, i) => (p.startsWith("**") && p.endsWith("**") ? <strong key={`${k}-${i}`}>{p.slice(2, -2)}</strong> : <span key={`${k}-${i}`}>{p}</span>));
+  // Tautan markdown hanya ke halaman OceanBird sendiri (/berita, /market, /kategori, …) — domain aktif.
+  const inline = (s: string, k: string) =>
+    s.split(/(\[[^\]\n]+\]\(\/[a-z0-9\-/?=&%.]*\))/gi).map((p, i) => {
+      const m = /^\[([^\]\n]+)\]\((\/[a-z0-9\-/?=&%.]*)\)$/i.exec(p);
+      return m ? (
+        <Link key={`${k}-l${i}`} href={m[2]!} style={{ color: "#2F74EB", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}>
+          {m[1]!.replace(/\*\*/g, "")}
+        </Link>
+      ) : (
+        <span key={`${k}-s${i}`}>{bold(p, `${k}-${i}`)}</span>
+      );
+    });
   return (
     <>
       {blocks.map((b, bi) => {
@@ -114,6 +132,108 @@ function ChartCard({ c }: { c: Chart }) {
   );
 }
 
+const nf = (n: number) => {
+  const a = Math.abs(n);
+  const d = a >= 1000 ? 0 : a >= 100 ? 2 : a >= 1 ? 2 : 4;
+  return new Intl.NumberFormat("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
+};
+const fmtT = (iso: string, intraday: boolean) => {
+  const d = new Date(iso);
+  return d.toLocaleString("id-ID", intraday ? { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short", year: "2-digit" });
+};
+
+/** Chart candlestick dari data pasar (SVG, tanpa pustaka). */
+function MarketChartCard({ c }: { c: MarketChart }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const cs = c.candles;
+  if (!cs.length) return null;
+  const W = 640, H = 260, PL = 8, PR = 64, PT = 12, PB = 26;
+  const hi = Math.max(...cs.map((k) => k.h));
+  const lo = Math.min(...cs.map((k) => k.l));
+  const pad = (hi - lo) * 0.06 || hi * 0.01 || 1;
+  const top = hi + pad, bot = lo - pad;
+  const y = (v: number) => PT + ((top - v) / (top - bot)) * (H - PT - PB);
+  const step = (W - PL - PR) / cs.length;
+  const bw = Math.max(1, Math.min(10, step * 0.62));
+  const x = (i: number) => PL + step * i + step / 2;
+  const intraday = !/day|week|month/.test(c.interval);
+  const up = c.change_pct >= 0;
+  const ticks = [0, 1, 2, 3, 4].map((i) => bot + ((top - bot) * i) / 4);
+  const labels = [0, Math.floor(cs.length / 2), cs.length - 1];
+  const k = hover !== null ? cs[hover] : cs[cs.length - 1];
+  const onMove = (e: RPointerEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const px = ((e.clientX - r.left) / r.width) * W;
+    const i = Math.round((px - PL - step / 2) / step);
+    setHover(i >= 0 && i < cs.length ? i : null);
+  };
+  return (
+    <div style={{ border: "1px solid #E3EAF4", borderRadius: 18, padding: 12, background: "#fff", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+        <strong style={{ fontSize: 16 }}>{c.symbol}</strong>
+        <span style={{ fontSize: 13, color: "#5F6B7D" }}>{c.name}</span>
+        <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 999, background: "#EEF5FF", color: "#1E40AF" }}>{c.label}</span>
+        <span style={{ marginLeft: "auto", fontFamily: "'Roboto Mono', monospace", fontSize: 15, fontWeight: 500 }}>
+          {nf(c.last)} {c.currency}{" "}
+          <span style={{ color: up ? "#15803D" : "#B42318" }}>
+            {up ? "▲" : "▼"} {nf(Math.abs(c.change_pct))}%
+          </span>
+        </span>
+      </div>
+      <div style={{ fontSize: 12, color: "#5F6B7D", fontFamily: "'Roboto Mono', monospace", minHeight: 16 }}>
+        {k ? `${fmtT(k.t, intraday)} · O ${nf(k.o)} H ${nf(k.h)} L ${nf(k.l)} C ${nf(k.c)}` : null}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Chart ${c.symbol} ${c.label}`} style={{ width: "100%", height: "auto", touchAction: "pan-y" }} onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={PL} x2={W - PR} y1={y(t)} y2={y(t)} stroke="#EEF2F7" />
+            <text x={W - PR + 6} y={y(t) + 4} fontSize="11" fill="#9AA6B8">{nf(t)}</text>
+          </g>
+        ))}
+        {cs.map((k, i) => {
+          const g = k.c >= k.o;
+          const col = g ? "#16A34A" : "#DC2626";
+          return (
+            <g key={i}>
+              <line x1={x(i)} x2={x(i)} y1={y(k.h)} y2={y(k.l)} stroke={col} strokeWidth={1} />
+              <rect x={x(i) - bw / 2} y={y(Math.max(k.o, k.c))} width={bw} height={Math.max(1, Math.abs(y(k.o) - y(k.c)))} fill={col} />
+            </g>
+          );
+        })}
+        <line x1={PL} x2={W - PR} y1={y(c.last)} y2={y(c.last)} stroke={up ? "#16A34A" : "#DC2626"} strokeDasharray="3 3" opacity={0.6} />
+        {hover !== null ? <line x1={x(hover)} x2={x(hover)} y1={PT} y2={H - PB} stroke="#94A3B8" strokeDasharray="2 3" /> : null}
+        {labels.map((i, j) => (
+          <text key={j} x={x(i)} y={H - 8} fontSize="11" fill="#9AA6B8" textAnchor={j === 0 ? "start" : j === 2 ? "end" : "middle"}>
+            {fmtT(cs[i]!.t, intraday)}
+          </text>
+        ))}
+      </svg>
+      <Link href={c.url} style={{ alignSelf: "flex-start", fontSize: 13, color: "#2F74EB", fontWeight: 500, textDecoration: "none" }}>
+        Buka {c.symbol} di Market →
+      </Link>
+    </div>
+  );
+}
+
+function NewsLinks({ links }: { links: NewsLink[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+      <span style={{ fontSize: 12, fontWeight: 500, color: "#5F6B7D" }}>Berita terkait</span>
+      {links.map((l) => (
+        <Link key={l.url} href={l.url} style={{ display: "flex", gap: 10, alignItems: "center", padding: 10, borderRadius: 14, border: "1px solid #E3EAF4", background: "#F9FBFE", color: "#0B0B0F", textDecoration: "none" }}>
+          {l.cover_url ? <img src={l.cover_url} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", flex: "none" }} /> : <span style={{ width: 56, height: 56, borderRadius: 10, flex: "none", background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>📰</span>}
+          <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+            <strong style={{ fontSize: 14, lineHeight: 1.35 }}>{l.title}</strong>
+            <span style={{ fontSize: 12, color: "#5F6B7D" }}>
+              {[l.category, l.published_at ? new Date(l.published_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : ""].filter(Boolean).join(" · ")}
+            </span>
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 /** Ringkasan teks hasil chart → dipakai sebagai riwayat agar bisa ditanya lanjut. */
 function chartText(c: Chart): string {
   if (!c.valid) return c.ringkasan;
@@ -155,7 +275,7 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
   }, []);
   useEffect(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify(msgs.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.content, chart: m.chart })).slice(-40)));
+      localStorage.setItem(KEY, JSON.stringify(msgs.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.content, chart: m.chart, links: m.links, charts: m.charts })).slice(-40)));
     } catch {
       /* abaikan */
     }
@@ -172,7 +292,7 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
   const fail = async (r: Response) => {
     const d = (await r.json().catch(() => ({}))) as { detail?: string; title?: string };
     if (r.status === 401) return "Sesi berakhir. Silakan masuk lagi.";
-    return d.detail || d.title || "AI sedang sibuk. Coba lagi sebentar lagi.";
+    return d.detail || d.title || "Aurora AI sedang sibuk. Coba lagi sebentar lagi.";
   };
 
   async function send(q?: string) {
@@ -215,8 +335,8 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
         const e = await fail(r);
         setMsgs((m) => [...m, { role: "assistant", content: e, error: true }]);
       } else {
-        const d = (await r.json()) as { answer: string };
-        setMsgs((m) => [...m, { role: "assistant", content: d.answer }]);
+        const d = (await r.json()) as { answer: string; links?: NewsLink[]; charts?: MarketChart[] };
+        setMsgs((m) => [...m, { role: "assistant", content: d.answer, links: d.links?.length ? d.links : undefined, charts: d.charts?.length ? d.charts : undefined }]);
       }
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: "Koneksi bermasalah. Coba lagi.", error: true }]);
@@ -246,7 +366,7 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
       <header style={{ flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "max(10px, env(safe-area-inset-top)) 16px 10px", background: "#FFFFFF", borderBottom: "1px solid #E3EAF4" }}>
         <Link href="/" aria-label="Kembali" style={{ width: 40, height: 40, borderRadius: 999, border: "1px solid #E3EAF4", display: "flex", alignItems: "center", justifyContent: "center", color: "#0B0B0F", textDecoration: "none", fontSize: 18 }}>‹</Link>
         <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-          <strong style={{ fontSize: 18 }}>Asisten AI</strong>
+          <strong style={{ fontSize: 18 }}>Aurora AI</strong>
           <span style={{ fontSize: 12, color: "#5F6B7D" }}>Berita, pasar & analisis chart · Ocean Pedia Plus</span>
         </span>
         {msgs.length ? (
@@ -263,7 +383,7 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
               <span style={{ width: 52, height: 52, borderRadius: 18, background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>✦</span>
               <h1 style={{ margin: 0, fontSize: 26 }}>Halo, {firstName}. Mau bahas apa hari ini?</h1>
               <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: "#5F6B7D" }}>
-                Tanyakan apa saja tentang berita dan pergerakan saham, crypto, forex, atau komoditas. Unggah gambar chart dari perangkatmu untuk dianalisis support, resistance, pola, dan skenarionya.
+                Tanyakan apa saja tentang berita dan pergerakan saham, crypto, forex, atau komoditas. Minta tautan berita atau chart harga (mis. &quot;chart emas 1 jam&quot;). Unggah gambar chart dari perangkatmu untuk dianalisis support, resistance, pola, dan skenarionya.
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {SUGGEST.map((s) => (
@@ -284,15 +404,23 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
                 <div style={{ background: "#2F74EB", color: "#fff", borderRadius: "18px 18px 4px 18px", padding: "10px 14px", fontSize: 15, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.content}</div>
               </div>
             ) : (
-              <div key={i} style={{ alignSelf: "flex-start", maxWidth: "100%", width: m.chart ? "100%" : undefined, background: m.error ? "#FEF4F4" : "#FFFFFF", border: `1px solid ${m.error ? "#F5C2C2" : "#E3EAF4"}`, borderRadius: "18px 18px 18px 4px", padding: "12px 14px", fontSize: 15, lineHeight: 1.6 }}>
+              <div key={i} style={{ alignSelf: "flex-start", maxWidth: "100%", width: m.chart || m.charts ? "100%" : undefined, background: m.error ? "#FEF4F4" : "#FFFFFF", border: `1px solid ${m.error ? "#F5C2C2" : "#E3EAF4"}`, borderRadius: "18px 18px 18px 4px", padding: "12px 14px", fontSize: 15, lineHeight: 1.6 }}>
                 {m.chart ? <ChartCard c={m.chart} /> : <Rich text={m.content} />}
+                {m.charts ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+                    {m.charts.map((c) => (
+                      <MarketChartCard key={`${c.symbol}-${c.interval}`} c={c} />
+                    ))}
+                  </div>
+                ) : null}
+                {m.links ? <NewsLinks links={m.links} /> : null}
               </div>
             ),
           )}
-          {busy ? <div style={{ alignSelf: "flex-start", background: "#fff", border: "1px solid #E3EAF4", borderRadius: 18, padding: "10px 14px", fontSize: 14, color: "#5F6B7D" }}>{file === null && preview === null ? "AI sedang menganalisis…" : "Mengunggah…"}</div> : null}
+          {busy ? <div style={{ alignSelf: "flex-start", background: "#fff", border: "1px solid #E3EAF4", borderRadius: 18, padding: "10px 14px", fontSize: 14, color: "#5F6B7D" }}>{file === null && preview === null ? "Aurora AI sedang menganalisis…" : "Mengunggah…"}</div> : null}
           <div ref={endRef} />
           <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9AA6B8", textAlign: "center" }}>
-            Dihasilkan AI dari berita OceanBird & data pasar (dapat tertunda). Bukan saran investasi.
+            Dihasilkan Aurora AI dari berita OceanBird & data pasar (dapat tertunda). Bukan saran investasi.
           </p>
         </div>
       </div>

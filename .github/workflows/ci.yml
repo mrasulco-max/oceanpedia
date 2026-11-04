@@ -557,6 +557,11 @@ jobs:
           # Asisten AI (/ai): tamu diarahkan masuk, pelanggan Plus dapat obrolan + tombol cepat di beranda.
           code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" localhost:3000/ai); test "$code" = 307
           curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/ai | grep -q 'Analisis gambar chart'
+          # Nama asisten: Aurora AI (teks terlihat), penanda aria-label untuk enhancer tetap.
+          curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/ai | grep -q 'Aurora AI'
+          curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/ | grep -q '</span>Aurora AI</a>'
+          curl -sf -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'Aurora AI'
+          ! curl -sf -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q '>Analisis AI<'
           curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/ | grep -q 'data-ai-fab'
           ! curl -sf -A "$DESK" localhost:3000/ | grep -q 'data-ai-fab'
           code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/pjar -X POST -H 'Content-Type: application/json' localhost:3000/api/ai/chat -d '{"messages":[{"role":"user","content":"Kondisi pasar?"}]}'); test "$code" = 503

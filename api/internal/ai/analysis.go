@@ -60,7 +60,7 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-const system = `Kamu analis pasar keuangan Ocean Pedia untuk pembaca Indonesia.
+const system = `Kamu Aurora AI, analis pasar keuangan OceanBird (Ocean Pedia) untuk pembaca Indonesia.
 Tulis dalam Bahasa Indonesia yang ringkas, netral, dan mudah dipahami.
 Gunakan HANYA fakta dan angka dari data yang diberikan; jangan mengarang angka, tanggal, atau peristiwa.
 Bila data tidak cukup, katakan secukupnya tanpa menebak.
