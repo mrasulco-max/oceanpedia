@@ -46,6 +46,20 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
   const login = meta.dataset.login || "/masuk";
   const st = { liked: meta.dataset.liked === "1", saved: meta.dataset.saved === "1", likes: Number(meta.dataset.likes ?? 0), comments: Number(meta.dataset.comments ?? 0) };
   const gone = new Set<string>();
+  // Keterangan panjang yang sedang dibuka ("selengkapnya") — dipertahankan saat halaman dirender ulang.
+  const capOpen = new Set<string>();
+  const setCap = (box: HTMLElement, on: boolean) => {
+    const s = box.querySelector<HTMLElement>("[data-sh-cap-s]");
+    const f = box.querySelector<HTMLElement>("[data-sh-cap-f]");
+    const b = box.querySelector<HTMLElement>('[data-sh="cap"]');
+    if (s) s.hidden = on;
+    if (f) f.hidden = !on;
+    if (b) {
+      const en = document.documentElement.lang === "en";
+      b.textContent = on ? (en ? "less" : "sembunyikan") : en ? "more" : "selengkapnya";
+      b.setAttribute("aria-expanded", on ? "true" : "false");
+    }
+  };
   let busy = false;
   const offs: (() => void)[] = [];
 
@@ -72,6 +86,7 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
     for (const el of host.querySelectorAll<HTMLElement>('[data-sh-n="likes"]')) el.textContent = fmt(st.likes);
     for (const el of host.querySelectorAll<HTMLElement>('[data-sh-n="comments"]')) el.textContent = fmt(st.comments);
     for (const g of gone) host.querySelectorAll<HTMLElement>(`[data-sh-comment="${CSS.escape(g)}"]`).forEach((el) => (el.style.display = "none"));
+    host.querySelectorAll<HTMLElement>("[data-sh-cap]").forEach((box) => setCap(box, capOpen.has(box.dataset.shCap ?? "")));
   };
   host.addEventListener("dc:state", apply);
   offs.push(() => host.removeEventListener("dc:state", apply));
@@ -130,6 +145,19 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
       e.stopPropagation();
     };
     const el = <T extends HTMLElement = HTMLElement>(sel: string) => t.closest<T>(sel);
+
+    const capBtn = el('[data-sh="cap"]');
+    if (capBtn) {
+      stop();
+      const box = capBtn.closest<HTMLElement>("[data-sh-cap]");
+      if (!box) return;
+      const k = box.dataset.shCap ?? "";
+      const on = !capOpen.has(k);
+      if (on) capOpen.add(k);
+      else capOpen.delete(k);
+      setCap(box, on);
+      return;
+    }
 
     const tog = el('[data-sh="like"], [data-sh="save"]');
     if (tog) {

@@ -234,6 +234,8 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
       toast(host, `Ditugaskan ke ${name.split(" · ")[0]}. Notifikasi terkirim.`, "ok");
       return;
     }
+    const vf = e.target instanceof HTMLInputElement && e.target.matches('[data-shf="video-file"]') ? e.target : null;
+    if (vf?.files?.[0]) return void uploadVideo(vf, vf.files[0]);
     const f = e.target instanceof HTMLInputElement && e.target.matches('[data-shf="cover-file"]') ? e.target : null;
     const file = f?.files?.[0];
     if (!f || !file) return;
@@ -246,6 +248,58 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
     const inp = host.querySelector<HTMLInputElement>('[data-shf="cover"]');
     if (inp) inp.value = String(r.data.url ?? "");
     toast(host, "Sampul terunggah.", "ok");
+  };
+  // Video Ocean Short: diunggah langsung dari peramban ke Vercel Blob (token sekali pakai dari /api/admin/shorts/upload).
+  let uploading = false;
+  const uploadVideo = async (input: HTMLInputElement, file: File) => {
+    input.value = "";
+    if (uploading) return toast(host, "Tunggu unggahan sebelumnya selesai.");
+    if (!["video/mp4", "video/webm", "video/quicktime"].includes(file.type)) return toast(host, "Format video harus MP4, WebM, atau MOV.");
+    if (file.size > 200 * 1024 * 1024) return toast(host, "Ukuran video maksimal 200 MB.");
+    const box = host.querySelector<HTMLElement>("[data-shv-progress]");
+    const bar = host.querySelector<HTMLElement>("[data-shv-bar]");
+    const label = host.querySelector<HTMLElement>("[data-shv-label]");
+    const setP = (pct: number, text: string) => {
+      if (box) box.hidden = false;
+      if (bar) bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      if (label) label.textContent = text;
+    };
+    uploading = true;
+    const btns = host.querySelectorAll<HTMLButtonElement>('[data-sha="create"]');
+    btns.forEach((b) => (b.disabled = true));
+    setP(0, `Mengunggah ${file.name}… 0%`);
+    try {
+      const { upload } = await import("@vercel/blob/client");
+      const safe = file.name.toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(-80) || "video.mp4";
+      const blob = await upload(`shorts/${safe}`, file, {
+        access: "public",
+        handleUploadUrl: "/api/admin/shorts/upload",
+        contentType: file.type,
+        multipart: file.size > 50 * 1024 * 1024,
+        onUploadProgress: ({ percentage }) => setP(percentage, `Mengunggah ${file.name}… ${Math.round(percentage)}%`),
+      });
+      const inp = host.querySelector<HTMLInputElement>('[data-shf="video"]');
+      if (inp) inp.value = blob.url;
+      // Durasi otomatis dari metadata video bila kolom durasi masih kosong.
+      const dur = host.querySelector<HTMLInputElement>('[data-shf="duration"]');
+      if (dur && !dur.value) {
+        const v = document.createElement("video");
+        v.preload = "metadata";
+        v.onloadedmetadata = () => {
+          if (Number.isFinite(v.duration) && !dur.value) dur.value = String(Math.round(v.duration));
+          URL.revokeObjectURL(v.src);
+        };
+        v.src = URL.createObjectURL(file);
+      }
+      setP(100, `Video terunggah: ${file.name}`);
+      toast(host, "Video terunggah. Lengkapi judul lalu simpan.", "ok");
+    } catch (err) {
+      setP(0, "Unggahan gagal.");
+      toast(host, err instanceof Error && err.message ? `Gagal mengunggah video: ${err.message}` : "Gagal mengunggah video.");
+    } finally {
+      uploading = false;
+      btns.forEach((b) => (b.disabled = false));
+    }
   };
   host.addEventListener("change", onChange);
   return () => {

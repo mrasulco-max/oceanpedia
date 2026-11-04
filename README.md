@@ -92,7 +92,7 @@ Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api
 | Kalender ekonomi + pengingat | `/kalender` | `/v1/events`, `/v1/me/reminders` | `economic_events`, `event_reminders` | ✅ | |
 | Pencarian | `/cari` | `/v1/search` | `articles`, `instruments`, `authors`, `tags` | ✅ | |
 | Artikel tersimpan | `/tersimpan` | `/v1/me/bookmarks` | `bookmarks` | ✅ | |
-| Ocean Short (video): suka, simpan, bagikan, komentar & balasan | `/short` | `/v1/shorts…` | `shorts`, `short_likes`, `short_saves`, `short_comments` | ✅ | Video otomatis hanya saat Wi-Fi (tidak di data seluler / hemat data). Belum ada konten video di produksi |
+| Ocean Short (video): suka, simpan, bagikan, komentar & balasan | `/short` | `/v1/shorts…` | `shorts`, `short_likes`, `short_saves`, `short_comments` | ✅ | Video otomatis hanya saat Wi-Fi (tidak di data seluler / hemat data). Keterangan >150 karakter dilipat dengan "… selengkapnya" / "sembunyikan" (gaya TikTok). Belum ada konten video di produksi |
 | Live blog | `/live` | `/v1/live` | `live_blogs`, `live_posts` | ✅ | |
 | Newsletter (berlangganan/berhenti) | `/newsletter` | `/v1/newsletter/*` | `newsletter_subscribers`, `newsletter_issues` | ⚠️ | Pengiriman bergantung domain email Bird |
 | Daftar, masuk, OTP, lupa sandi, sesi perangkat | `/daftar`, `/masuk`, `/verifikasi` | `/v1/auth/*`, `/v1/me/sessions` | `users`, `auth_codes`, `refresh_tokens` | ✅ | Token di cookie `httpOnly` |
@@ -124,7 +124,7 @@ Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api
 | Iklan & permintaan iklan | `/admin/iklan` | `ad_slots`, `ad_campaigns`, `ad_inquiries` | ✅ | |
 | Pengguna, role & izin, undangan staf | `/admin/pengguna`, `/admin/role` | `users`, `roles`, `permissions`, `role_permissions`, `staff_invitations`, `staff_desks` | ✅ | Tab "Permintaan" untuk Student & data pribadi |
 | Laporan, kondisi sistem, pengaturan | `/admin/laporan`, `/admin/kondisi`, `/admin/pengaturan` | `app_settings` | ✅ | |
-| Ocean Short (kelola video) | `/admin/konten` | `shorts` | ✅ | Video lewat URL |
+| Ocean Short (kelola video) | `/admin/live?tab=short` | `shorts`, Vercel Blob `oceanpedia-short-video` | ✅ | Unggah video langsung dari peramban ke Vercel Blob (MP4/WebM/MOV, maks. 200 MB, progres unggah, durasi terisi otomatis) lewat token sekali pakai `/api/admin/shorts/upload` (hanya staf; `BLOB_READ_WRITE_TOKEN` hanya di server) — atau tempel URL https |
 
 ### Belum dibuat / belum lengkap
 
