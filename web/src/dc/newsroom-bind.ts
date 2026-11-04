@@ -568,7 +568,7 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     h = h.replace(/>0:23 \/ 0:58</, ">—<");
   } else {
     h = h.split(`>${T}<`).join(`>${esc(cur.title)}<`);
-    h = h.replace(/>(Asing beli bersih[^<]*)</g, `>${esc(cur.caption || cur.title)}<`);
+    h = h.replace(/>(Asing beli bersih[^<]*)</g, () => `>${shortCaption(cur.id, cur.caption || cur.title)}<`);
     h = h.replace(/>28 Okt 2026 · 12,4 rb ditonton</, `>${esc(fmtDate(cur.created_at))} · ${compact(cur.views)} ditonton<`);
     h = h.replace(/>0:23 \/ 0:58</, `>${dur(cur.duration_s)}<`);
     h = h.replace(/>Saham(<\/span><span style="font-size: 13px; color: #5F6B7D">)/, `>${esc(cur.category || "Ocean Short")}$1`);
@@ -663,10 +663,27 @@ export function shortsAdminPanel(list: ShortRow[], comments: ShortComment[], fil
 <section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 12px"><h2 style="margin: 0; font-size: 18px; font-weight: 700">Short baru</h2>
 <div style="display: flex; flex-wrap: wrap; gap: 12px">${inp("title", "Judul", "IHSG dalam 60 detik", 'maxlength="140"')}${inp("symbol", "Simbol (opsional)", "BBCA")}${inp("duration", "Durasi (detik)", "58", 'inputmode="numeric"')}</div>
 <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #5F6B7D">Keterangan<textarea data-shf="caption" rows="2" maxlength="500" style="border-radius: 14px; border: 1px solid #E3EBF7; padding: 10px 12px; font-size: 14px; font-family: inherit"></textarea></label>
-<div style="display: flex; flex-wrap: wrap; gap: 12px">${inp("video", "URL video (https, MP4/WebM)", "https://cdn.contoh.com/short.mp4")}${inp("cover", "URL sampul", "https://… atau unggah")}<label style="flex: 0 0 auto; align-self: flex-end; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; border: 1px solid #E3EBF7; font-size: 14px; cursor: pointer">Unggah sampul<input type="file" data-shf="cover-file" accept="image/png,image/jpeg,image/webp" hidden></label></div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px">${inp("video", "Video (unggah atau URL https MP4/WebM)", "https://… atau unggah")}<label data-shv-pick style="flex: 0 0 auto; align-self: flex-end; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; border: 1px solid #2F74EB; color: #2F74EB; font-size: 14px; cursor: pointer">Unggah video<input type="file" data-shf="video-file" accept="video/mp4,video/webm,video/quicktime" hidden></label>${inp("cover", "URL sampul", "https://… atau unggah")}<label style="flex: 0 0 auto; align-self: flex-end; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; border: 1px solid #E3EBF7; font-size: 14px; cursor: pointer">Unggah sampul<input type="file" data-shf="cover-file" accept="image/png,image/jpeg,image/webp" hidden></label></div>
+<div data-shv-progress hidden style="display: flex; flex-direction: column; gap: 6px"><span data-shv-label style="font-size: 13px; color: #5F6B7D">Mengunggah video…</span><span style="height: 6px; border-radius: 999px; background: #E3EBF7; overflow: hidden"><span data-shv-bar style="display: block; height: 100%; width: 0%; background: #2F74EB; transition: width .2s"></span></span></div>
 <div style="display: flex; gap: 10px; flex-wrap: wrap"><button type="button" data-sha="create" data-status="draft" style="min-height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid #E3EBF7; background: #FFFFFF; font-size: 14px">Simpan draf</button><button type="button" data-sha="create" data-status="published" class="ob-anim" style="min-height: 46px; padding: 0 20px; border-radius: 999px; border: 0; background: linear-gradient(110deg, #2563EB 0%, #4285F4 35%, #63A4FA 55%, #4285F4 75%, #2563EB 100%); color: #FFFFFF; font-size: 14px">Tayangkan</button></div></section>
 <section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px"><h2 style="margin: 0 0 6px; font-size: 18px; font-weight: 700">Semua Short</h2>${rows}</section>
 <section style="background: #FFFFFF; border: 1px solid #E3EBF7; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 8px"><span style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center"><h2 style="margin: 0; font-size: 18px; font-weight: 700; flex: 1">Komentar Short</h2>${tabs}</span>${crow}</section></div>`;
+}
+
+/** Batas keterangan Ocean Short sebelum dilipat (gaya TikTok: "… selengkapnya"). */
+export const CAPTION_LIMIT = 150;
+/**
+ * Keterangan Short: ≤150 karakter tampil utuh; lebih dari itu dipotong di batas kata
+ * dengan tombol "selengkapnya" / "sembunyikan" (dibuka-tutup di peramban oleh enhancer shorts).
+ */
+export function shortCaption(id: string, text: string): string {
+  const chars = Array.from(text.trim());
+  if (chars.length <= CAPTION_LIMIT) return esc(text.trim());
+  let cut = chars.slice(0, CAPTION_LIMIT).join("");
+  const sp = cut.lastIndexOf(" ");
+  if (sp > CAPTION_LIMIT * 0.6) cut = cut.slice(0, sp);
+  const btn = "border: 0; background: none; padding: 0; margin: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; text-decoration: none";
+  return `<span data-sh-cap="${esc(id)}" style="white-space: pre-wrap; word-break: break-word"><span data-sh-cap-s>${esc(cut.replace(/[\s.,;:!?-]+$/, ""))}… </span><span data-sh-cap-f hidden>${esc(text.trim())} </span><button type="button" data-sh="cap" aria-expanded="false" style="${btn}">selengkapnya</button></span>`;
 }
 
 export function bindNewsletterPublic(html: string, d: { email: string; status: string | null }): string {

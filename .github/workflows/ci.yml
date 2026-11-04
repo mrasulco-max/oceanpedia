@@ -628,6 +628,16 @@ jobs:
           curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/akun | grep -q 'href="/jurnal"'
           curl -sf -b /tmp/pjar -X POST -H 'Content-Type: application/json' localhost:3000/api/me/journal -d '{"symbol":"BBRI","market":"saham","side":"long","entry_price":4000,"quantity":10}' | jq -e '.symbol == "BBRI"'
           curl -sf -b /tmp/pjar localhost:3000/api/me/journal | jq -e '.stats.total >= 1'
+          # Ocean Short: unggah video langsung (token Blob hanya untuk staf) & keterangan >150 karakter dilipat.
+          UP='{"type":"blob.generate-client-token","payload":{"pathname":"shorts/a.mp4","callbackUrl":"http://localhost:3000/api/admin/shorts/upload","clientPayload":null,"multipart":false}}'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' localhost:3000/api/admin/shorts/upload -d "$UP"); test "$code" = 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/pjar -X POST -H 'Content-Type: application/json' localhost:3000/api/admin/shorts/upload -d "$UP"); test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/sjar -X POST -H 'Content-Type: application/json' localhost:3000/api/admin/shorts/upload -d "$UP"); test "$code" = 503
+          curl -sf -b /tmp/sjar -A "$DESK" "localhost:3000/admin/live?tab=short" | grep -q 'data-shf="video-file"'
+          CAP=$(printf 'Kalimat keterangan panjang untuk menguji lipatan. %.0s' 1 2 3 4 5)
+          LS=$(curl -sf -b /tmp/sjar -X POST -H 'Content-Type: application/json' localhost:3000/api/admin/shorts -d "$(jq -nc --arg c "$CAP" '{title:"Uji keterangan panjang",caption:$c,video_url:"https://cdn.example.com/b.mp4",status:"published"}')" | jq -r .id)
+          curl -sf -A "$DESK" "localhost:3000/short?v=$LS" | grep -q 'data-sh="cap"'
+          curl -sf -A "$MOB" "localhost:3000/short?v=$LS" | grep -q 'selengkapnya'
           # Halaman tagihan butuh login.
           for p in /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }

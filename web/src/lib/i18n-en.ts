@@ -15,7 +15,7 @@ export const EN: Record<string, string> = {
   Perusahaan: "Company", "Pasang iklan": "Advertise", "Syarat & Ketentuan": "Terms & Conditions", "Kebijakan Privasi": "Privacy Policy",
   "Pedoman media siber": "Cyber media guidelines", Legal: "Legal", "Jurnal Trading": "Trading Journal", "Untuk kamu": "For you",
   // Tombol & aksi umum
-  "Lihat semua": "See all", Selengkapnya: "Read more", "Baca juga": "Read also", Bagikan: "Share", "Salin tautan": "Copy link",
+  "Lihat semua": "See all", Selengkapnya: "Read more", selengkapnya: "more", sembunyikan: "less", "Baca juga": "Read also", Bagikan: "Share", "Salin tautan": "Copy link",
   Simpan: "Save", "Simpan perubahan": "Save changes", Batal: "Cancel", Selesai: "Done", Hapus: "Delete", Kembali: "Back",
   "Coba lagi": "Try again", Ikuti: "Follow", Mengikuti: "Following", Balas: "Reply", Laporkan: "Report", Kirim: "Send",
   "Muat lebih banyak": "Load more", "Lihat paket": "See plans", "Upgrade ke Plus": "Upgrade to Plus", Lainnya: "More", Semua: "All",
