@@ -674,6 +674,9 @@ func AllQueries() map[string]string {
 	for k, v := range requestQueries() {
 		out[k] = v
 	}
+	for k, v := range journalQueries() {
+		out[k] = v
+	}
 	for k, v := range opsQueries() {
 		out[k] = v
 	}

@@ -91,6 +91,11 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /v1/me/student", s.studentStatus)
 	auth("POST /v1/me/student", s.studentApply)
 	auth("POST /v1/me/privacy-requests", s.privacyRequest)
+	// Jurnal Trading: semua jenis akun yang masuk.
+	auth("GET /v1/me/journal", s.journalList)
+	auth("POST /v1/me/journal", s.journalCreate)
+	auth("PUT /v1/me/journal/{id}", s.journalUpdate)
+	auth("DELETE /v1/me/journal/{id}", s.journalDelete)
 	staff("GET /v1/admin/requests", s.adminRequests)
 	staff("POST /v1/admin/articles/{id}/assign", s.assignArticle)
 	staff("POST /v1/admin/requests/{kind}/{id}", s.adminRequestStatus)

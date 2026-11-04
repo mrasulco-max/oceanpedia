@@ -341,6 +341,10 @@ type Store interface {
 	AssignArticle(ctx context.Context, id, staffID string) (string, error)
 	RemoveList(ctx context.Context, email, list string) error
 	Reader2FA(ctx context.Context, id string) (bool, error)
+	Journal(ctx context.Context, uid string, limit int) ([]JournalEntry, error)
+	JournalCount(ctx context.Context, uid string) (int, error)
+	SaveJournal(ctx context.Context, uid string, e JournalEntry) (JournalEntry, error)
+	DeleteJournal(ctx context.Context, uid, id string) error
 	ShortToggle(ctx context.Context, kind, id, uid string, on bool) (int64, error)
 	ShortShare(ctx context.Context, id string) (int64, error)
 	ShortComments(ctx context.Context, id, uid string, limit int) ([]ShortComment, error)
