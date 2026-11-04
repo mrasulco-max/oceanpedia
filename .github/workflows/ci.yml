@@ -249,6 +249,16 @@ jobs:
           curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/student -d '{"campus_email":"budi@ui.ac.id","student_id":"2106123"}' | jq -e '.status == "pending"'
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/student -d '{"campus_email":"budi@ui.ac.id","student_id":"2106123"}'); test "$code" = 409
           curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/privacy-requests -d '{"kind":"export"}' | jq -e '.status == "pending"'
+          # Jurnal Trading (semua akun): tambah, tutup posisi, statistik, validasi, milik sendiri, hapus.
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/v1/me/journal); test "$code" = 401
+          JID=$(curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"bbca","market":"saham","side":"long","entry_price":9000,"quantity":100,"stop_loss":8750,"opened_at":"2026-11-01","tags":["swing"]}' | jq -r 'select(.symbol == "BBCA" and .pnl == null) | .id')
+          test -n "$JID"
+          curl -sf -X PUT -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal/$JID -d '{"symbol":"BBCA","market":"saham","side":"long","entry_price":9000,"quantity":100,"stop_loss":8750,"exit_price":9500,"fees":1000,"opened_at":"2026-11-01","closed_at":"2026-11-03"}' | jq -e '.pnl == 49000 and .r_multiple == 1.96'
+          curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"BTCUSD","market":"crypto","side":"short","currency":"USD","entry_price":80000,"quantity":0.5,"exit_price":82000}' | jq -e '.pnl == -1000'
+          curl -sf -H "$RB" localhost:8080/v1/me/journal | jq -e '.stats.total == 2 and .stats.closed == 2 and .stats.win_rate == 50 and (.stats.currencies | length) == 2'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"","side":"x","entry_price":0,"quantity":0}'); test "$code" = 422
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$SU" localhost:8080/v1/me/journal/$JID); test "$code" = 404
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$RB" localhost:8080/v1/me/journal/$JID); test "$code" = 204
           REQS=$(curl -sf -H "$SU" localhost:8080/v1/admin/requests)
           echo "$REQS" | jq -e '[.data[].kind] | (index("ad") != null) and (index("student") != null) and (index("privacy") != null)'
           STID=$(echo "$REQS" | jq -r '[.data[] | select(.kind == "student")][0].id')
@@ -566,6 +576,13 @@ jobs:
           ! curl -sf -A "$DESK" localhost:3000/ | grep -q 'data-ai-fab'
           code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/pjar -X POST -H 'Content-Type: application/json' localhost:3000/api/ai/chat -d '{"messages":[{"role":"user","content":"Kondisi pasar?"}]}'); test "$code" = 503
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' localhost:3000/api/ai/chat -d '{"messages":[{"role":"user","content":"x"}]}'); test "$code" = 401
+          # Jurnal Trading: tamu diarahkan masuk; pengguna masuk dapat halaman + menu di profil (web & app).
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" localhost:3000/jurnal); test "$code" = 307
+          curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/jurnal | grep -q 'Jurnal Trading'
+          curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/akun | grep -q 'href="/jurnal"'
+          curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/akun | grep -q 'href="/jurnal"'
+          curl -sf -b /tmp/pjar -X POST -H 'Content-Type: application/json' localhost:3000/api/me/journal -d '{"symbol":"BBRI","market":"saham","side":"long","entry_price":4000,"quantity":10}' | jq -e '.symbol == "BBRI"'
+          curl -sf -b /tmp/pjar localhost:3000/api/me/journal | jq -e '.stats.total >= 1'
           # Halaman tagihan butuh login.
           for p in /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }

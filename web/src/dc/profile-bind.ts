@@ -24,6 +24,13 @@ function completeness(p: Profile): number {
 
 const topicsText = (p: Profile) => (p.topics.length ? p.topics.slice(0, 3).map((t) => t.name).join(", ") + (p.topics.length > 3 ? ` +${p.topics.length - 3}` : "") : "Belum mengikuti topik");
 
+/** Ikon & tautan menu "Jurnal Trading" (semua jenis akun, lewat profil). */
+const JOURNAL_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g fill="currentColor" stroke="none" opacity=".18"><path d="M6 3.5h10.5A1.5 1.5 0 0 1 18 5v14.5a1 1 0 0 1-1 1H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5z"/></g><path d="M6 3.5h10.5A1.5 1.5 0 0 1 18 5v14.5a1 1 0 0 1-1 1H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5z"/><path d="M8 15l2.5-3 2 2 3.5-4.5"/><path d="M8 7.5h6"/></svg>`;
+const CHEV = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+function journalItemApp(): string {
+  return `<a href="/jurnal" data-journal-link style="display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 6px 0; color: #1F2937; text-decoration: none"><span style="flex: none; width: 28px; display: flex; justify-content: center; color: #2B6CB0">${JOURNAL_ICON}</span><span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px"><strong style="font-size: 16px; font-weight: 500; color: #0B0B0F">Jurnal Trading</strong><span style="font-size: 13px; color: #6B7280">Catat posisi, P/L, win rate &amp; evaluasi strategi</span></span><span style="flex: none; color: #9AA6B8; display: flex">${CHEV}</span></a>`;
+}
+
 /** Profil aplikasi (app-20). */
 export function bindProfileApp(html: string, p: Profile): string {
   let h = html;
@@ -37,6 +44,10 @@ export function bindProfileApp(html: string, p: Profile): string {
   const pct = completeness(p);
   h = h.replace('aria-valuenow="40"', `aria-valuenow="${pct}"`).replace("width: 40%; border-radius: 999px; background: #FFD45C", `width: ${pct}%; border-radius: 999px; background: #FFD45C`);
   h = h.replace(/>40%</, `>${pct}%<`);
+  // Lingkaran indikator mengikuti persentase (sebelumnya tetap di 40%).
+  h = h.replace("left: calc(40% - 8px)", `left: calc(${pct}% - ${pct >= 100 ? 16 : pct <= 0 ? 0 : 8}px)`);
+  // Sudah lengkap 100%: kartu "Kenali minat pasarmu" tidak ditampilkan lagi.
+  if (pct >= 100) h = h.replace(/<a [^>]*>(?:(?!<\/a>)[\s\S])*?Kenali minat pasarmu(?:(?!<\/a>)[\s\S])*?<\/a>\s*/, "");
   // Aktivitas akun.
   h = h.replace(">12 saham, crypto &amp; komoditas dipantau<", `>${p.stats.watchlist ? plural(p.stats.watchlist, "aset dipantau") : "Belum ada aset dipantau"}<`);
   h = h.replace(">12 saham, crypto & komoditas dipantau<", `>${p.stats.watchlist ? plural(p.stats.watchlist, "aset dipantau") : "Belum ada aset dipantau"}<`);
@@ -44,6 +55,8 @@ export function bindProfileApp(html: string, p: Profile): string {
   h = h.replace(/<span([^>]*)>1 terpicu<\/span>/, (_m, a: string) => (p.stats.alerts_triggered ? `<span${a}>${p.stats.alerts_triggered} terpicu</span>` : ""));
   h = h.replace(">8 artikel untuk dibaca nanti<", `>${p.stats.bookmarks ? plural(p.stats.bookmarks, "artikel untuk dibaca nanti") : "Belum ada artikel tersimpan"}<`);
   h = h.split(">IHSG, The Fed, Bitcoin<").join(`>${esc(topicsText(p))}<`);
+  // Menu Jurnal Trading setelah "Topik yang Diikuti".
+  h = h.replace(/(Topik yang Diikuti(?:(?!<\/a>)[\s\S])*?<\/a>)/, `$1${journalItemApp()}`);
   // Lembar "Edit profil": nilai asli, email hanya-baca (perubahan email perlu verifikasi).
   const field = "height: 50px; box-sizing: border-box; padding: 0 16px; border-radius: 16px; border: 1px solid #E3EAF4; background: #F6F8FC";
   h = h.replace(/<input type="text" placeholder="Nadia Putri"/, `<input type="text" data-prof-name autocomplete="name" value="${esc(p.full_name)}" placeholder="Nama lengkap"`);
@@ -66,6 +79,8 @@ export function bindProfileWeb(html: string, p: Profile, alertLimit: number): st
     const to = nav[label.trim()];
     return to ? `<a href="${to}"${attrs}>${icon ?? ""}${label}</a>` : whole;
   });
+  // Menu samping: Jurnal Trading setelah Price alert.
+  h = h.replace(/(<a href="\/alert"([^>]*)>(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Price alert<\/a>)/, (_m, whole: string, attrs: string) => `${whole}<a href="/jurnal" data-journal-link${attrs}>${JOURNAL_ICON.replace('width="24" height="24"', 'width="20" height="20"')}Jurnal Trading</a>`);
   h = h.replace(/color: \[[\d, ]+\]; (font-size: 14px; font-weight: 500">(?:<svg(?:(?!<\/svg>)[\s\S])*<\/svg>)?Keluar)/, "color: #DC2626; $1");
   const av = avatarUrl(p);
   h = h.replace(/<span class="ob-anim" style="(width: 76px; height: 76px; border-radius: 999px;[^"]*font-size: 30px; font-weight: 700)">N<\/span>/, (_m, st: string) =>
