@@ -27,6 +27,7 @@ import { bindAds as bindAdsPage, bindAuthorExtras, bindCacheClear, bindCategoryE
 import type { Candle, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
+import { currentOrigin } from "@/lib/origin";
 
 /** Tombol melayang "Asisten AI" (khusus Plus) di halaman yang paling sering dibuka. */
 const AI_FAB_PATHS = new Set(["/", "/market", "/market/[symbol]", "/berita/[slug]", "/watchlist"]);
@@ -320,7 +321,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const list = await safe(api.shorts(token), { data: [] });
     const cur = list.data.find((x) => x.id === search.v) ?? list.data[0];
     const cm = cur ? await safe(api.shortComments(cur.id, token), { data: [] }) : { data: [] };
-    html = bindShorts(html, list.data, search.v ?? "", board.kind === "app", { loggedIn: !!user, me: user?.full_name ?? "", comments: cm.data, siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "" });
+    html = bindShorts(html, list.data, search.v ?? "", board.kind === "app", { loggedIn: !!user, me: user?.full_name ?? "", comments: cm.data, siteUrl: await currentOrigin() });
     if (board.kind === "app" && cur) ctx.state = JSON.stringify({ u: { u6: [cur.liked], u7: [cur.saved] } });
     enhance.push("reader", "shorts");
     title = "Ocean Short";
@@ -538,13 +539,14 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
 
   // Bagikan: tautan kanonis halaman ini (halaman Plus membagikan artikel/aset publiknya).
   if (/data-share|>WhatsApp<\/button>|aria-label="Bagikan"|\{\{ share \}\}/.test(html)) {
-    const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://oceanpedia-web.vercel.app").replace(/\/$/, "");
+    const site = await currentOrigin();
     let canon = m.route.path.replace(/\[(\w+)\]/g, (_x, k: string) => encodeURIComponent(m.params[k] ?? ""));
     if (path.startsWith("/plus/") && search.a) canon = `/berita/${encodeURIComponent(search.a)}`;
     else if (path.startsWith("/plus/") && search.symbol) canon = `/market/${encodeURIComponent(search.symbol)}`;
     else if (path === "/short" && search.v) canon = `/short?v=${encodeURIComponent(search.v)}`;
     html = bindShare(html, site + canon);
     ctx.shareUrl = site + canon;
+    ctx.sharePath = canon;
     ctx.shareTitle = title;
     if (html.includes("data-share=")) enhance.push("share");
   }
