@@ -20,6 +20,9 @@ type Entry = {
   exit_price: number | null;
   quantity: number;
   contract_size: number;
+  quote_currency: string;
+  fx_rate: number | null;
+  fx_source: string;
   fees: number;
   stop_loss: number | null;
   take_profit: number | null;
@@ -46,6 +49,9 @@ type Form = {
   entry_price: string;
   quantity: string;
   contract_size: string;
+  fx_rate: string;
+  /** Kurs pasar tersimpan saat posisi ditutup (dipertahankan bila harga keluar tidak diubah). */
+  fx_keep?: { rate: number; exit: number };
   fees: string;
   stop_loss: string;
   take_profit: string;
@@ -90,18 +96,42 @@ const toLocalInput = (iso: string | Date) => {
 const dateText = (iso: string) => new Date(iso).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 /** Satuan per 1 lot (sama dengan API): forex 100.000, emas 100 oz, perak 5.000 oz, lainnya 1. */
 const defaultCS = (market: string, symbol: string) => (symbol.startsWith("XAU") ? 100 : symbol.startsWith("XAG") ? 5000 : market === "forex" ? 100000 : 1);
-/** Nilai dalam mata uang kuotasi → mata uang P/L (mis. USDJPY dicatat dalam USD: dibagi harga). */
-const conv = (symbol: string, currency: string, v: number, price: number) => {
-  const s = symbol.replace("/", "");
-  return s.length === 6 && price > 0 && currency === s.slice(0, 3) && currency !== s.slice(3) ? v / price : v;
+/** Kurs pasar kini terhadap USD dari API, mis. { USDIDR: 18162.47, EURUSD: 1.126, USDJPY: 158.43 }. */
+type Rates = Record<string, number>;
+const FX_INV = new Set(["IDR", "JPY", "CHF", "CAD", "SGD", "HKD", "CNY", "MYR"]);
+/** Nilai 1 satuan mata uang dalam USD (mid-market), atau null bila kurs belum tersedia. */
+const usdPer = (cur: string, rates: Rates): number | null =>
+  cur === "USD" || cur === "USDT" || cur === "USDC" ? 1 : FX_INV.has(cur) ? (rates[`USD${cur}`] ? 1 / rates[`USD${cur}`]! : null) : rates[`${cur}USD`] ?? null;
+/** Mata uang kuotasi (sama dengan API): forex & logam = mata uang kedua, crypto = USD, saham = mata uang instrumen. */
+const quoteCur = (symbol: string, market: string, currency: string, assetCur?: string) => {
+  const s = symbol.replace(/[/_-]/g, "");
+  if (/^[A-Z]{6}$/.test(s) && (market === "forex" || /^X(AU|AG|PT|PD)/.test(s))) return s.slice(3);
+  if (s.endsWith("USDT")) return "USDT";
+  if (market === "crypto" && s.endsWith("USD")) return "USD";
+  return assetCur || currency;
 };
-/** P/L sebuah posisi pada harga tertentu (selisih × lot × ukuran kontrak − biaya). */
-const pnlAt = (e: { symbol: string; currency: string; side: string; entry_price: number; quantity: number; contract_size: number; fees: number }, price: number) =>
-  conv(e.symbol, e.currency, (e.side === "short" ? e.entry_price - price : price - e.entry_price) * e.quantity * (e.contract_size || 1), price) - e.fees;
+type FxIn = { symbol: string; market: string; currency: string; quote_currency?: string; fx_rate?: number | null; fx_source?: string };
+/**
+ * Faktor konversi mata uang kuotasi → mata uang P/L (konvensi internasional): kurs tetap broker bila diisi,
+ * 1 bila sama, dibagi harga bila mata uang dasar = mata uang akun (USDJPY di akun USD), selain itu kurs pasar.
+ */
+const fxFactor = (e: FxIn, price: number, rates: Rates, assetCur?: string): number | null => {
+  if (e.fx_source === "price") return price > 0 ? 1 / price : null;
+  if (e.fx_rate) return e.fx_rate;
+  const qc = e.quote_currency || quoteCur(e.symbol, e.market, e.currency, assetCur);
+  if (qc === e.currency) return 1;
+  const s = e.symbol.replace("/", "");
+  if (s.length === 6 && s.slice(0, 3) === e.currency && s.slice(3) === qc) return price > 0 ? 1 / price : null;
+  const a = usdPer(qc, rates), b = usdPer(e.currency, rates);
+  return a && b ? a / b : null;
+};
+/** P/L pada harga tertentu = selisih harga × lot × ukuran kontrak × kurs − biaya. */
+const pnlAt = (e: FxIn & { side: string; entry_price: number; quantity: number; contract_size: number; fees: number }, price: number, rates: Rates, assetCur?: string) =>
+  ((e.side === "short" ? e.entry_price - price : price - e.entry_price) * e.quantity * (e.contract_size || 1)) * (fxFactor(e, price, rates, assetCur) ?? 1) - e.fees;
 const qtyLabel = (market: string, symbol: string) => (market === "forex" || symbol.startsWith("XAU") || symbol.startsWith("XAG") ? "Lot" : market === "saham" ? "Lembar saham" : "Jumlah (unit)");
 const holdText = (h: number) => (h < 1 ? `${Math.round(h * 60)} mnt` : h < 48 ? `${fmt(h, 1)} jam` : `${fmt(h / 24, 1)} hari`);
 
-const emptyForm = (): Form => ({ symbol: "", market: "saham", side: "long", currency: "IDR", entry_price: "", quantity: "", contract_size: "1", fees: "", stop_loss: "", take_profit: "", opened_at: toLocalInput(new Date()), closed: false, exit_price: "", closed_at: toLocalInput(new Date()), strategy: "", emotion: "", notes: "", tags: "", rating: 0 });
+const emptyForm = (): Form => ({ symbol: "", market: "saham", side: "long", currency: "IDR", entry_price: "", quantity: "", contract_size: "1", fx_rate: "", fees: "", stop_loss: "", take_profit: "", opened_at: toLocalInput(new Date()), closed: false, exit_price: "", closed_at: toLocalInput(new Date()), strategy: "", emotion: "", notes: "", tags: "", rating: 0 });
 const numStr = (n: number | null) => (n === null ? "" : String(n).replace(".", ","));
 
 const card: CSSProperties = { background: "#FFFFFF", border: "1px solid #E3EAF4", borderRadius: 20, padding: 16 };
@@ -147,6 +177,8 @@ function Equity({ items, currency }: { items: Entry[]; currency: string }) {
 export default function JournalApp({ firstName, assets }: { firstName: string; assets: Asset[] }) {
   const [items, setItems] = useState<Entry[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [rates, setRates] = useState<Rates>({});
+  const [totals, setTotals] = useState<{ usd?: number; idr?: number }>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState<"all" | "open" | "closed">("all");
@@ -173,6 +205,8 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
     setErr("");
     setItems((r.data.data as Entry[]) ?? []);
     setStats((r.data.stats as Stats) ?? null);
+    setRates((r.data.rates as Rates) ?? {});
+    setTotals((r.data.totals as { usd?: number; idr?: number }) ?? {});
   }, []);
   useEffect(() => {
     void load();
@@ -191,7 +225,13 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
   const unreal = (e: Entry): number | null => {
     const p = bySym.get(e.symbol)?.price;
     if (e.exit_price !== null || !p) return null;
-    return pnlAt(e, p);
+    return pnlAt(e, p, rates, bySym.get(e.symbol)?.currency);
+  };
+  /** Setara Rupiah dengan kurs pasar kini (informasi; P/L tersimpan memakai kurs saat ditutup). */
+  const idrOf = (v: number, cur: string) => {
+    if (cur === "IDR") return null;
+    const u = usdPer(cur, rates), i = usdPer("IDR", rates);
+    return u && i ? (v * u) / i : null;
   };
 
   const edit = (e: Entry) => {
@@ -205,6 +245,8 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
       entry_price: numStr(e.entry_price),
       quantity: numStr(e.quantity),
       contract_size: numStr(e.contract_size || 1),
+      fx_rate: e.fx_source === "manual" ? numStr(e.fx_rate) : "",
+      fx_keep: e.fx_source === "market" && e.fx_rate && e.exit_price !== null ? { rate: e.fx_rate, exit: e.exit_price } : undefined,
       fees: e.fees ? numStr(e.fees) : "",
       stop_loss: numStr(e.stop_loss),
       take_profit: numStr(e.take_profit),
@@ -220,6 +262,13 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
     });
   };
 
+  // Kurs: isian manual = kurs tetap broker; kurs pasar tersimpan dipertahankan bila harga keluar tidak berubah.
+  const fxPayload = (f: Form) => {
+    const manual = parseNum(f.fx_rate);
+    if (manual && manual > 0) return { fx_rate: manual, fx_source: "manual" };
+    if (f.fx_keep && f.closed && parseNum(f.exit_price) === f.fx_keep.exit) return { fx_rate: f.fx_keep.rate, fx_source: "market" };
+    return { fx_rate: null, fx_source: "" };
+  };
   const payload = (f: Form) => ({
     symbol: f.symbol.trim().toUpperCase(),
     market: f.market,
@@ -228,6 +277,7 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
     entry_price: parseNum(f.entry_price) ?? 0,
     quantity: parseNum(f.quantity) ?? 0,
     contract_size: parseNum(f.contract_size) || defaultCS(f.market, f.symbol.trim().toUpperCase()),
+    ...fxPayload(f),
     fees: parseNum(f.fees) ?? 0,
     stop_loss: parseNum(f.stop_loss),
     take_profit: parseNum(f.take_profit),
@@ -277,6 +327,8 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
       entry_price: e.entry_price,
       quantity: e.quantity,
       contract_size: e.contract_size || 1,
+      fx_rate: e.fx_source === "manual" ? e.fx_rate : null,
+      fx_source: e.fx_source === "manual" ? "manual" : "",
       fees: e.fees,
       stop_loss: e.stop_loss,
       take_profit: e.take_profit,
@@ -365,6 +417,17 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
           </button>
         </section>
 
+        {rates.USDIDR ? (
+          <section style={{ ...card, padding: 12, display: "flex", flexWrap: "wrap", gap: "6px 16px", alignItems: "center", fontSize: 13 }}>
+            <strong style={{ fontSize: 13 }}>Kurs pasar kini</strong>
+            <span style={{ fontFamily: "'Roboto Mono', monospace" }}>1 USD = Rp{fmt(rates.USDIDR, 2)}</span>
+            {rates.EURUSD ? <span style={{ fontFamily: "'Roboto Mono', monospace" }}>1 EUR = {fmt(rates.EURUSD)} USD</span> : null}
+            {rates.GBPUSD ? <span style={{ fontFamily: "'Roboto Mono', monospace" }}>1 GBP = {fmt(rates.GBPUSD)} USD</span> : null}
+            {rates.USDJPY ? <span style={{ fontFamily: "'Roboto Mono', monospace" }}>1 USD = {fmt(rates.USDJPY, 2)} JPY</span> : null}
+            <span style={{ color: "#9AA6B8", fontSize: 12 }}>Mid-market (Twelve Data), dapat tertunda. P/L posisi tertutup memakai kurs saat ditutup.</span>
+          </section>
+        ) : null}
+
         {err ? <div style={{ ...card, background: "#FEF4F4", borderColor: "#F5C2C2", color: "#991B1B" }}>{err} <button type="button" onClick={() => void load()} style={pill(false)}>Coba lagi</button></div> : null}
 
         {stats && stats.total > 0 ? (
@@ -374,13 +437,14 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
                 ["Total transaksi", String(stats.total), `${stats.open} terbuka · ${stats.closed} ditutup`],
                 ["Win rate", stats.win_rate === null ? "–" : `${fmt(stats.win_rate, 1)}%`, `${stats.wins} profit · ${stats.losses} loss`],
                 ["P/L bersih", cs ? money(cs.net, cs.currency) : "–", cs ? `${cs.closed} posisi ditutup` : "Belum ada posisi ditutup"],
+                ["Total semua mata uang", totals.idr !== undefined ? money(totals.idr, "IDR") : "–", totals.usd !== undefined ? `≈ ${money(totals.usd, "USD")} · kurs pasar kini` : "Belum ada posisi ditutup"],
                 ["Profit factor", cs?.profit_factor ? fmt(cs.profit_factor, 2) : "–", "Total profit ÷ total loss"],
                 ["Rata-rata R", stats.avg_r === null ? "–" : `${stats.avg_r > 0 ? "+" : ""}${fmt(stats.avg_r, 2)}R`, "Dari posisi ber-stop loss"],
                 ["Rata-rata durasi", stats.avg_hold_hours === null ? "–" : holdText(stats.avg_hold_hours), stats.top_symbols.length ? `Sering: ${stats.top_symbols.slice(0, 3).join(", ")}` : ""],
               ].map(([k, v, s]) => (
                 <div key={k} style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 4 }}>
                   <span style={{ fontSize: 12, color: "#5F6B7D" }}>{k}</span>
-                  <strong style={{ fontSize: 20, fontFamily: "'Roboto Mono', monospace", color: k === "P/L bersih" && cs ? (cs.net >= 0 ? "#15803D" : "#B42318") : "#0B0B0F", wordBreak: "break-word" }}>{v}</strong>
+                  <strong style={{ fontSize: 20, fontFamily: "'Roboto Mono', monospace", color: k === "P/L bersih" && cs ? (cs.net >= 0 ? "#15803D" : "#B42318") : k === "Total semua mata uang" && totals.idr !== undefined ? (totals.idr >= 0 ? "#15803D" : "#B42318") : "#0B0B0F", wordBreak: "break-word" }}>{v}</strong>
                   <span style={{ fontSize: 12, color: "#9AA6B8" }}>{s}</span>
                 </div>
               ))}
@@ -460,6 +524,12 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
                   {p !== null ? (
                     <span style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 2 }}>
                       <strong style={{ fontFamily: "'Roboto Mono', monospace", fontSize: 17, color: p >= 0 ? "#15803D" : "#B42318" }}>{money(p, e.currency)}</strong>
+                      {idrOf(p, e.currency) !== null ? <span style={{ fontSize: 12, color: "#5F6B7D", fontFamily: "'Roboto Mono', monospace" }}>≈ {money(idrOf(p, e.currency)!, "IDR")}</span> : null}
+                      {e.quote_currency && e.quote_currency !== e.currency && e.pnl !== null ? (
+                        <span style={{ fontSize: 11, color: "#9AA6B8" }}>
+                          {e.fx_source === "price" ? `Dikonversi ${e.quote_currency}→${e.currency} pada harga penutupan` : e.fx_rate ? `Kurs ${e.fx_source === "manual" ? "tetap" : "saat ditutup"}: 1 ${e.quote_currency} = ${fmt(e.fx_rate)} ${e.currency}` : ""}
+                        </span>
+                      ) : null}
                       <span style={{ fontSize: 12, color: "#5F6B7D" }}>
                         {e.pnl === null ? "Belum terealisasi (harga terkini)" : `${e.pnl_pct !== null ? `${e.pnl_pct > 0 ? "+" : ""}${fmt(e.pnl_pct, 2)}%` : ""}${e.r_multiple !== null ? ` · ${e.r_multiple > 0 ? "+" : ""}${fmt(e.r_multiple, 2)}R` : ""}`}
                       </span>
@@ -603,13 +673,31 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
             ) : null}
             {(() => {
               const sym = f.symbol.trim().toUpperCase();
-              const base = { symbol: sym, currency: f.currency, side: f.side, entry_price: parseNum(f.entry_price) ?? 0, quantity: parseNum(f.quantity) ?? 0, contract_size: parseNum(f.contract_size) || defaultCS(f.market, sym), fees: parseNum(f.fees) ?? 0 };
+              const qc = quoteCur(sym, f.market, f.currency, bySym.get(sym)?.currency);
+              if (!sym || qc === f.currency) return null;
+              const live = usdPer(qc, rates) && usdPer(f.currency, rates) ? usdPer(qc, rates)! / usdPer(f.currency, rates)! : null;
+              return (
+                <label style={label}>
+                  Kurs konversi 1 {qc} = … {f.currency} (opsional) {fe("fx_rate")}
+                  <input inputMode="decimal" value={f.fx_rate} onChange={(ev) => setForm({ ...f, fx_rate: ev.target.value })} placeholder={live ? `Kosongkan = kurs pasar (kini ${fmt(live)})` : "Isi kurs tetap broker, mis. 10.000"} style={input} />
+                  <span style={{ fontSize: 12, fontWeight: 400, color: "#5F6B7D" }}>Kosongkan untuk kurs pasar saat posisi ditutup. Isi bila broker memakai kurs tetap (mis. Rp10.000 per USD).</span>
+                </label>
+              );
+            })()}
+            {(() => {
+              const sym = f.symbol.trim().toUpperCase();
+              const aCur = bySym.get(sym)?.currency;
+              const fx = fxPayload(f);
+              const base = { symbol: sym, market: f.market, currency: f.currency, fx_rate: fx.fx_rate, fx_source: fx.fx_source, side: f.side, entry_price: parseNum(f.entry_price) ?? 0, quantity: parseNum(f.quantity) ?? 0, contract_size: parseNum(f.contract_size) || defaultCS(f.market, sym), fees: parseNum(f.fees) ?? 0 };
               if (!base.entry_price || !base.quantity) return null;
+              const P = (price: number) => pnlAt(base, price, rates, aCur);
+              const qc = quoteCur(sym, f.market, f.currency, aCur);
+              const k = fxFactor(base, parseNum(f.exit_price) || base.entry_price, rates, aCur);
               const tp = parseNum(f.take_profit), sl = parseNum(f.stop_loss), ex = f.closed ? parseNum(f.exit_price) : null;
               const rows: [string, number][] = [];
-              if (ex) rows.push(["P/L di harga keluar", pnlAt(base, ex)]);
-              if (tp) rows.push(["Potensi profit di take profit", pnlAt(base, tp)]);
-              if (sl) rows.push(["Risiko di stop loss", pnlAt(base, sl)]);
+              if (ex) rows.push(["P/L di harga keluar", P(ex)]);
+              if (tp) rows.push(["Potensi profit di take profit", P(tp)]);
+              if (sl) rows.push(["Risiko di stop loss", P(sl)]);
               if (!rows.length) return null;
               return (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 12, borderRadius: 14, background: "#F6F8FC", fontSize: 14 }}>
@@ -619,7 +707,13 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
                       <strong style={{ fontFamily: "'Roboto Mono', monospace", color: v >= 0 ? "#15803D" : "#B42318" }}>{money(v, f.currency)}</strong>
                     </span>
                   ))}
-                  {tp && sl && Math.abs(pnlAt(base, sl)) > 0 ? <span style={{ fontSize: 12, color: "#5F6B7D" }}>Rasio risk/reward 1 : {fmt(Math.abs(pnlAt(base, tp) / pnlAt(base, sl)), 2)}</span> : null}
+                  {tp && sl && Math.abs(P(sl)) > 0 ? <span style={{ fontSize: 12, color: "#5F6B7D" }}>Rasio risk/reward 1 : {fmt(Math.abs(P(tp) / P(sl)), 2)}</span> : null}
+                  {qc !== f.currency ? (
+                    <span style={{ fontSize: 12, color: "#5F6B7D" }}>
+                      Konversi {qc} → {f.currency}: {k ? `1 ${qc} = ${fmt(k)} ${f.currency}` : "kurs belum tersedia — isi kurs manual"}
+                      {fx.fx_source === "manual" ? " (kurs tetap broker)" : fx.fx_source === "market" ? " (kurs saat ditutup)" : base.fx_source === "" && /^[A-Z]{6}$/.test(sym) && sym.slice(0, 3) === f.currency ? " (dibagi harga penutupan)" : " (kurs pasar kini; disimpan saat posisi ditutup)"}
+                    </span>
+                  ) : null}
                   <span style={{ fontSize: 11, color: "#9AA6B8" }}>Rumus: selisih harga × {qtyLabel(f.market, sym).toLowerCase()} × ukuran kontrak − biaya.</span>
                 </div>
               );
@@ -686,7 +780,7 @@ export default function JournalApp({ firstName, assets }: { firstName: string; a
               const px = parseNum(closing.price);
               if (!px) return null;
               const e = closing.e;
-              const pnl = pnlAt(e, px);
+              const pnl = pnlAt(e, px, rates, bySym.get(e.symbol)?.currency);
               return <span style={{ fontFamily: "'Roboto Mono', monospace", color: pnl >= 0 ? "#15803D" : "#B42318" }}>Perkiraan P/L: {money(pnl, e.currency)}</span>;
             })()}
             <div style={{ display: "flex", gap: 8 }}>

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"regexp"
@@ -88,6 +89,21 @@ func quoteToPnL(e store.JournalEntry, v, price float64) float64 {
 	return v
 }
 
+// convPnL: nilai dalam mata uang kuotasi → mata uang P/L. Kurs tersimpan (saat posisi ditutup / kurs tetap)
+// dipakai bila ada; pasangan dengan mata uang dasar = mata uang akun dikonversi pada harga penutupan.
+func convPnL(e store.JournalEntry, v, price float64) float64 {
+	switch {
+	case e.FxSource == "price":
+		if price > 0 {
+			return v / price
+		}
+		return v
+	case e.FxRate != nil:
+		return v * *e.FxRate
+	}
+	return quoteToPnL(e, v, price)
+}
+
 func journalCalc(e store.JournalEntry) journalItem {
 	it := journalItem{JournalEntry: e}
 	if it.ContractSize <= 0 {
@@ -103,11 +119,11 @@ func journalCalc(e store.JournalEntry) journalItem {
 	cs := it.ContractSize
 	move := dir * (*e.ExitPrice - e.EntryPrice)
 	// P/L = selisih harga × lot × ukuran kontrak (dikonversi bila perlu) − biaya.
-	pnl := quoteToPnL(e, move*e.Quantity*cs, *e.ExitPrice) - e.Fees
+	pnl := convPnL(e, move*e.Quantity*cs, *e.ExitPrice) - e.Fees
 	it.PnL = ptr(round(pnl, 8))
 	it.PnLPct = ptr(round(move/e.EntryPrice*100, 4))
 	if e.StopLoss != nil {
-		if risk := quoteToPnL(e, math.Abs(e.EntryPrice-*e.StopLoss)*e.Quantity*cs, *e.StopLoss); risk > 0 {
+		if risk := convPnL(e, math.Abs(e.EntryPrice-*e.StopLoss)*e.Quantity*cs, *e.StopLoss); risk > 0 {
 			it.RMult = ptr(round(pnl/risk, 2))
 		}
 	}
@@ -198,8 +214,28 @@ func (s *Server) journalList(w http.ResponseWriter, r *http.Request) error {
 	for i, e := range list {
 		items[i] = journalCalc(e)
 	}
+	st := journalSummary(items)
+	// Kurs pasar kini (mid-market) untuk ringkasan gabungan dalam USD & IDR.
+	rates := s.fxRates(r.Context(), "IDR", "EUR", "GBP", "JPY", "AUD")
+	var totUSD float64
+	ok := true
+	for _, c := range st.Currencies {
+		u, has := s.usdPer(r.Context(), c.Currency)
+		if !has {
+			ok = false
+			continue
+		}
+		totUSD += c.Net * u
+	}
+	totals := map[string]any{}
+	if ok && len(st.Currencies) > 0 {
+		totals["usd"] = round(totUSD, 2)
+		if idr, has := s.usdPer(r.Context(), "IDR"); has {
+			totals["idr"] = round(totUSD/idr, 0)
+		}
+	}
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.JSON(w, 200, map[string]any{"data": items, "stats": journalSummary(items)})
+	httpx.JSON(w, 200, map[string]any{"data": items, "stats": st, "rates": rates, "totals": totals})
 	return nil
 }
 
@@ -213,16 +249,19 @@ type journalIn struct {
 	Quantity   float64  `json:"quantity"`
 	// ContractSize: satuan per lot; kosong = bawaan menurut pasar (forex 100.000, emas 100, lainnya 1).
 	ContractSize *float64 `json:"contract_size"`
-	Fees         float64  `json:"fees"`
-	StopLoss     *float64 `json:"stop_loss"`
-	TakeProfit   *float64 `json:"take_profit"`
-	OpenedAt     string   `json:"opened_at"`
-	ClosedAt     string   `json:"closed_at"`
-	Strategy     string   `json:"strategy"`
-	Emotion      string   `json:"emotion"`
-	Notes        string   `json:"notes"`
-	Tags         []string `json:"tags"`
-	Rating       *int     `json:"rating"`
+	// FxRate: kurs konversi 1 mata uang kuotasi → mata uang P/L (kurs tetap broker, atau kurs tersimpan).
+	FxRate     *float64 `json:"fx_rate"`
+	FxSource   string   `json:"fx_source"`
+	Fees       float64  `json:"fees"`
+	StopLoss   *float64 `json:"stop_loss"`
+	TakeProfit *float64 `json:"take_profit"`
+	OpenedAt   string   `json:"opened_at"`
+	ClosedAt   string   `json:"closed_at"`
+	Strategy   string   `json:"strategy"`
+	Emotion    string   `json:"emotion"`
+	Notes      string   `json:"notes"`
+	Tags       []string `json:"tags"`
+	Rating     *int     `json:"rating"`
 }
 
 func parseWhen(s string) (time.Time, bool) {
@@ -353,6 +392,9 @@ func (s *Server) journalCreate(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	if err := s.resolveFX(r, &e, in); err != nil {
+		return err
+	}
 	if n, err := s.Store.JournalCount(r.Context(), uid(r)); err != nil {
 		return err
 	} else if n >= journalMax {
@@ -380,6 +422,9 @@ func (s *Server) journalUpdate(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	if err := s.resolveFX(r, &e, in); err != nil {
+		return err
+	}
 	e.ID = id
 	out, err := s.Store.SaveJournal(r.Context(), uid(r), e)
 	if err != nil {
@@ -399,5 +444,119 @@ func (s *Server) journalDelete(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// ======================================================================= konversi mata uang
+
+// fxPairs: mata uang → (simbol penyedia, true bila kuotasi USD/XXX sehingga perlu dibalik).
+var fxPairs = map[string]struct {
+	sym string
+	inv bool
+}{
+	"EUR": {"EUR/USD", false}, "GBP": {"GBP/USD", false}, "AUD": {"AUD/USD", false}, "NZD": {"NZD/USD", false},
+	"IDR": {"USD/IDR", true}, "JPY": {"USD/JPY", true}, "CHF": {"USD/CHF", true}, "CAD": {"USD/CAD", true},
+	"SGD": {"USD/SGD", true}, "HKD": {"USD/HKD", true}, "CNY": {"USD/CNY", true}, "MYR": {"USD/MYR", true},
+}
+
+// usdPer: nilai 1 satuan mata uang dalam USD menurut kurs pasar kini (mid-market).
+func (s *Server) usdPer(ctx context.Context, cur string) (float64, bool) {
+	if cur == "USD" || cur == "USDT" || cur == "USDC" {
+		return 1, true
+	}
+	p, ok := fxPairs[cur]
+	if !ok || s.Market == nil {
+		return 0, false
+	}
+	qctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	q, err := s.Market.Quote(qctx, p.sym)
+	if err != nil || q.Price <= 0 {
+		return 0, false
+	}
+	if p.inv {
+		return 1 / q.Price, true
+	}
+	return q.Price, true
+}
+
+// fxRates: kurs pasar kini terhadap USD untuk ditampilkan (mis. USDIDR = berapa rupiah per 1 dolar).
+func (s *Server) fxRates(ctx context.Context, curs ...string) map[string]float64 {
+	out := map[string]float64{}
+	for _, c := range curs {
+		u, ok := s.usdPer(ctx, c)
+		if !ok {
+			continue
+		}
+		if fxPairs[c].inv {
+			out["USD"+c] = round(1/u, 6)
+		} else {
+			out[c+"USD"] = round(u, 6)
+		}
+	}
+	return out
+}
+
+// quoteCurrency: mata uang tempat selisih harga dihitung (konvensi pasar internasional):
+// forex & logam = mata uang kedua pasangan (USDJPY → JPY, XAUUSD → USD); crypto berakhiran USD/USDT;
+// saham/indeks = mata uang instrumen; selain itu dianggap sama dengan mata uang P/L.
+func (s *Server) quoteCurrency(ctx context.Context, e store.JournalEntry) string {
+	sym := strings.NewReplacer("/", "", "-", "", "_", "").Replace(e.Symbol)
+	letters := len(sym) == 6 && strings.Trim(sym, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") == ""
+	switch {
+	case letters && (e.Market == "forex" || strings.HasPrefix(sym, "XAU") || strings.HasPrefix(sym, "XAG") || strings.HasPrefix(sym, "XPT") || strings.HasPrefix(sym, "XPD")):
+		return sym[3:]
+	case strings.HasSuffix(sym, "USDT"):
+		return "USDT"
+	case e.Market == "crypto" && strings.HasSuffix(sym, "USD"):
+		return "USD"
+	}
+	if s.Store != nil {
+		if in, err := s.Store.InstrumentBySymbol(ctx, sym); err == nil && in.Currency != "" {
+			return in.Currency
+		}
+	}
+	return e.Currency
+}
+
+// resolveFX menetapkan kurs konversi P/L saat posisi ditutup:
+//   - kurs tetap dari broker (diisi pengguna) → dipakai apa adanya;
+//   - mata uang kuotasi = mata uang akun → 1;
+//   - mata uang dasar pasangan = mata uang akun (mis. USDJPY di akun USD) → dibagi harga penutupan;
+//   - selain itu → kurs pasar (mid-market) saat ditutup, disimpan agar P/L historis tidak berubah.
+func (s *Server) resolveFX(r *http.Request, e *store.JournalEntry, in journalIn) error {
+	e.QuoteCurrency = s.quoteCurrency(r.Context(), *e)
+	e.FxRate, e.FxSource = nil, ""
+	if in.FxRate != nil && *in.FxRate > 0 && !math.IsInf(*in.FxRate, 0) {
+		v := *in.FxRate
+		e.FxRate = &v
+		e.FxSource = "manual"
+		// Kurs pasar yang sudah tersimpan saat posisi ditutup dipertahankan saat catatan diubah.
+		if in.FxSource == "market" && e.ExitPrice != nil {
+			e.FxSource = "market"
+		}
+		return nil
+	}
+	qc, cur := e.QuoteCurrency, e.Currency
+	if qc == cur || qc == "" {
+		one := 1.0
+		e.FxRate, e.FxSource = &one, "same"
+		return nil
+	}
+	if e.ExitPrice == nil {
+		return nil // posisi terbuka: konversi saat ditutup
+	}
+	sym := strings.ReplaceAll(e.Symbol, "/", "")
+	if len(sym) == 6 && sym[:3] == cur && sym[3:] == qc {
+		e.FxSource = "price"
+		return nil
+	}
+	uq, ok1 := s.usdPer(r.Context(), qc)
+	uc, ok2 := s.usdPer(r.Context(), cur)
+	if !ok1 || !ok2 || uc <= 0 {
+		return httpx.Validation(map[string]string{"fx_rate": "Kurs " + qc + "→" + cur + " belum tersedia. Isi kurs konversi secara manual."})
+	}
+	v := uq / uc
+	e.FxRate, e.FxSource = &v, "market"
 	return nil
 }
