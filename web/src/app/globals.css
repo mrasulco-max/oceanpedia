@@ -259,3 +259,8 @@ html[data-motion="reduce"] *::after {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Ukuran huruf artikel (pengaturan akun / tombol "Aa" di artikel): paragraf isi berita. */
+html[data-font="s"] [data-ab] { zoom: 0.9; }
+html[data-font="l"] [data-ab] { zoom: 1.15; }
+html[data-font="xl"] [data-ab] { zoom: 1.3; }

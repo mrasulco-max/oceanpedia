@@ -259,6 +259,20 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"","side":"x","entry_price":0,"quantity":0}'); test "$code" = 422
           code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$SU" localhost:8080/v1/me/journal/$JID); test "$code" = 404
           code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$RB" localhost:8080/v1/me/journal/$JID); test "$code" = 204
+          # Privasi & data: unduh data pribadi (JSON) mandiri; status 2 langkah; preferensi baru.
+          curl -sf -H "$RB" localhost:8080/v1/me/export | jq -e '.account.email == "ci@example.com" and (.trading_journal | type) == "array" and (.account.preferences | has("totp_secret") | not)'
+          curl -sf -H "$RB" localhost:8080/v1/me/2fa | jq -e 'has("totp")'
+          curl -sf -X PATCH -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"preferences":{"font_size":"xlarge","number_format":"en","timezone":"Asia/Makassar","language":"en"}}' >/dev/null
+          curl -sf -H "$RB" localhost:8080/v1/me/profile | jq -e '.profile.preferences.font_size == "xlarge" and .profile.preferences.language == "en"'
+          curl -sf -X PATCH -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"preferences":{"font_size":"medium","number_format":"id","timezone":"Asia/Jakarta","language":"id"}}' >/dev/null
+          # Hapus akun mandiri: akun sekali pakai, konfirmasi HAPUS + kata sandi, lalu tidak bisa masuk.
+          curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d '{"email":"hapus@example.com","password":"Sandi-rahasia1","full_name":"Akun Hapus"}' >/dev/null
+          DT=$(curl -sf -X POST localhost:8080/v1/auth/verify -H 'Content-Type: application/json' -d '{"email":"hapus@example.com","code":"000000"}' | jq -r .access_token)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DT" -H 'Content-Type: application/json' localhost:8080/v1/me/delete -d '{"confirm":"salah","password":"Sandi-rahasia1"}'); test "$code" = 422
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DT" -H 'Content-Type: application/json' localhost:8080/v1/me/delete -d '{"confirm":"HAPUS","password":"salah-sandi"}'); test "$code" = 422
+          curl -sf -X POST -H "Authorization: Bearer $DT" -H 'Content-Type: application/json' localhost:8080/v1/me/delete -d '{"confirm":"HAPUS","password":"Sandi-rahasia1"}' | jq -e '.deleted == true'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"hapus@example.com","password":"Sandi-rahasia1"}'); test "$code" != 200
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/me/delete -d '{"confirm":"HAPUS","password":"x"}'); test "$code" = 403
           # Lot: emas 0,01 lot (100 oz/lot) 4000 → 4010 = 10 USD; EURUSD 0,1 lot +50 pip = 50 USD.
           curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"XAUUSD","market":"komoditas","side":"long","currency":"USD","entry_price":4000,"quantity":0.01,"take_profit":4010,"exit_price":4010}' | jq -e '.pnl == 10 and .contract_size == 100'
           curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"EURUSD","market":"forex","side":"long","currency":"USD","entry_price":1.1,"quantity":0.1,"exit_price":1.105}' | jq -e '(.pnl - 50 | fabs) < 0.000001 and .contract_size == 100000'
@@ -290,6 +304,17 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/short-comments/$SC/status" -d '{"status":"visible"}'); test "$code" = 204
           curl -sf "localhost:8080/v1/shorts/$SH/comments" | jq -e --arg id "$SC" '.data[0].id == $id and .data[0].mine == false'
           curl -sf -H "$RB" "localhost:8080/v1/shorts/$SH/comments" | jq -e '.data[0].mine == true'
+          # Balasan komentar Short: tersambung ke induk, notifikasi ke pemilik komentar, induk tak dikenal ditolak.
+          RP=$(curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/shorts/$SH/comments" -d "{\"body\":\"Terima kasih sudah menonton!\",\"parent_id\":\"$SC\"}")
+          echo "$RP" | jq -e --arg id "$SC" '.parent_id == $id'
+          # Balasan yang menunggu moderasi: notifikasi terkirim saat disetujui.
+          if [ "$(echo "$RP" | jq -r .status)" != "visible" ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/short-comments/$(echo "$RP" | jq -r .id)/status" -d '{"status":"visible"}'); test "$code" = 204
+          fi
+          curl -sf "localhost:8080/v1/shorts/$SH/comments" | jq -e --arg id "$SC" '[.data[] | select(.parent_id == $id)] | length == 1'
+          curl -sf -H "$RB" localhost:8080/v1/me/notifications | jq -e '[.data[] | tostring | select(contains("membalas komentarmu"))] | length >= 1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$ED" "localhost:8080/v1/shorts/$SH/comments/$(echo "$RP" | jq -r .id)"); test "$code" = 204
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' "localhost:8080/v1/shorts/$SH/comments" -d '{"body":"x","parent_id":"00000000-0000-0000-0000-000000000000"}'); test "$code" = 404
           curl -sf localhost:8080/v1/shorts | jq -e '.data[0].comments == 1 and .data[0].shares == 1'
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$ED" -H 'Content-Type: application/json' "localhost:8080/v1/admin/short-comments/$SC/status" -d '{"status":"hidden"}'); test "$code" = 204
           curl -sf localhost:8080/v1/shorts | jq -e '.data[0].comments == 0'
@@ -584,6 +609,15 @@ jobs:
           # Beranda app tanpa "Sekilas per kategori" & "Polling pembaca".
           ! curl -sf -A "$MOB" localhost:3000/ | grep -q 'Polling pembaca'
           ! curl -sf -A "$MOB" localhost:3000/ | grep -q 'Sekilas per kategori'
+          # Pengaturan tampilan dari akun (cookie ob_prefs): bahasa Inggris, format angka, zona waktu, ukuran huruf.
+          curl -sf -A "$MOB" -b 'ob_prefs=t%3Dlight%26m%3D0%26a%3D1%26f%3D3%26l%3Den%26n%3Den%26z%3DAsia%252FMakassar' localhost:3000/ | grep -q '<html lang="en"'
+          curl -sf -A "$MOB" -b 'ob_prefs=t%3Dlight%26m%3D0%26a%3D1%26f%3D3%26l%3Den%26n%3Den%26z%3DAsia%252FMakassar' localhost:3000/ | grep -q 'data-font="xl"'
+          curl -sf -A "$DESK" -b 'ob_prefs=t%3Dlight%26m%3D0%26a%3D1%26f%3D1%26l%3Den%26n%3Did%26z%3DAsia%252FJakarta' localhost:3000/ | grep -q '>Markets<'
+          curl -sf -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q '<p data-ab'
+          curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/pengaturan | grep -q 'data-font-size'
+          curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/pengaturan | grep -q 'English (beta)'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" localhost:3000/akun/data); test "$code" = 307
+          curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/akun/data | grep -q 'Privasi'
           curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/jurnal | grep -q 'Jurnal Trading'
           curl -sf -b /tmp/pjar -A "$MOB" localhost:3000/akun | grep -q 'href="/jurnal"'
           curl -sf -b /tmp/pjar -A "$DESK" localhost:3000/akun | grep -q 'href="/jurnal"'

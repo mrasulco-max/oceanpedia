@@ -144,3 +144,7 @@ func TestReaderTOTP(t *testing.T) {
 		t.Fatal("setelah dimatikan, masuk tanpa kode")
 	}
 }
+
+func (f *fake) PendingReplies(context.Context, string, []string) ([]store.PendingReply, error) {
+	return nil, nil
+}

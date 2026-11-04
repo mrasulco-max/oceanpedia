@@ -6,6 +6,7 @@
  * Board desain dirender ulang (morph) setiap state desain berubah, sehingga perubahan DOM dari enhancer
  * (filter, baris terhapus, status tombol) disimpan di sini dan diterapkan ulang setelah setiap render.
  */
+import { applyDisplay, currentDisplay, FONT_PREFS, type FontSize } from "@/lib/display-prefs";
 import type { Cleanup, Env } from "./enhancers";
 import { toast } from "./toast";
 
@@ -37,8 +38,19 @@ const num = (s: string) => {
   return Number(t);
 };
 
-export function reader(host: HTMLElement, { router }: Env): Cleanup {
+export function reader(host: HTMLElement, { router, ctx }: Env): Cleanup {
   const offs: (() => void)[] = [];
+  // Ukuran teks artikel (lembar "Aa"): diterapkan langsung & disimpan ke akun bila masuk.
+  let fontIdx = currentDisplay().font as number;
+  const onFont = (e: Event) => {
+    const f = ((e as CustomEvent).detail as { o?: Record<string, number[]> } | undefined)?.o?.font?.[0];
+    if (f == null || f === fontIdx) return;
+    fontIdx = f;
+    applyDisplay({ ...currentDisplay(), font: f as FontSize });
+    if (ctx.loggedIn === "1") void fetch("/api/me", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ preferences: { font_size: FONT_PREFS[f] } }) }).catch(() => undefined);
+  };
+  host.addEventListener("dc:state", onFont);
+  offs.push(() => host.removeEventListener("dc:state", onFont));
   let st: DesignState = {};
   let busy = false;
   const gone = new Set<string>(); // selektor baris yang sudah dihapus

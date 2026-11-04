@@ -28,7 +28,8 @@ import type { Candle, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
 import { currentOrigin } from "@/lib/origin";
-import { parseDisplay } from "@/lib/display-prefs";
+import { parseDisplay, ZONE_LABEL, ZONE_SHIFT, type DisplayPrefs } from "@/lib/display-prefs";
+import { EN, enPhrases } from "@/lib/i18n-en";
 import { cookies } from "next/headers";
 
 /**
@@ -72,6 +73,50 @@ export function focusText(html: string): string {
       .replace(/^★ BBCA$/, "★ AAPL")
       .replace(/^dividen BBRI$/, "dividen AAPL")
       .replace(/^Laporan keuangan Q3 BBCA$/, "Laporan keuangan kuartalan")}<`);
+}
+
+/**
+ * Lokalisasi tampilan sesuai pengaturan akun (cookie ob_prefs): bahasa antarmuka (Inggris beta),
+ * format angka (1.234,56 · 1,234.56 · 1 234,56), dan zona waktu (WIB/WITA/WIT). Hanya simpul teks &
+ * placeholder; isi <textarea>, skrip, dan ekspresi templat tidak disentuh. Isi berita tidak diterjemahkan.
+ */
+export function localize(html: string, d: DisplayPrefs): string {
+  if (d.lang === "id" && d.num === "id" && d.zone === "Asia/Jakarta") return html;
+  const shift = ZONE_SHIFT[d.zone];
+  const zl = ZONE_LABEL[d.zone];
+  const hm = (h: string, m: string) => `${String((Number(h) + shift) % 24).padStart(2, "0")}:${m}`;
+  const num = (t: string) =>
+    d.num === "id"
+      ? t
+      : t.replace(/(?<![\d.,])(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+)(?![\d.,]|\d)/g, (m) =>
+          d.num === "en" ? m.replace(/[.,]/g, (c) => (c === "." ? "," : ".")) : m.replace(/\./g, "\u202F"),
+        );
+  const zone = (t: string) => {
+    if (!shift) return t;
+    let r = t.replace(/\b([01]\d|2[0-3]):([0-5]\d)(?:(\s?[–-]\s?)([01]\d|2[0-3]):([0-5]\d))?(\s?)WIB\b/g, (_m, h1: string, m1: string, sep: string | undefined, h2: string | undefined, m2: string | undefined, sp: string) =>
+      `${hm(h1, m1)}${h2 ? `${sep}${hm(h2, m2!)}` : ""}${sp}${zl}`,
+    );
+    r = r.replace(/^(\s*)([01]\d|2[0-3]):([0-5]\d)(\s*)$/, (_m, a: string, h: string, m: string, b: string) => `${a}${hm(h, m)}${b}`);
+    return r;
+  };
+  const en = (t: string) => {
+    if (d.lang !== "en") return t;
+    const k = t.trim();
+    if (!k) return t;
+    const hit = EN[k];
+    if (hit) return t.replace(k, hit);
+    return k.length <= 60 ? enPhrases(t) : t;
+  };
+  // Lindungi bagian yang tidak boleh diubah: textarea, skrip/gaya, dan (untuk bahasa) isi berita.
+  const keep: string[] = [];
+  const guard = (re: RegExp, src: string) => src.replace(re, (m) => `\u0000${keep.push(m) - 1}\u0000`);
+  let h = guard(/<(textarea|script|style)\b[\s\S]*?<\/\1>/g, html);
+  const body: string[] = [];
+  h = h.replace(/<p data-ab[\s\S]*?<\/p>/g, (m) => `\u0001${body.push(m) - 1}\u0001`);
+  h = h.replace(/>([^<]+)</g, (_m, t: string) => (t.includes("{{") ? `>${t}<` : `>${en(zone(num(t)))}<`));
+  if (d.lang === "en") h = h.replace(/placeholder="([^"]*)"/g, (_m, v: string) => `placeholder="${EN[v] ?? v}"`);
+  h = h.replace(/\u0001(\d+)\u0001/g, (_m, i: string) => body[Number(i)]!.replace(/>([^<]+)</g, (_x, t: string) => `>${zone(num(t))}<`));
+  return h.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => keep[Number(i)]!);
 }
 
 /** Tombol melayang "Aurora AI" (khusus Plus) di halaman yang paling sering dibuka. */
@@ -199,6 +244,8 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   const board = await loadBoard(boardId);
   let html = board.html;
   let title = board.title;
+  // Preferensi tampilan perangkat (cookie dari akun): ukuran huruf, bahasa, format angka, zona waktu.
+  const dprefs = parseDisplay((await cookies()).get("ob_prefs")?.value);
   let description: string | undefined;
   const enhance: EnhancerId[] = [];
   const ctx: Record<string, string> = {};
@@ -243,6 +290,14 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       html = board.kind === "app" ? bindArticleSocialApp(html, social) : bindArticleSocialWeb(html, social);
       if (board.kind === "app" && social.bookmarked) ctx.state = JSON.stringify({ u: { u1: [true] } });
       enhance.push("reader");
+    }
+    // Ukuran teks artikel ("Aa") mengikuti preferensi; perubahan disimpan oleh enhancer "reader".
+    if (board.kind === "app") {
+      const st = ctx.state ? (JSON.parse(ctx.state) as { o?: Record<string, number[]> }) : {};
+      st.o = { ...(st.o ?? {}), font: [dprefs.font] };
+      ctx.state = JSON.stringify(st);
+      if (!enhance.includes("reader")) enhance.push("reader");
+      ctx.loggedIn = user ? "1" : "";
     }
     title = a.title;
     description = a.excerpt;
@@ -890,5 +945,10 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   if (boardId === "app-08") html = html.replace(/<a [^>]*>(?:(?!<\/a>)[\s\S])*?IHSG · Indeks Harga Saham Gabungan(?:(?!<\/a>)[\s\S])*?<\/a>\s*/, "");
   html = focusText(auroraText(html));
   title = auroraText(title);
+  // Bahasa, format angka & zona waktu pilihan pengguna (halaman pembaca).
+  if (board.kind !== "admin") {
+    html = localize(html, dprefs);
+    if (dprefs.lang === "en") title = EN[title] ?? title;
+  }
   return { board, boardId, html, title, description, enhance, ctx };
 }

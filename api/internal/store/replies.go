@@ -35,6 +35,43 @@ func (p *PG) ReplyTarget(ctx context.Context, kind, parentID string) (ReplyTarge
 	return t, err
 }
 
+// PendingReply: balasan yang belum tampil (menunggu moderasi) — notifikasinya dikirim saat disetujui.
+type PendingReply struct {
+	ParentID  string
+	ActorID   string
+	ActorName string
+	Body      string
+}
+
+const qPendingRepliesArticle = `SELECT c.parent_id::text, c.user_id::text, u.full_name, c.body FROM comments c JOIN users u ON u.id = c.user_id
+WHERE c.id = ANY($1::uuid[]) AND c.parent_id IS NOT NULL AND c.status <> 'visible'`
+
+const qPendingRepliesShort = `SELECT c.parent_id::text, c.user_id::text, u.full_name, c.body FROM short_comments c JOIN users u ON u.id = c.user_id
+WHERE c.id = ANY($1::uuid[]) AND c.parent_id IS NOT NULL AND c.status <> 'visible'`
+
+// PendingReplies: balasan di antara ids yang belum tampil (kind "article" | "short").
+func (p *PG) PendingReplies(ctx context.Context, kind string, ids []string) ([]PendingReply, error) {
+	q := qPendingRepliesArticle
+	if kind == "short" {
+		q = qPendingRepliesShort
+	}
+	rows, err := p.DB.QueryContext(ctx, q, pgTextArray(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PendingReply{}
+	for rows.Next() {
+		var x PendingReply
+		if err := rows.Scan(&x.ParentID, &x.ActorID, &x.ActorName, &x.Body); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
 func replyQueries() map[string]string {
-	return map[string]string{"reply_target_article": qReplyTargetArticle, "reply_target_short": qReplyTargetShort}
+	return map[string]string{"reply_target_article": qReplyTargetArticle, "reply_target_short": qReplyTargetShort,
+		"pending_replies_article": qPendingRepliesArticle, "pending_replies_short": qPendingRepliesShort}
 }

@@ -5,6 +5,7 @@
  */
 import type { Cleanup, Env } from "./enhancers";
 import { toast } from "./toast";
+import { onMeteredConnection } from "@/lib/display-prefs";
 
 type Res = { ok: boolean; status: number; data: { title?: string; detail?: string; errors?: Record<string, string> } & Record<string, unknown> };
 async function api(method: string, url: string, body?: unknown): Promise<Res> {
@@ -25,6 +26,15 @@ const fmt = (n: number) => {
 };
 
 export function shorts(host: HTMLElement, { router }: Env): Cleanup {
+  // Putar video otomatis hanya saat Wi-Fi: di data seluler / mode hemat data video tidak diputar sendiri.
+  if (onMeteredConnection()) {
+    host.querySelectorAll<HTMLVideoElement>("video[autoplay]").forEach((v) => {
+      v.autoplay = false;
+      v.removeAttribute("autoplay");
+      v.pause();
+      v.preload = "metadata";
+    });
+  }
   const meta = host.querySelector<HTMLElement>("[data-sh-meta]");
   if (!meta) return;
   const id = meta.dataset.id ?? "";

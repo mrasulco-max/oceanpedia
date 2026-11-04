@@ -344,6 +344,7 @@ type Store interface {
 	AssignArticle(ctx context.Context, id, staffID string) (string, error)
 	RemoveList(ctx context.Context, email, list string) error
 	Reader2FA(ctx context.Context, id string) (bool, error)
+	PendingReplies(ctx context.Context, kind string, ids []string) ([]PendingReply, error)
 	ExportUser(ctx context.Context, uid string) (string, error)
 	TOTP(ctx context.Context, uid string) (active, pending string, err error)
 	SetTOTP(ctx context.Context, uid, key, value string) error

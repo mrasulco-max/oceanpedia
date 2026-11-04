@@ -594,9 +594,11 @@ func (s *Server) shortCommentStatus(w http.ResponseWriter, r *http.Request) erro
 	if !slices.Contains([]string{"visible", "hidden"}, in.Status) {
 		return httpx.Validation(map[string]string{"status": "Status tidak dikenal."})
 	}
+	notify := s.pendingReplies(r, "short", []string{id}, in.Status)
 	if err := s.Store.SetShortCommentStatus(r.Context(), id, in.Status, claims(r).Sub); err != nil {
 		return err
 	}
+	notify()
 	s.audit(r, "short_comment."+in.Status, id, nil)
 	w.WriteHeader(http.StatusNoContent)
 	return nil

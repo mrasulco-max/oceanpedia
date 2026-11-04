@@ -83,7 +83,7 @@ Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api
 | Nama fitur | Halaman | API | Tabel database | Status | Catatan |
 |---|---|---|---|---|---|
 | Beranda, berita terbaru & terpopuler | `/` | `GET /v1/home`, `/v1/articles` | `articles`, `categories`, `authors` | ✅ | Desktop = UI web, ponsel = UI app. Bagian "Sekilas per kategori" & "Polling pembaca" dihapus |
-| Detail berita, reaksi, komentar, laporkan komentar | `/berita/[slug]` | `/v1/articles/{slug}…`, `/v1/comments/{id}/report` | `articles`, `reactions`, `comments`, `comment_reports` | ✅ | Komentar akun baru melalui moderasi |
+| Detail berita, reaksi, komentar, **balas komentar**, laporkan komentar | `/berita/[slug]` | `/v1/articles/{slug}…` (`parent_id` untuk balasan), `/v1/comments/{id}/report` | `articles`, `reactions`, `comments`, `comment_reports` | ✅ | Balasan satu tingkat + notifikasi "membalas komentarmu" (juga saat balasan disetujui moderator); komentar akun baru melalui moderasi. Ukuran huruf artikel (Aa) tersimpan di akun |
 | Kategori, penulis, topik (+ ikuti) | `/kategori/[slug]`, `/penulis/[slug]`, `/topik/[slug]` | `/v1/categories`, `/v1/authors/{slug}`, `/v1/topics/{slug}`, `/v1/me/categories|authors|topics` | `user_categories`, `user_authors`, `user_topics`, `tags` | ✅ | Paginasi kursor |
 | Bagikan + pratinjau media sosial | semua halaman konten | `/api/og` | — | ✅ | URL mengikuti domain aktif; gambar sampul atau kartu 1200×630 otomatis |
 | Market, detail instrumen, grafik, screener | `/market`, `/market/[symbol]`, `/screener` | `/v1/market/instruments`, `/quotes`, `/candles` | `instruments`, `market_cache` | ✅ | Saham AS, forex, emas, crypto. Contoh desain bertema IDX otomatis diganti instrumen aktif |
@@ -92,20 +92,20 @@ Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api
 | Kalender ekonomi + pengingat | `/kalender` | `/v1/events`, `/v1/me/reminders` | `economic_events`, `event_reminders` | ✅ | |
 | Pencarian | `/cari` | `/v1/search` | `articles`, `instruments`, `authors`, `tags` | ✅ | |
 | Artikel tersimpan | `/tersimpan` | `/v1/me/bookmarks` | `bookmarks` | ✅ | |
-| Ocean Short (video): suka, simpan, bagikan, komentar | `/short` | `/v1/shorts…` | `shorts`, `short_likes`, `short_saves`, `short_comments` | ✅ | Belum ada konten video di produksi (unggah lewat admin) |
+| Ocean Short (video): suka, simpan, bagikan, komentar & balasan | `/short` | `/v1/shorts…` | `shorts`, `short_likes`, `short_saves`, `short_comments` | ✅ | Video otomatis hanya saat Wi-Fi (tidak di data seluler / hemat data). Belum ada konten video di produksi |
 | Live blog | `/live` | `/v1/live` | `live_blogs`, `live_posts` | ✅ | |
 | Newsletter (berlangganan/berhenti) | `/newsletter` | `/v1/newsletter/*` | `newsletter_subscribers`, `newsletter_issues` | ⚠️ | Pengiriman bergantung domain email Bird |
 | Daftar, masuk, OTP, lupa sandi, sesi perangkat | `/daftar`, `/masuk`, `/verifikasi` | `/v1/auth/*`, `/v1/me/sessions` | `users`, `auth_codes`, `refresh_tokens` | ✅ | Token di cookie `httpOnly` |
-| Verifikasi 2 langkah (email) | `/pengaturan` | `PATCH /v1/me` (`two_factor`) | `users.preferences` | ✅ | Opsional untuk pembaca, wajib untuk staf |
+| Verifikasi 2 langkah (email atau aplikasi autentikator) | `/pengaturan` | `PATCH /v1/me` (`two_factor`), `/v1/me/2fa`, `/v1/me/2fa/totp/{setup,enable,disable}` | `users.preferences` (rahasia TOTP terenkripsi) | ✅ | QR dibuat di perangkat; opsional untuk pembaca, wajib untuk staf |
 | Profil & foto profil | `/akun` | `/v1/me`, `/v1/me/avatar` | `users`, `media` | ✅ | Kartu "Kenali minat pasarmu" hilang otomatis saat kelengkapan 100% |
-| Pengaturan: tema terang/gelap/sistem, kurangi animasi, video otomatis, notifikasi, ringkasan pagi | `/pengaturan` | `PATCH /v1/me` | `users.preferences`, `newsletter_subscribers` | ✅ | Tema diterapkan di server (cookie `ob_prefs`) |
+| Pengaturan: tema, ukuran huruf artikel, kurangi animasi, video otomatis (Wi-Fi), notifikasi (breaking, price alert, topik, balasan komentar, rilis berdampak tinggi, jam tenang), ringkasan pagi, bahasa, zona waktu, format angka | `/pengaturan`, `/akun` | `PATCH /v1/me` | `users.preferences`, `newsletter_subscribers`, `economic_events.high_notified_at` | ✅ | Diterapkan di server lewat cookie `ob_prefs`: Bahasa Inggris (beta, antarmuka), zona WIB/WITA/WIT, format 1.234,56 / 1,234.56 / 1 234,56 |
 | **Jurnal Trading** | `/jurnal` (menu di profil) | `GET/POST /v1/me/journal`, `PUT/DELETE /v1/me/journal/{id}` | `trading_journal` | ✅ | Semua jenis akun. P/L = selisih × lot × ukuran kontrak − biaya (forex 100.000, emas 100 oz/lot, saham AS per lembar); konversi P/L untuk pasangan USD/xxx; R dari stop loss, potensi TP/SL, P/L belum terealisasi, win rate, profit factor, kurva ekuitas, ekspor CSV |
 | Aurora AI (asisten) | `/ai` + tombol melayang | `/v1/ai/chat`, `/v1/ai/chart`, `/v1/ai/ask` | — | ✅ | Plus. Kirim tautan berita yang diminta & chart candlestick sesuai timeframe/rentang |
 | Analisis Aurora AI di artikel & market | `/berita/[slug]`, `/market/[symbol]` | `/v1/articles/{slug}/ai`, `/v1/market/instruments/{symbol}/ai` | `articles` (cache analisis) | ✅ | Plus |
 | Langganan Plus & checkout | `/plus`, `/plus/checkout` … | `/v1/plans`, `/v1/billing/*` | `subscription_plans`, `subscriptions`, `invoices`, `payments` | ⚠️ | Menunggu Midtrans Server Key yang valid |
 | Verifikasi Student | `/plus` | `/v1/me/student` | `student_verifications` | ✅ | Ditinjau admin |
 | Pasang iklan (formulir & media kit) | `/iklan` | `POST /v1/ads/inquiries` | `ad_inquiries` | ✅ | |
-| Permintaan data pribadi (UU PDP) | `/legal` | `POST /v1/me/privacy-requests` | `privacy_requests` | ⚠️ | Ekspor/hapus data diproses manual oleh admin |
+| Privasi & data (UU PDP): unduh data & hapus akun mandiri | `/akun/data` | `GET /v1/me/export`, `POST /v1/me/delete`, `POST /v1/me/privacy-requests` | `privacy_requests` + semua tabel milik pengguna | ✅ | Unduhan JSON langsung; hapus akun dengan konfirmasi HAPUS + kata sandi (akun staf lewat admin) |
 | Pusat bantuan, tentang, legal | `/bantuan`, `/tentang`, `/legal` | — | — | ✅ | Kontak WhatsApp CS dari desain |
 
 ### Fitur admin & redaksi (`/admin`)
@@ -134,12 +134,9 @@ Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api
 | Domain email `mail.psi.id` | ⚠️ Menunggu DNS | TXT DKIM `bird-214-1026._domainkey.mail` & CNAME `send.mail → eu1.bounce.bird.com` | Tinggi |
 | Data saham IDX, IHSG, LQ45 | ⏸️ Dinonaktifkan | Instrumen nonaktif di database; aktifkan lagi setelah ada sumber data IDX (paket Twelve Data lebih tinggi / penyedia lain) | Rendah |
 | Lebih banyak simbol saham AS & forex | ⚠️ | Paket Twelve Data lebih tinggi (Basic: 8 kredit/menit, 800/hari) | Sedang |
-| Bahasa Inggris | ❌ | Terjemahan antarmuka (opsi masih "segera hadir") | Sedang |
-| 2 langkah lewat aplikasi autentikator (TOTP) | ❌ | Implementasi TOTP + QR (opsi masih "segera hadir") | Sedang |
-| Zona waktu & format angka dari pengaturan | ⚠️ | Disimpan di database, belum diterapkan ke seluruh tampilan | Sedang |
-| Balasan komentar | ❌ | Komentar bertingkat + notifikasi balasan | Sedang |
-| Ekspor/hapus data pribadi otomatis | ⚠️ | Saat ini diproses manual oleh admin | Rendah |
-| Notifikasi WhatsApp | ❌ | Integrasi WhatsApp (Bird) | Rendah |
+| Bahasa Inggris penuh | ⚠️ Beta | Antarmuka utama sudah berbahasa Inggris; isi berita, toast, dan sebagian teks dinamis masih Bahasa Indonesia | Rendah |
+| Notifikasi WhatsApp | ❌ | Integrasi WhatsApp (Bird) + nomor WhatsApp Business terverifikasi | Rendah |
+| Harga live di peramban mengikuti format angka | ⚠️ | Pembaruan harga real-time di grafik masih memakai format 1.234,56 | Rendah |
 | Akun media sosial resmi | ❌ | Ikon sosial disembunyikan sampai akun resmi tersedia | Rendah |
 | Aplikasi native (Expo) | ❌ | Memakai API yang sama | Rendah |
 | Konten awal (artikel, Ocean Short) | ⚠️ | Isi lewat dashboard admin | Sedang |

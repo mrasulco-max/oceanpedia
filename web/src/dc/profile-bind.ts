@@ -55,6 +55,11 @@ export function bindProfileApp(html: string, p: Profile): string {
   h = h.replace(/<span([^>]*)>1 terpicu<\/span>/, (_m, a: string) => (p.stats.alerts_triggered ? `<span${a}>${p.stats.alerts_triggered} terpicu</span>` : ""));
   h = h.replace(">8 artikel untuk dibaca nanti<", `>${p.stats.bookmarks ? plural(p.stats.bookmarks, "artikel untuk dibaca nanti") : "Belum ada artikel tersimpan"}<`);
   h = h.split(">IHSG, The Fed, Bitcoin<").join(`>${esc(topicsText(p))}<`);
+  // Ulas aplikasi (belum di toko aplikasi) → kirim masukan lewat Pusat bantuan.
+  h = h.replace(/<a href="[^"]*"((?:(?!<\/a>)[\s\S])*?Ulas Aplikasi)/, '<a href="/bantuan#kontak"$1').replace(/>Beri rating di Play Store \/ App Store</, ">Kirim masukan untuk tim OceanBird<");
+  // Bahasa & wilayah sesuai pengaturan.
+  const zl: Record<string, string> = { "Asia/Jakarta": "WIB", "Asia/Makassar": "WITA", "Asia/Jayapura": "WIT" };
+  h = h.replace(/>Bahasa Indonesia · WIB</, `>${p.preferences.language === "en" ? "English" : "Bahasa Indonesia"} · ${zl[String(p.preferences.timezone ?? "")] ?? "WIB"}<`);
   // Menu Jurnal Trading setelah "Topik yang Diikuti".
   h = h.replace(/(Topik yang Diikuti(?:(?!<\/a>)[\s\S])*?<\/a>)/, `$1${journalItemApp()}`);
   // Lembar "Edit profil": nilai asli, email hanya-baca (perubahan email perlu verifikasi).
@@ -162,7 +167,14 @@ export function bindSettingsApp(html: string, p: Profile, sessions: Session[]): 
   h = h.replace(/<button onClick="\{\{ f9 \}\}"([^>]*)>Simpan kata sandi<\/button>/, '<button data-pw-save$1>Simpan kata sandi</button>');
   // Verifikasi 2 langkah lewat email (kode saat masuk di perangkat baru); autentikator menyusul.
   h = h.replace(/>Aktif lewat SMS</, ">Aktif lewat email<").replace(/>Aktif lewat aplikasi autentikator</, ">Aplikasi autentikator<").replace(/>Aplikasi autentikator \(segera hadir\)</, ">Aplikasi autentikator<");
-  h = h.replace(/>English</, ">English (segera hadir)<");
+  h = h.replace(/>English \(segera hadir\)</, ">English (beta)<").replace(/>English</, ">English (beta)<");
+  // Ukuran huruf artikel: slider desain → pilihan 4 tingkat yang tersimpan di akun.
+  const fi = Math.max(0, ["small", "medium", "large", "xlarge"].indexOf(String(p.preferences.font_size ?? "medium")));
+  const FL = ["Kecil", "Sedang", "Besar", "Sangat besar"];
+  h = h.replace(/(Ukuran huruf artikel<\/strong><span style="font-size: 13px; color: #5F6B7D")>Sedang</, `$1 data-font-label data-dc-keep>${FL[fi]}<`);
+  h = h.replace(/<span style="flex: 1; position: relative; height: 4px; border-radius: 999px; background: #E3EAF4">(?:(?!<\/span><\/span>)[\s\S])*<\/span><\/span>/, `<input type="range" min="0" max="3" step="1" value="${fi}" data-font-size data-dc-keep aria-label="Ukuran huruf artikel" aria-valuetext="${FL[fi]}" style="flex: 1; accent-color: #4285F4; height: 22px; cursor: pointer">`);
+  // Ulas aplikasi: belum ada di toko aplikasi → kirim masukan.
+  h = h.replace(/>Beri rating di Play Store \/ App Store</, ">Kirim masukan untuk tim OceanBird<");
   // Privasi & data: unduh data & hapus akun mandiri.
   h = h.replace(/<a href="[^"]*"((?:(?!<\/a>)[\s\S])*?Privasi &(?:amp;)? data)/, '<a href="/akun/data"$1');
   // Perangkat aktif.
