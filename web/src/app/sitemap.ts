@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
 import { api, safe } from "@/lib/api";
+import { currentOrigin } from "@/lib/origin";
 
-export const revalidate = 600;
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const site = await currentOrigin();
   const [arts, cats] = await Promise.all([safe(api.articles({ limit: 50 }), { data: [] }), safe(api.categories(), { data: [] })]);
   return [
     { url: site, changeFrequency: "hourly", priority: 1 },

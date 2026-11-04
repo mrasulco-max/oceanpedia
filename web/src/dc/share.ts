@@ -6,7 +6,8 @@ import type { Cleanup, Env } from "./enhancers";
 import { toast } from "./toast";
 
 export function share(host: HTMLElement, { ctx }: Env): Cleanup {
-  const url = ctx.shareUrl || location.origin + location.pathname;
+  // Selalu domain yang sedang dibuka pengunjung (path kanonis dari server).
+  const url = location.origin + (ctx.sharePath || location.pathname);
   const title = ctx.shareTitle || document.title;
   const text = title.replace(/ · OceanBird$| \| OceanBird$/, "");
   const copy = () =>

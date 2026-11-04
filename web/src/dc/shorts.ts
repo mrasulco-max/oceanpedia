@@ -28,7 +28,9 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
   const meta = host.querySelector<HTMLElement>("[data-sh-meta]");
   if (!meta) return;
   const id = meta.dataset.id ?? "";
-  const url = meta.dataset.url || location.href;
+  const raw = meta.dataset.url || location.href;
+  // Domain aktif pengunjung + path short ini.
+  const url = location.origin + (raw.startsWith("/") ? raw : new URL(raw, location.origin).pathname + new URL(raw, location.origin).search);
   const title = meta.dataset.title ?? "Ocean Short";
   const logged = meta.dataset.logged === "1";
   const login = meta.dataset.login || "/masuk";

@@ -515,6 +515,12 @@ jobs:
           # Fitur pembaca yang dulu tiruan desain: bagikan, ikuti, footer, bantuan, iklan, Student.
           curl -sf -A "$MOB" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'data-share="wa"'
           curl -sf -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'data-share="native"'
+          # Tautan bagikan mengikuti domain yang sedang dipakai; pratinjau tautan berisi gambar berita.
+          curl -sf -A "$MOB" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun'
+          curl -sf -A "facebookexternalhit/1.1" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q '<meta property="og:image" content="http'
+          curl -sf -A "WhatsApp/2.23" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'name="twitter:card" content="summary_large_image"'
+          curl -sf localhost:3000/market/BTCUSD | grep -q 'og:image" content="http://localhost:3000/api/og'
+          curl -sfI "localhost:3000/api/og?t=Uji%20pratinjau&k=Saham" | grep -qi 'content-type: image/png'
           curl -sf -A "$DESK" localhost:3000/kategori/saham | grep -q 'data-follow="category:saham"'
           curl -sf -A "$MOB" localhost:3000/kategori/saham | grep -q 'data-follow="category:saham"'
           curl -sf -A "$DESK" localhost:3000/penulis/maya-lestari | grep -q 'data-follow="author:maya-lestari"'

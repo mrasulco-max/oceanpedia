@@ -1,10 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-const site = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+import { currentOrigin } from "@/lib/origin";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(site),
+// metadataBase mengikuti domain yang sedang dipakai (tautan & gambar Open Graph saat dibagikan).
+export async function generateMetadata(): Promise<Metadata> {
+  return { ...base, metadataBase: new URL(await currentOrigin()) };
+}
+
+const base: Metadata = {
   title: { default: "OceanBird — Berita & Data Pasar", template: "%s · OceanBird" },
   description: "Berita dan data pasar saham IDX, komoditas, crypto, dan forex secara real-time.",
   openGraph: { type: "website", locale: "id_ID", siteName: "OceanBird" },
