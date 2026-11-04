@@ -639,13 +639,15 @@ jobs:
           curl -sf -A "$DESK" "localhost:3000/short?v=$LS" | grep -q 'data-sh="cap"'
           curl -sf -A "$MOB" "localhost:3000/short?v=$LS" | grep -q 'selengkapnya'
           # Pemutar aplikasi: video unggahan tampil + tombol putar nyata; tautan YouTube/TikTok → pemutar resmi.
-          curl -sf -A "$MOB" "localhost:3000/short?v=$LS" | grep -q '<video data-short'
-          curl -sf -A "$MOB" "localhost:3000/short?v=$LS" | grep -q 'data-sh-play'
+          cek() { curl -sf -A "$1" "localhost:3000/short?v=$2" > /tmp/sh.html || { echo "GAGAL muat $2"; exit 1; }; grep -q "$3" /tmp/sh.html || { echo "GAGAL: '$3' tidak ada di /short?v=$2"; grep -o '<video[^>]*>\|<iframe[^>]*>\|<img[^>]*news-[0-9][^>]*>' /tmp/sh.html | head -5; exit 1; }; }
+          cek "$MOB" "$LS" '<video data-short'
+          cek "$MOB" "$LS" 'data-sh-play'
           YT=$(curl -sf -b /tmp/sjar -X POST -H 'Content-Type: application/json' localhost:3000/api/admin/shorts -d '{"title":"Uji YouTube Shorts","video_url":"https://youtube.com/shorts/jy2iXxsJTr8?si=x","status":"published"}' | jq -r .id)
-          curl -sf -A "$MOB" "localhost:3000/short?v=$YT" | grep -q 'youtube-nocookie.com/embed/jy2iXxsJTr8'
-          curl -sf -A "$DESK" "localhost:3000/short?v=$YT" | grep -q 'i.ytimg.com/vi/jy2iXxsJTr8'
+          echo "YT=$YT"
+          cek "$MOB" "$YT" 'youtube-nocookie.com/embed/jy2iXxsJTr8'
+          cek "$DESK" "$YT" 'i.ytimg.com/vi/jy2iXxsJTr8'
           TT=$(curl -sf -b /tmp/sjar -X POST -H 'Content-Type: application/json' localhost:3000/api/admin/shorts -d '{"title":"Uji TikTok","video_url":"https://www.tiktok.com/@oceanbird/video/7312345678901234567","status":"published"}' | jq -r .id)
-          curl -sf -A "$DESK" "localhost:3000/short?v=$TT" | grep -q 'tiktok.com/player/v1/7312345678901234567'
+          cek "$DESK" "$TT" 'tiktok.com/player/v1/7312345678901234567'
           # Halaman tagihan butuh login.
           for p in /plus/menunggu-pembayaran /plus/berhasil /plus/email /plus/whatsapp; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -A "$MOB" "localhost:3000$p"); test "$code" = 307 || { echo "GAGAL $p ($code)"; exit 1; }
