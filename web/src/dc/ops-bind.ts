@@ -783,18 +783,19 @@ export function bindSymbol(html: string, opts: { st: SymbolState | null; categor
 }
 
 // ======================================================================= verifikasi 2 langkah staf
-export function bindTwoFactor(html: string, opts: { email: string; next: string }): string {
+export function bindTwoFactor(html: string, opts: { email: string; next: string; method?: "email" | "totp" }): string {
   let h = html;
+  const totp = opts.method === "totp";
   const masked = opts.email.replace(/^(.)(.*)(@.*)$/, (_m, a: string, b: string, c: string) => a + "•".repeat(Math.min(6, Math.max(1, b.length))) + c);
-  h = h.replace(/(<span style="font-size: 15px; line-height: 1.55; color: #5F6B7D">)Masukkan kode 6 digit dari aplikasi authenticator untuk <strong([^>]*)>[^<]*<\/strong>\./, `$1Masukkan 6 karakter kode yang kami kirim ke email <strong$2>${esc(masked || "akun staf Anda")}</strong>. Kode berlaku 10 menit.`);
+  h = h.replace(/(<span style="font-size: 15px; line-height: 1.55; color: #5F6B7D">)Masukkan kode 6 digit dari aplikasi authenticator untuk <strong([^>]*)>[^<]*<\/strong>\./, `$1${totp ? "Masukkan kode 6 digit dari aplikasi autentikator untuk" : "Masukkan 6 karakter kode yang kami kirim ke email"} <strong$2>${esc(masked || "akun staf Anda")}</strong>. Kode berlaku 10 menit.`);
   let i = 0;
   h = h.replace(/<input aria-label="Digit (\d)" value="[^"]*" maxlength="1" inputmode="numeric" style="([^"]*)">/g, (_m, d: string, st: string) => {
     const s = st.replace("border: 2px solid #4285F4", "border: 1px solid #E3EBF7");
     return `<input aria-label="Karakter ${d}" data-tf-digit="${i++}" value="" maxlength="1" autocomplete="${i === 1 ? "one-time-code" : "off"}" autocapitalize="characters" style="${s}; text-transform: uppercase">`;
   });
-  h = h.replace(/<span style="font-size: 13px; color: #5F6B7D">Kode berganti dalam <strong[^>]*>[^<]*<\/strong>\s*<\/span>/, '<span data-tf="resend-note" style="font-size: 13px; color: #5F6B7D">Tidak menerima kode? Periksa folder spam.</span>');
+  h = h.replace(/<span style="font-size: 13px; color: #5F6B7D">Kode berganti dalam <strong[^>]*>[^<]*<\/strong>\s*<\/span>/, `<span data-tf="resend-note" style="font-size: 13px; color: #5F6B7D">${totp ? "Kode di aplikasi berganti setiap 30 detik." : "Tidak menerima kode? Periksa folder spam."}</span>`);
   h = h.replace(/<input type="checkbox" style="width: 18px; height: 18px">Jangan minta lagi di perangkat ini selama 30 hari/, '<input type="checkbox" data-tf="remember" style="width: 18px; height: 18px">Jangan minta lagi di perangkat ini selama 30 hari');
   h = h.replace(/<a href="\/admin"( class=ob-anim[^>]*)>Verifikasi &(?:amp;)? masuk<\/a>/, `<a href="#" data-tf="submit" data-email="${esc(opts.email)}" data-next="${esc(opts.next)}"$1>Verifikasi &amp; masuk</a>`);
-  h = h.replace(/Tidak bisa akses aplikasi\? <a href="#"([^>]*)>Pakai kode cadangan<\/a>/, 'Belum menerima email? <a href="#" data-tf="resend"$1>Kirim ulang kode</a>');
+  h = h.replace(/Tidak bisa akses aplikasi\? <a href="#"([^>]*)>Pakai kode cadangan<\/a>/, totp ? 'Tidak bisa membuka aplikasi? <a href="/bantuan#kontak"$1>Hubungi bantuan</a>' : 'Belum menerima email? <a href="#" data-tf="resend"$1>Kirim ulang kode</a>');
   return h;
 }

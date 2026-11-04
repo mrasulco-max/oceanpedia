@@ -45,6 +45,10 @@ func (s *Server) checkToken(tok, purpose, uid string) bool {
 
 // needsTwoFactor: staf (peran berizin panel) dengan two_factor aktif, kecuali perangkat tepercaya.
 func (s *Server) needsTwoFactor(r *http.Request, u store.User, device string) (bool, error) {
+	// Aplikasi autentikator aktif: selalu diminta (semua jenis akun), kecuali perangkat tepercaya.
+	if s.totpSecret(r, u.ID) != "" {
+		return !(device != "" && s.checkToken(device, "td", u.ID)), nil
+	}
 	if !u.TwoFactor {
 		return false, nil
 	}
@@ -67,6 +71,16 @@ func (s *Server) needsTwoFactor(r *http.Request, u store.User, device string) (b
 
 // startTwoFactor mengirim kode ke email staf dan mengembalikan 403 berisi challenge.
 func (s *Server) startTwoFactor(r *http.Request, u store.User) error {
+	if s.totpSecret(r, u.ID) != "" {
+		s.audit2(r, u.ID, "auth.2fa_challenge", map[string]any{"method": "totp"})
+		return &httpx.Problem{
+			Type:   twoFactorType,
+			Title:  "Verifikasi 2 langkah",
+			Status: http.StatusForbidden,
+			Detail: "Masukkan kode 6 digit dari aplikasi autentikator.",
+			Errors: map[string]string{"email": u.Email, "challenge": s.signToken("2fa", u.ID, 10*time.Minute), "masked_email": maskEmail(u.Email), "method": "totp"},
+		}
+	}
 	if err := s.sendOTP(r.Context(), u.Email); err != nil {
 		return &httpx.Problem{Type: "about:blank", Title: "Gagal mengirim kode", Status: 503, Detail: "Kode verifikasi 2 langkah belum bisa dikirim. Coba lagi sebentar lagi."}
 	}

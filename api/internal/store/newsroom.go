@@ -462,18 +462,27 @@ type ShortComment struct {
 	Reason     *string   `json:"flag_reason,omitempty"`
 	Mine       bool      `json:"mine"`
 	CreatedAt  time.Time `json:"created_at"`
+	ParentID   string    `json:"parent_id,omitempty"`
 }
 
-const qShortComments = `SELECT c.id, c.short_id, u.full_name, c.body, c.status, COALESCE(c.user_id = NULLIF($3::text, '')::uuid, false), c.created_at
-FROM short_comments c JOIN users u ON u.id = c.user_id
-WHERE c.short_id = $1::uuid AND c.status = 'visible' ORDER BY c.created_at DESC LIMIT $2::int`
-
-const qShortCommentAdd = `WITH ins AS (
-  INSERT INTO short_comments (short_id, user_id, body, status, flag_reason)
-  SELECT s.id, $2::uuid, $3::text, $4::text, NULLIF($5::text, '') FROM shorts s WHERE s.id = $1::uuid AND s.status = 'published'
-  RETURNING id, short_id, user_id, body, status, created_at
+const qShortComments = `WITH top AS (
+  SELECT c.* FROM short_comments c WHERE c.short_id = $1::uuid AND c.status = 'visible' AND c.parent_id IS NULL ORDER BY c.created_at DESC LIMIT $2::int
+), rep AS (
+  SELECT c.* FROM short_comments c JOIN top t ON c.parent_id = t.id WHERE c.status = 'visible'
 )
-SELECT ins.id, ins.short_id, u.full_name, ins.body, ins.status, true, ins.created_at FROM ins JOIN users u ON u.id = ins.user_id`
+SELECT x.id, x.short_id, u.full_name, x.body, x.status, COALESCE(x.user_id = NULLIF($3::text, '')::uuid, false), x.created_at, COALESCE(x.parent_id::text, '')
+FROM (SELECT * FROM top UNION ALL SELECT * FROM rep) x JOIN users u ON u.id = x.user_id
+ORDER BY (x.parent_id IS NOT NULL), CASE WHEN x.parent_id IS NULL THEN x.created_at END DESC, x.created_at ASC`
+
+const qShortCommentAdd = `WITH par AS (
+  SELECT COALESCE(p.parent_id, p.id) AS id FROM short_comments p WHERE p.id = NULLIF($6::text, '')::uuid AND p.short_id = $1::uuid AND p.status = 'visible'
+), ins AS (
+  INSERT INTO short_comments (short_id, user_id, body, status, flag_reason, parent_id)
+  SELECT s.id, $2::uuid, $3::text, $4::text, NULLIF($5::text, ''), (SELECT id FROM par) FROM shorts s
+  WHERE s.id = $1::uuid AND s.status = 'published' AND ($6::text = '' OR EXISTS (SELECT 1 FROM par))
+  RETURNING id, short_id, user_id, body, status, created_at, parent_id
+)
+SELECT ins.id, ins.short_id, u.full_name, ins.body, ins.status, true, ins.created_at, COALESCE(ins.parent_id::text, '') FROM ins JOIN users u ON u.id = ins.user_id`
 
 const qShortCommentDel = `DELETE FROM short_comments WHERE id = $1::uuid AND short_id = $2::uuid AND (user_id = $3::uuid OR $4::bool)`
 
@@ -492,7 +501,7 @@ func scanShortComments(rows *sql.Rows, admin bool) ([]ShortComment, error) {
 		if admin {
 			err = rows.Scan(&c.ID, &c.ShortID, &c.ShortTitle, &c.UserName, &c.UserEmail, &c.Body, &c.Status, &c.Reason, &c.CreatedAt)
 		} else {
-			err = rows.Scan(&c.ID, &c.ShortID, &c.UserName, &c.Body, &c.Status, &c.Mine, &c.CreatedAt)
+			err = rows.Scan(&c.ID, &c.ShortID, &c.UserName, &c.Body, &c.Status, &c.Mine, &c.CreatedAt, &c.ParentID)
 		}
 		if err != nil {
 			return nil, err
@@ -512,9 +521,9 @@ func (p *PG) ShortComments(ctx context.Context, id, uid string, limit int) ([]Sh
 }
 
 // AddShortComment menyimpan komentar (status hasil penyaringan otomatis).
-func (p *PG) AddShortComment(ctx context.Context, id, uid, body, status, reason string) (ShortComment, error) {
+func (p *PG) AddShortComment(ctx context.Context, id, uid, body, status, reason, parentID string) (ShortComment, error) {
 	var c ShortComment
-	err := p.DB.QueryRowContext(ctx, qShortCommentAdd, id, uid, body, status, reason).Scan(&c.ID, &c.ShortID, &c.UserName, &c.Body, &c.Status, &c.Mine, &c.CreatedAt)
+	err := p.DB.QueryRowContext(ctx, qShortCommentAdd, id, uid, body, status, reason, parentID).Scan(&c.ID, &c.ShortID, &c.UserName, &c.Body, &c.Status, &c.Mine, &c.CreatedAt, &c.ParentID)
 	return c, notFound(err)
 }
 

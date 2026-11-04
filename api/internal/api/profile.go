@@ -35,6 +35,7 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	p.TOTP = s.totpSecret(r, uid(r)) != ""
 	plan := ""
 	if p.Plan != nil {
 		plan = *p.Plan

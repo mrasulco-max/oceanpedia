@@ -2,7 +2,7 @@ import "server-only";
 import type { AdSlot, ArticleCard, EconomicEvent, Instrument, Quote } from "@/lib/types";
 import type { UserAlert, UserNotification, WatchItem } from "@/lib/me";
 import { esc as esc0 } from "./bind";
-import { avatarColors, ago, blocks, closeOf, emptyRow, recolorAvatar, rx, SVG } from "./kit";
+import { avatarColors, ago, blocks, closeOf, emptyRow, recolorAvatar, rx, SVG, threaded } from "./kit";
 import { initials } from "./bind";
 
 /**
@@ -567,7 +567,7 @@ export function bindCalendarWeb(html: string, d: CalData & { prevWeek: string; n
 export interface Social {
   loggedIn: boolean;
   me: { name: string; email: string } | null;
-  comments: { id: string; user_name: string; body: string; created_at: string }[];
+  comments: { id: string; user_name: string; body: string; created_at: string; parent_id?: string }[];
   reactions: Record<string, number>; // bullish, bearish, informative, favorite
   bookmarked: boolean;
   slug: string;
@@ -576,6 +576,9 @@ const avatar36 = (name: string, style: string) => {
   const [bg, fg] = avatarColors(name);
   return style.replace(/background: #[0-9A-F]{6}; color: #[0-9A-F]{6}/, `background: ${bg}; color: ${fg}`);
 };
+
+const replyBtn = (id: string, name: string, loggedIn: boolean) =>
+  `<button type="button" data-art="reply" data-id="${esc(id)}" data-name="${esc(name)}"${loggedIn ? "" : ' data-login="1"'} style="align-self: flex-start; border: 0; background: none; padding: 0; font-size: 12px; font-weight: 500; color: #2F74EB; cursor: pointer">Balas</button>`;
 
 export function bindArticleSocialWeb(html: string, s: Social): string {
   let h = html;
@@ -586,14 +589,15 @@ export function bindArticleSocialWeb(html: string, s: Social): string {
   if (rows.length) {
     const tpl = rows[1]?.html ?? rows[0]!.html;
     const built = s.comments.length
-      ? s.comments
-          .map((c, i) =>
+      ? threaded(s.comments)
+          .map(({ c, reply }, i) =>
             tpl
-              .replace("border-top: 1px solid #E3EAF4", i ? "border-top: 1px solid #E3EAF4" : "")
+              .replace("border-top: 1px solid #E3EAF4", i && !reply ? "border-top: 1px solid #E3EAF4" : "")
+              .replace('<div style="display: flex; gap: 12px; padding: 12px 0;', reply ? '<div data-reply style="display: flex; gap: 12px; padding: 8px 0 8px 48px;' : '<div style="display: flex; gap: 12px; padding: 12px 0;')
               .replace(/(<span style="flex: none; width: 36px; height: 36px; border-radius: 999px; [^"]*">)[^<]*(<\/span>)/, (_m, a: string, b: string) => `${avatar36(c.user_name, a)}${esc(initials(c.user_name))}${b}`)
               .replace(/(<strong style="font-weight: 500">)[^<]*(<\/strong> <span style="color: #5F6B7D">)[^<]*(<\/span>)/, `$1${esc(c.user_name)}$2· ${esc(ago(c.created_at))}$3`)
               .replace(/(<span style="font-size: 14px; line-height: 1.5">)[^<]*(<\/span>)/, `$1${esc(c.body)}$2`)
-              .replace(/<\/span>\s*<\/span>\s*<\/div>$/, `<button type="button" data-art="report" data-id="${c.id}" style="align-self: flex-start; border: 0; background: none; padding: 0; font-size: 12px; color: #9AA6B8; cursor: pointer">Laporkan</button></span></span></div>`),
+              .replace(/<\/span>\s*<\/span>\s*<\/div>$/, `<span style="display: flex; gap: 14px">${replyBtn(c.parent_id || c.id, c.user_name, s.loggedIn)}<button type="button" data-art="report" data-id="${c.id}" style="align-self: flex-start; border: 0; background: none; padding: 0; font-size: 12px; color: #9AA6B8; cursor: pointer">Laporkan</button></span></span></span></div>`),
           )
           .join("")
       : '<p style="margin: 8px 0; font-size: 14px; color: #5F6B7D">Belum ada komentar. Jadilah yang pertama.</p>';
@@ -626,13 +630,13 @@ export function bindArticleSocialApp(html: string, s: Social): string {
   if (commentRows.length) {
     const tpl = commentRows[0]!.html;
     const built = s.comments.length
-      ? s.comments
-          .map((c) =>
-            tpl
+      ? threaded(s.comments)
+          .map(({ c, reply }) =>
+            (reply ? tpl.replace('<div style="display: flex; gap: 12px">', '<div data-reply style="display: flex; gap: 12px; padding-left: 44px">') : tpl)
               .replace(/(<span style="flex: none; width: 36px; height: 36px; border-radius: 999px; [^"]*">)[^<]*(<\/span>)/, (_m, a: string, b: string) => `${avatar36(c.user_name, a)}${esc(initials(c.user_name))}${b}`)
               .replace(/(<strong style="font-size: 14px; font-weight: 700">)[^<]*(<\/strong>\s*<span style="font-size: 12px; color: #5F6B7D">)[^<]*(<\/span>)/, `$1${esc(c.user_name)}$2· ${esc(ago(c.created_at))}$3`)
               .replace(/(<p style="margin: 0; font-size: 14px; line-height: 1.45">)[^<]*(<\/p>)/, `$1${esc(c.body)}$2`)
-              .replace(/<span style="display: flex; align-items: center; gap: 16px; font-size: 12px; font-weight: 500; color: #5F6B7D">[\s\S]*?<span>Balas<\/span>\s*<\/span>/, `<span style="display: flex; gap: 16px; font-size: 12px; font-weight: 500; color: #9AA6B8"><button type="button" data-art="report" data-id="${c.id}" style="border: 0; background: none; padding: 0; color: inherit; font: inherit">Laporkan</button></span>`),
+              .replace(/<span style="display: flex; align-items: center; gap: 16px; font-size: 12px; font-weight: 500; color: #5F6B7D">[\s\S]*?<span>Balas<\/span>\s*<\/span>/, `<span style="display: flex; gap: 16px; font-size: 12px; font-weight: 500; color: #9AA6B8">${replyBtn(c.parent_id || c.id, c.user_name, s.loggedIn)}<button type="button" data-art="report" data-id="${c.id}" style="border: 0; background: none; padding: 0; color: inherit; font: inherit">Laporkan</button></span>`),
           )
           .join("")
       : '<p style="margin: 0; font-size: 14px; color: #5F6B7D">Belum ada komentar. Jadilah yang pertama.</p>';

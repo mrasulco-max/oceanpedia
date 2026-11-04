@@ -24,6 +24,8 @@ type Profile struct {
 	Stats       ProfileStats    `json:"stats"`
 	Topics      []Tag           `json:"topics"`
 	TwoFactor   bool            `json:"two_factor"`
+	// TOTP: aplikasi autentikator aktif (diisi handler).
+	TOTP bool `json:"totp"`
 }
 
 // Session adalah satu perangkat yang sedang masuk (refresh token aktif).

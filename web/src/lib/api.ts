@@ -57,7 +57,7 @@ export const api = {
     return get<Page<ArticleCard>>(`/v1/articles?${p}`, o);
   },
   article: (slug: string, o?: Opts) => get<Article>(`/v1/articles/${encodeURIComponent(slug)}`, { revalidate: 60, ...o }),
-  comments: (slug: string) => get<Page<{ id: string; user_name: string; body: string; created_at: string }>>(`/v1/articles/${encodeURIComponent(slug)}/comments?limit=50`, { revalidate: 0 }),
+  comments: (slug: string) => get<Page<{ id: string; user_name: string; body: string; created_at: string; parent_id?: string }>>(`/v1/articles/${encodeURIComponent(slug)}/comments?limit=50`, { revalidate: 0 }),
   reactions: (slug: string) => get<Page<{ kind: string; count: number }>>(`/v1/articles/${encodeURIComponent(slug)}/reactions`, { revalidate: 0 }),
   related: (slug: string) => get<Page<ArticleCard>>(`/v1/articles/${encodeURIComponent(slug)}/related?limit=6`, { revalidate: 120 }),
   instruments: () => get<Page<Instrument>>("/v1/market/instruments", { revalidate: 300 }),

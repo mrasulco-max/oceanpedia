@@ -317,7 +317,7 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
     const c = code();
     if (c.length < 6) {
       digits.find((d) => !d.value)?.focus();
-      return toast(host, "Masukkan 6 karakter kode dari email.");
+      return toast(host, "Masukkan 6 karakter kode verifikasi.");
     }
     busy = true;
     submit?.setAttribute("aria-busy", "true");

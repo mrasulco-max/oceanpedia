@@ -154,6 +154,8 @@ type Comment struct {
 	Body      string    `json:"body"`
 	Status    string    `json:"status,omitempty"` // "pending" = menunggu moderasi
 	CreatedAt time.Time `json:"created_at"`
+	// ParentID: komentar induk bila ini balasan (kosong = komentar utama).
+	ParentID string `json:"parent_id,omitempty"`
 }
 
 type ReactionCount struct {
@@ -240,7 +242,8 @@ type Store interface {
 	React(ctx context.Context, userID, slug, kind string) error
 	Reactions(ctx context.Context, slug string) ([]ReactionCount, error)
 	Comments(ctx context.Context, slug string, limit int) ([]Comment, error)
-	AddComment(ctx context.Context, userID, slug, body, status, reason string) (Comment, error)
+	AddComment(ctx context.Context, userID, slug, body, status, reason, parentID string) (Comment, error)
+	ReplyTarget(ctx context.Context, kind, parentID string) (ReplyTarget, error)
 
 	CreateInvoice(ctx context.Context, userID string, inv Invoice) (Invoice, error)
 
@@ -341,6 +344,10 @@ type Store interface {
 	AssignArticle(ctx context.Context, id, staffID string) (string, error)
 	RemoveList(ctx context.Context, email, list string) error
 	Reader2FA(ctx context.Context, id string) (bool, error)
+	ExportUser(ctx context.Context, uid string) (string, error)
+	TOTP(ctx context.Context, uid string) (active, pending string, err error)
+	SetTOTP(ctx context.Context, uid, key, value string) error
+	DeleteAccount(ctx context.Context, uid string) error
 	Journal(ctx context.Context, uid string, limit int) ([]JournalEntry, error)
 	JournalCount(ctx context.Context, uid string) (int, error)
 	SaveJournal(ctx context.Context, uid string, e JournalEntry) (JournalEntry, error)
@@ -348,7 +355,7 @@ type Store interface {
 	ShortToggle(ctx context.Context, kind, id, uid string, on bool) (int64, error)
 	ShortShare(ctx context.Context, id string) (int64, error)
 	ShortComments(ctx context.Context, id, uid string, limit int) ([]ShortComment, error)
-	AddShortComment(ctx context.Context, id, uid, body, status, reason string) (ShortComment, error)
+	AddShortComment(ctx context.Context, id, uid, body, status, reason, parentID string) (ShortComment, error)
 	DeleteShortComment(ctx context.Context, shortID, id, uid string, moderator bool) error
 	AdminShortComments(ctx context.Context, status string, limit int) ([]ShortComment, error)
 	SetShortCommentStatus(ctx context.Context, id, status, by string) error

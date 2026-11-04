@@ -356,7 +356,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       }
       // Preferensi tampilan akun → perangkat ini (tema, animasi, video otomatis).
       ctx.prefs = JSON.stringify(pr.profile.preferences ?? {});
-      ctx.tfa = pr.profile.two_factor ? "1" : "0";
+      ctx.tfa = String(pr.profile.totp ? 1 : pr.profile.two_factor ? 0 : 2);
       enhance.push("profile");
     }
     html = bindArticleCards(html, all);
@@ -647,7 +647,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   } else if (boardId === "admin-login-2-f-a") {
     const email = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(search.email ?? "") ? search.email! : "";
     if (!email) redirect("/admin/masuk");
-    html = bindTwoFactor(html, { email, next: search.next && /^\/(?!\/)/.test(search.next) ? search.next : "/admin" });
+    html = bindTwoFactor(html, { email, next: search.next && /^\/(?!\/)/.test(search.next) ? search.next : "/admin", method: search.m === "totp" ? "totp" : "email" });
     enhance.push("twofa");
     title = "Verifikasi 2 langkah";
   } else if (boardId === "admin-login") {

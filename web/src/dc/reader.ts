@@ -474,6 +474,19 @@ export function reader(host: HTMLElement, { router }: Env): Cleanup {
       });
       return;
     }
+    // Balas komentar: kolom komentar masuk mode balasan (Esc / kosongkan untuk batal).
+    const reply = el('[data-art="reply"]');
+    if (reply) {
+      stop();
+      const inp = host.querySelector<HTMLInputElement>('input[data-art="comment"]');
+      if (!inp || inp.dataset.login) return router.push(inp?.dataset.login || "/masuk");
+      inp.dataset.parent = reply.dataset.id!;
+      inp.dataset.ph ??= inp.placeholder;
+      inp.placeholder = `Balas ${reply.dataset.name ?? "komentar"}… (Esc untuk batal)`;
+      inp.scrollIntoView({ behavior: "smooth", block: "center" });
+      inp.focus();
+      return;
+    }
     const send = el('[data-art="comment-send"]');
     if (send) {
       stop();
@@ -495,12 +508,16 @@ export function reader(host: HTMLElement, { router }: Env): Cleanup {
     run(async () => {
       const body = inp?.value.trim() ?? "";
       if (!body) return toast(host, "Tulis komentar terlebih dahulu.");
-      const r = await api("POST", `/api/v1/articles/${encodeURIComponent(slug)}/comments`, { body });
+      const parent = inp?.dataset.parent ?? "";
+      const r = await api("POST", `/api/v1/articles/${encodeURIComponent(slug)}/comments`, parent ? { body, parent_id: parent } : { body });
       if (needLogin(r)) return;
       if (!r.ok) return toast(host, why(r, "Komentar gagal dikirim."));
-      if (inp) inp.value = "";
-      const pending = (r.data as { status?: string }).status !== "published";
-      toast(host, pending ? "Komentar terkirim dan menunggu moderasi." : "Komentar terkirim.", "ok");
+      if (inp) {
+        inp.value = "";
+        resetReply(inp);
+      }
+      const pending = (r.data as { status?: string }).status !== "visible";
+      toast(host, pending ? "Komentar terkirim dan menunggu moderasi." : parent ? "Balasan terkirim." : "Komentar terkirim.", "ok");
       router.refresh();
     });
 
@@ -513,7 +530,12 @@ export function reader(host: HTMLElement, { router }: Env): Cleanup {
   host.addEventListener("submit", onSubmit, true);
   offs.push(() => host.removeEventListener("submit", onSubmit, true));
 
+  const resetReply = (inp: HTMLInputElement) => {
+    delete inp.dataset.parent;
+    if (inp.dataset.ph) inp.placeholder = inp.dataset.ph;
+  };
   const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && e.target instanceof HTMLInputElement && e.target.dataset.parent) return resetReply(e.target);
     if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement)) return;
     if (e.target.matches('input[data-art="comment"][data-slug]') && !e.target.form) {
       e.preventDefault();

@@ -99,12 +99,16 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
       if (!logged) return router.push(login);
       const body = inp?.value.trim() ?? "";
       if (!body) return toast(host, "Tulis komentar terlebih dahulu.");
-      const r = await api("POST", `/api/v1/shorts/${id}/comments`, { body });
+      const parent = inp?.dataset.parent ?? "";
+      const r = await api("POST", `/api/v1/shorts/${id}/comments`, parent ? { body, parent_id: parent } : { body });
       if (needLogin(r)) return;
       if (!r.ok) return toast(host, why(r, "Komentar gagal dikirim."));
-      if (inp) inp.value = "";
+      if (inp) {
+        inp.value = "";
+        resetReply(inp);
+      }
       const pending = (r.data as { status?: string }).status !== "visible";
-      toast(host, pending ? "Komentar terkirim dan menunggu moderasi." : "Komentar terkirim.", "ok");
+      toast(host, pending ? "Komentar terkirim dan menunggu moderasi." : parent ? "Balasan terkirim." : "Komentar terkirim.", "ok");
       router.refresh();
     });
 
@@ -190,6 +194,19 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
       });
       return;
     }
+    // Balas komentar: kolom komentar masuk mode balasan (Esc untuk batal).
+    const rp = el('[data-sh="reply"]');
+    if (rp) {
+      stop();
+      if (!logged) return router.push(login);
+      const inp = host.querySelector<HTMLInputElement>('input[data-sh="comment"]');
+      if (!inp) return;
+      inp.dataset.parent = rp.dataset.id!;
+      inp.dataset.ph ??= inp.placeholder;
+      inp.placeholder = `Balas ${rp.dataset.name ?? "komentar"}… (Esc untuk batal)`;
+      inp.focus();
+      return;
+    }
     if (el('[data-sh="comment-send"]')) {
       stop();
       void postComment(host.querySelector<HTMLInputElement>('input[data-sh="comment"]'));
@@ -213,7 +230,12 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
   host.addEventListener("submit", onSubmit, true);
   offs.push(() => host.removeEventListener("submit", onSubmit, true));
 
+  function resetReply(inp: HTMLInputElement) {
+    delete inp.dataset.parent;
+    if (inp.dataset.ph) inp.placeholder = inp.dataset.ph;
+  }
   const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && e.target instanceof HTMLInputElement && e.target.dataset.parent) return resetReply(e.target);
     if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement) || !e.target.matches('input[data-sh="comment"]') || e.target.form) return;
     e.preventDefault();
     void postComment(e.target);

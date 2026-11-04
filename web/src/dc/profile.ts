@@ -6,6 +6,7 @@
 import type { Cleanup, Env } from "./enhancers";
 import { toast } from "./toast";
 import { applyDisplay, displayFromPrefs } from "@/lib/display-prefs";
+import { totpDialog } from "./totp-dialog";
 
 type Res = { ok: boolean; status: number; data: { detail?: string; title?: string; errors?: Record<string, string> } & Record<string, unknown> };
 
@@ -74,7 +75,8 @@ export function profile(host: HTMLElement, { router, ctx }: Env): Cleanup {
       /* abaikan */
     }
   }
-  let tfa = ctx.tfa === "1" ? 0 : 2;
+  // Indeks pilihan 2 langkah: 0 = email, 1 = aplikasi autentikator, 2 = mati.
+  let tfa = Number(ctx.tfa ?? 2);
   let lang = "";
   const onState = (e: Event) => {
     const st = ((e as CustomEvent).detail ?? {}) as { u?: Record<string, boolean[]>; o?: Record<string, number[]> };
@@ -86,12 +88,27 @@ export function profile(host: HTMLElement, { router, ctx }: Env): Cleanup {
     // Verifikasi 2 langkah (email) untuk pembaca.
     const t = st.o?.tfa?.[0];
     if (t != null && t !== tfa) {
-      if (t === 1) toast(host, "Aplikasi autentikator segera hadir. Gunakan verifikasi lewat email.");
-      else {
-        const on = t === 0;
-        void call("PATCH", "/api/me", { two_factor: on }).then((r) => toast(host, r.ok ? (on ? "Verifikasi 2 langkah aktif: kode dikirim ke email setiap masuk di perangkat baru." : "Verifikasi 2 langkah dimatikan.") : msg(r, "Gagal menyimpan."), r.ok ? "ok" : "error"));
-      }
+      const prev = tfa;
       tfa = t;
+      void (async () => {
+        // Keluar dari autentikator: konfirmasi dengan kode/kata sandi lebih dulu.
+        if (prev === 1 && !(await totpDialog("disable"))) {
+          tfa = prev;
+          return router.refresh();
+        }
+        if (t === 1) {
+          if (!(await totpDialog("enable"))) {
+            tfa = prev;
+            return router.refresh();
+          }
+          toast(host, "Aplikasi autentikator aktif: setiap masuk di perangkat baru, masukkan kode dari aplikasi.", "ok");
+          return router.refresh();
+        }
+        const on = t === 0;
+        const r = await call("PATCH", "/api/me", { two_factor: on });
+        toast(host, r.ok ? (on ? "Verifikasi 2 langkah aktif: kode dikirim ke email setiap masuk di perangkat baru." : "Verifikasi 2 langkah dimatikan.") : msg(r, "Gagal menyimpan."), r.ok ? "ok" : "error");
+        router.refresh();
+      })();
     }
     const s = JSON.stringify(prefs);
     if (s === last) return; // mis. lembar dibuka/ditutup tanpa perubahan

@@ -587,11 +587,19 @@ func (p *PG) Reactions(ctx context.Context, slug string) ([]ReactionCount, error
 	return out, rows.Err()
 }
 
+// Komentar utama terbaru (maks. $2) beserta balasannya (urut waktu); balasan memuat parent_id.
 const qComments = `
-SELECT cm.id, u.full_name, cm.body, cm.created_at
-FROM comments cm JOIN users u ON u.id = cm.user_id JOIN articles a ON a.id = cm.article_id
-WHERE a.slug = $1 AND cm.status = 'visible'
-ORDER BY cm.created_at DESC LIMIT $2`
+WITH top AS (
+  SELECT cm.id, cm.user_id, cm.body, cm.created_at, NULL::uuid AS parent_id
+  FROM comments cm JOIN articles a ON a.id = cm.article_id
+  WHERE a.slug = $1 AND cm.status = 'visible' AND cm.parent_id IS NULL
+  ORDER BY cm.created_at DESC LIMIT $2
+), rep AS (
+  SELECT cm.id, cm.user_id, cm.body, cm.created_at, cm.parent_id FROM comments cm JOIN top t ON cm.parent_id = t.id WHERE cm.status = 'visible'
+)
+SELECT x.id, u.full_name, x.body, x.created_at, COALESCE(x.parent_id::text, '')
+FROM (SELECT * FROM top UNION ALL SELECT * FROM rep) x JOIN users u ON u.id = x.user_id
+ORDER BY (x.parent_id IS NOT NULL), CASE WHEN x.parent_id IS NULL THEN x.created_at END DESC, x.created_at ASC`
 
 func (p *PG) Comments(ctx context.Context, slug string, limit int) ([]Comment, error) {
 	rows, err := p.DB.QueryContext(ctx, qComments, slug, limit)
@@ -602,7 +610,7 @@ func (p *PG) Comments(ctx context.Context, slug string, limit int) ([]Comment, e
 	out := []Comment{}
 	for rows.Next() {
 		var c Comment
-		if err := rows.Scan(&c.ID, &c.UserName, &c.Body, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserName, &c.Body, &c.CreatedAt, &c.ParentID); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -610,17 +618,22 @@ func (p *PG) Comments(ctx context.Context, slug string, limit int) ([]Comment, e
 	return out, rows.Err()
 }
 
+// Balasan diikat ke komentar utama (satu tingkat): membalas sebuah balasan = membalas induknya.
 const qAddComment = `
-WITH ins AS (
-  INSERT INTO comments (article_id, user_id, body, status, flag_reason)
-  SELECT a.id, $1, $3, $4::text, $5::text FROM articles a WHERE a.slug = $2 AND a.status = 'published'
-  RETURNING id, user_id, body, status, created_at
+WITH par AS (
+  SELECT COALESCE(p.parent_id, p.id) AS id FROM comments p JOIN articles a ON a.id = p.article_id
+  WHERE p.id = NULLIF($6::text, '')::uuid AND a.slug = $2 AND p.status = 'visible'
+), ins AS (
+  INSERT INTO comments (article_id, user_id, body, status, flag_reason, parent_id)
+  SELECT a.id, $1, $3, $4::text, $5::text, (SELECT id FROM par) FROM articles a
+  WHERE a.slug = $2 AND a.status = 'published' AND ($6::text = '' OR EXISTS (SELECT 1 FROM par))
+  RETURNING id, user_id, body, status, created_at, parent_id
 )
-SELECT ins.id, u.full_name, ins.body, ins.status, ins.created_at FROM ins JOIN users u ON u.id = ins.user_id`
+SELECT ins.id, u.full_name, ins.body, ins.status, ins.created_at, COALESCE(ins.parent_id::text, '') FROM ins JOIN users u ON u.id = ins.user_id`
 
-func (p *PG) AddComment(ctx context.Context, userID, slug, body, status, reason string) (Comment, error) {
+func (p *PG) AddComment(ctx context.Context, userID, slug, body, status, reason, parentID string) (Comment, error) {
 	var c Comment
-	err := p.DB.QueryRowContext(ctx, qAddComment, userID, slug, body, status, reason).Scan(&c.ID, &c.UserName, &c.Body, &c.Status, &c.CreatedAt)
+	err := p.DB.QueryRowContext(ctx, qAddComment, userID, slug, body, status, reason, parentID).Scan(&c.ID, &c.UserName, &c.Body, &c.Status, &c.CreatedAt, &c.ParentID)
 	return c, notFound(err)
 }
 
@@ -675,6 +688,15 @@ func AllQueries() map[string]string {
 		out[k] = v
 	}
 	for k, v := range journalQueries() {
+		out[k] = v
+	}
+	for k, v := range replyQueries() {
+		out[k] = v
+	}
+	for k, v := range privacyQueries() {
+		out[k] = v
+	}
+	for k, v := range totpQueries() {
 		out[k] = v
 	}
 	for k, v := range opsQueries() {

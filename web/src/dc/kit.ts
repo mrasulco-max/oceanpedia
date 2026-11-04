@@ -254,3 +254,10 @@ export function bindCoinLogos(html: string): string {
     return `<span data-coin="${sym}" style="${style}"><img src="${src}" alt="${sym}" width="100%" height="100%" style="display: block; width: 100%; height: 100%; object-fit: contain"></span>`;
   });
 }
+
+/** Komentar utama diikuti balasannya (satu tingkat). */
+export function threaded<T extends { id: string; parent_id?: string }>(list: T[]): { c: T; reply: boolean }[] {
+  const kids = new Map<string, T[]>();
+  for (const c of list) if (c.parent_id) kids.set(c.parent_id, [...(kids.get(c.parent_id) ?? []), c]);
+  return list.filter((c) => !c.parent_id).flatMap((c) => [{ c, reply: false }, ...(kids.get(c.id) ?? []).map((r) => ({ c: r, reply: true }))]);
+}

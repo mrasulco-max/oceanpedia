@@ -153,13 +153,9 @@ export function wire(host: HTMLElement, { router }: Env): Cleanup {
         stop();
         return login();
       }
-      void run(async () => {
-        const r = await api("POST", "/api/me/privacy-requests", { kind: pv.dataset.privacy });
-        if (r.status === 401) return login();
-        if (!r.ok && r.status !== 409) return toast(host, why(r, "Permintaan gagal dikirim."));
-        if (r.status === 409) toast(host, why(r, "Permintaan serupa sedang diproses."));
-      });
-      return;
+      // Unduh data & hapus akun kini mandiri di halaman Privasi & data.
+      stop();
+      return router.push("/akun/data");
     }
 
     // Hapus cache peramban (data offline & gambar).
