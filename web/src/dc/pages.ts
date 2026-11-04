@@ -44,7 +44,7 @@ export function bindFooter(html: string): string {
   if (fs < 0) return html;
   // Ikon media sosial (bar atas & footer) tanpa akun resmi → disembunyikan; kartu iklan native contoh → halaman Pasang iklan.
   html = html.replace(/<a href="#" aria-label="(Instagram|X|YouTube|LinkedIn|Facebook|TikTok)"[^>]*>[\s\S]*?<\/a>/g, "");
-  html = html.replace(/<a href="#"( style="[^"]*"><span style="[^"]*border: 1p[^"]*">(?:(?!<\/a>)[\s\S])*?>native<)/g, '<a href="/iklan"$1');
+  html = html.replace(/<a href="#"((?:(?!<\/?a\b)[\s\S])*?>native[\s<])/g, '<a href="/iklan"$1');
   const fs2 = html.lastIndexOf("<footer");
   let f = html.slice(fs2);
   // Kolom "Market" dulu (label Crypto/Forex/Komoditas juga ada di kolom Kategori).
