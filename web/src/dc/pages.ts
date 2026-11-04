@@ -19,7 +19,7 @@ import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArtic
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
-import { bindCryptoVolume, bindDataCredits, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
+import { bindCryptoVolume, bindDataCredits, bindMarketApp, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import { bindCoinLogos } from "./kit";
 import type { Candle, Quote } from "@/lib/types";
@@ -438,6 +438,11 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     title = "Kalender Ekonomi";
   } else {
     html = bindArticleCards(html, all);
+  }
+  if (path === "/market" && board.kind === "app") {
+    const ins = await safe(api.instruments(), { data: [] });
+    html = bindMarketApp(html, ins.data, quotes);
+    enhance.push("mkt");
   }
   html = bindSymbolLinks(html);
   html = bindQuotes(html, quotes);

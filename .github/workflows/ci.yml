@@ -489,6 +489,9 @@ jobs:
             curl -sf -b /tmp/pjar -X DELETE localhost:3000/api/v1/shorts/$SHID/like | jq -e '.liked == false'
             curl -sf -X POST -H 'Content-Type: application/json' localhost:3000/api/v1/shorts/$SHID/share -d '{"channel":"copy"}' | jq -e '.shares >= 1'
           fi
+          # Market aplikasi: tab Crypto/Forex/Komoditas berisi instrumen nyata (dengan logo).
+          curl -sf -A "$MOB" localhost:3000/market | grep -q 'href="/market/BTCUSD" data-mk-row data-mk-cls="1"'
+          curl -sf -A "$MOB" localhost:3000/market | grep -q 'data-mk-all'
           # Logo crypto & emas di lencana simbol.
           { curl -sf -A "$MOB" localhost:3000/watchlist; curl -sf -A "$DESK" localhost:3000/market; curl -sf -A "$DESK" localhost:3000/; } | grep -q 'src="/img/coins/'
           curl -sfI localhost:3000/img/coins/xau.webp | grep -qi 'content-type: image/webp'
