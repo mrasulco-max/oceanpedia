@@ -81,7 +81,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   if (!m) return {};
   const robots = m.route.admin ? { index: false, follow: false } : undefined;
   if (path.length === 0) {
-    const md = share("OceanBird — Berita & Data Pasar", "Berita dan data pasar saham IDX, komoditas, crypto, dan forex secara real-time.", "/", og("Berita & data pasar real-time untuk investor Indonesia", "OceanBird"));
+    const md = share("OceanBird — Berita & Data Pasar", "Berita dan data pasar saham AS, forex, komoditas, dan crypto secara real-time.", "/", og("Berita & data pasar real-time untuk investor Indonesia", "OceanBird"));
     return { ...md, title: { absolute: "OceanBird — Berita & Data Pasar" } };
   }
   try {

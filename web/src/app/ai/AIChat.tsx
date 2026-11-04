@@ -34,9 +34,9 @@ type Msg = { role: "user" | "assistant"; content: string; image?: string; chart?
 
 const SUGGEST = [
   "Bagaimana kondisi pasar hari ini?",
-  "Berita apa yang paling menggerakkan IHSG?",
+  "Saham AS mana yang paling bergerak hari ini?",
   "Analisis pergerakan Bitcoin minggu ini",
-  "Apa dampak kebijakan The Fed ke rupiah dan saham bank?",
+  "Apa dampak kebijakan The Fed ke EUR/USD dan saham teknologi AS?",
   "Aset mana yang paling naik dan turun hari ini?",
   "Tampilkan chart Bitcoin 3 bulan",
   "Kirim link berita terbaru tentang emas",
@@ -436,7 +436,7 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
           {preview ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <img src={preview} alt="Pratinjau chart" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 10, border: "1px solid #E3EAF4" }} />
-              <span style={{ flex: 1, fontSize: 13, color: "#5F6B7D" }}>Chart siap dianalisis. Tambahkan catatan (mis. &quot;BBCA 1H&quot;) bila perlu.</span>
+              <span style={{ flex: 1, fontSize: 13, color: "#5F6B7D" }}>Chart siap dianalisis. Tambahkan catatan (mis. &quot;EURUSD 1H&quot;) bila perlu.</span>
               <button type="button" onClick={() => { setFile(null); setPreview(null); }} aria-label="Batalkan gambar" style={{ border: 0, background: "#F6F8FC", width: 32, height: 32, borderRadius: 999, cursor: "pointer" }}>×</button>
             </div>
           ) : null}
