@@ -296,6 +296,7 @@ export const adminApi = {
   shortComments: (status = "") => adminGet<{ data: import("@/dc/newsroom-bind").ShortComment[] }>(`/short-comments?status=${encodeURIComponent(status)}&limit=100`),
   newsletter: (q = "") => adminGet<import("@/dc/newsroom-bind").NLState>(`/newsletter?q=${encodeURIComponent(q)}`),
   settings: () => adminGet<import("@/dc/newsroom-bind").SettingsState>("/settings"),
+  requests: (kind = "") => adminGet<{ data: import("@/dc/admin-wire-bind").AdminRequest[] }>(`/requests?kind=${encodeURIComponent(kind)}`),
   staff: () => adminGet<{ data: RbacState["staff"] }>(`/staff`),
   categories: (q = "") => adminGet<{ categories: AdminCategory[]; tags: AdminTag[]; tag_total: number; tag_unused: number }>(`/categories?q=${encodeURIComponent(q)}`),
   comments: (status: string) => adminGet<ModerationState>(`/comments?status=${encodeURIComponent(status)}&limit=100`),

@@ -327,6 +327,18 @@ type Store interface {
 	DeleteLivePost(ctx context.Context, id string) error
 	Shorts(ctx context.Context, all bool, limit int, uid string) ([]Short, error)
 	SavedShorts(ctx context.Context, uid string, limit int) ([]Short, error)
+	Follow(ctx context.Context, kind, uid, slug string, on bool) error
+	FollowStat(ctx context.Context, kind, slug, uid string) (int64, bool, error)
+	MyFollows(ctx context.Context, uid string) (map[string][]string, error)
+	AddAdInquiry(ctx context.Context, company, email, budget, message, uid string) (string, error)
+	AddStudentVerification(ctx context.Context, uid, campusEmail, studentID string) (string, error)
+	StudentStatus(ctx context.Context, uid string) (string, bool, error)
+	AddPrivacyRequest(ctx context.Context, uid, kind, detail string) (string, error)
+	Requests(ctx context.Context, kind string, limit int) ([]Request, error)
+	SetRequestStatus(ctx context.Context, kind, id, status, by, note string) (string, error)
+	PendingRequests(ctx context.Context) (int, error)
+	PublicStats(ctx context.Context) (map[string]int64, error)
+	AssignArticle(ctx context.Context, id, staffID string) (string, error)
 	ShortToggle(ctx context.Context, kind, id, uid string, on bool) (int64, error)
 	ShortShare(ctx context.Context, id string) (int64, error)
 	ShortComments(ctx context.Context, id, uid string, limit int) ([]ShortComment, error)

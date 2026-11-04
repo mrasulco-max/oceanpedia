@@ -229,6 +229,29 @@ jobs:
           curl -sf -X POST -H "$SU" "localhost:8080/v1/admin/live/$LIVE/end" | jq -e '.live.status == "ended"'
           curl -sf -X POST -H "$ED" -H 'Content-Type: application/json' localhost:8080/v1/admin/shorts -d '{"title":"IHSG dalam 60 detik","caption":"Ringkas","video_url":"https://cdn.example.com/a.mp4"}' | jq -e '.status == "published"'
           curl -sf localhost:8080/v1/shorts | jq -e '.data[0].title == "IHSG dalam 60 detik"'
+          # Ikuti kategori & penulis, permintaan iklan, verifikasi Student, permintaan data pribadi.
+          RB="Authorization: Bearer $TOKEN"
+          curl -sf -X PUT -H "$RB" localhost:8080/v1/me/categories/saham | jq -e '.following == true and .followers == 1'
+          curl -sf -X PUT -H "$RB" localhost:8080/v1/me/authors/maya-lestari | jq -e '.following == true and .followers == 1'
+          curl -sf localhost:8080/v1/follows/category/saham | jq -e '.followers == 1 and .following == false'
+          curl -sf -H "$RB" localhost:8080/v1/me/follows | jq -e '(.categories | index("saham")) != null and (.authors | index("maya-lestari")) != null'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "$RB" localhost:8080/v1/me/categories/tidak-ada); test "$code" = 404
+          curl -sf -X DELETE -H "$RB" localhost:8080/v1/me/authors/maya-lestari | jq -e '.following == false and .followers == 0'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' localhost:8080/v1/ads/inquiries -d '{"company":"PT Uji","email":"bukan"}'); test "$code" = 422
+          curl -sf -X POST -H 'Content-Type: application/json' localhost:8080/v1/ads/inquiries -d '{"company":"PT Uji Sekuritas","email":"sales@uji.co.id","budget":"Rp50 juta"}' | jq -e '.status == "new"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/billing/checkout -d '{"plan_code":"student","method":"qris"}'); test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/student -d '{"campus_email":"a@gmail.com","student_id":"12345"}'); test "$code" = 422
+          curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/student -d '{"campus_email":"budi@ui.ac.id","student_id":"2106123"}' | jq -e '.status == "pending"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/student -d '{"campus_email":"budi@ui.ac.id","student_id":"2106123"}'); test "$code" = 409
+          curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/privacy-requests -d '{"kind":"export"}' | jq -e '.status == "pending"'
+          REQS=$(curl -sf -H "$SU" localhost:8080/v1/admin/requests)
+          echo "$REQS" | jq -e '[.data[].kind] | (index("ad") != null) and (index("student") != null) and (index("privacy") != null)'
+          STID=$(echo "$REQS" | jq -r '[.data[] | select(.kind == "student")][0].id')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$SU" -H 'Content-Type: application/json' "localhost:8080/v1/admin/requests/student/$STID" -d '{"status":"approved"}'); test "$code" = 204
+          curl -sf -H "$RB" localhost:8080/v1/me/student | jq -e '.verified == true and .status == "approved"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/billing/checkout -d '{"plan_code":"student","method":"qris"}'); test "$code" = 201
+          curl -sf -H "$RB" "localhost:8080/v1/me/notifications?kind=account" | jq -e '[.data[].title] | index("Verifikasi Student disetujui") != null'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "$AU" localhost:8080/v1/admin/requests); test "$code" = 403
           # Ocean Short: suka, simpan, bagikan, komentar, moderasi.
           SH=$(curl -sf localhost:8080/v1/shorts | jq -r '.data[0].id')
           RB="Authorization: Bearer $TOKEN"
@@ -489,6 +512,19 @@ jobs:
             curl -sf -b /tmp/pjar -X DELETE localhost:3000/api/v1/shorts/$SHID/like | jq -e '.liked == false'
             curl -sf -X POST -H 'Content-Type: application/json' localhost:3000/api/v1/shorts/$SHID/share -d '{"channel":"copy"}' | jq -e '.shares >= 1'
           fi
+          # Fitur pembaca yang dulu tiruan desain: bagikan, ikuti, footer, bantuan, iklan, Student.
+          curl -sf -A "$MOB" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'data-share="wa"'
+          curl -sf -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'data-share="native"'
+          curl -sf -A "$DESK" localhost:3000/kategori/saham | grep -q 'data-follow="category:saham"'
+          curl -sf -A "$MOB" localhost:3000/kategori/saham | grep -q 'data-follow="category:saham"'
+          curl -sf -A "$DESK" localhost:3000/penulis/maya-lestari | grep -q 'data-follow="author:maya-lestari"'
+          curl -sf -A "$DESK" localhost:3000/screener | grep -q 'href="/kategori/komoditas"'
+          ! curl -sf -A "$DESK" localhost:3000/screener | grep -q 'class="wl" href="#">Tentang kami'
+          curl -sf -A "$DESK" localhost:3000/bantuan | grep -q 'data-faq-q'
+          curl -sf -A "$DESK" localhost:3000/iklan | grep -q 'data-adq="submit"'
+          curl -sfI localhost:3000/media-kit-oceanbird.pdf | grep -qi 'application/pdf'
+          curl -sf -A "$MOB" -b /tmp/pjar localhost:3000/plus | grep -q 'data-student="submit"'
+          curl -sf -X POST -H 'Content-Type: application/json' localhost:3000/api/v1/ads/inquiries -d '{"company":"PT Web Uji","email":"web@uji.co.id"}' | jq -e '.status == "new"'
           # Market aplikasi: tab Crypto/Forex/Komoditas berisi instrumen nyata (dengan logo).
           curl -sf -A "$MOB" localhost:3000/market | grep -q 'href="/market/BTCUSD" data-mk-row data-mk-cls="1"'
           curl -sf -A "$MOB" localhost:3000/market | grep -q 'data-mk-all'

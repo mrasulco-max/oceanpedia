@@ -106,13 +106,16 @@ func (s *Server) adminFeed(w http.ResponseWriter, r *http.Request) error {
 		items = append(items, FeedItem{Kind: "content", Title: a.Title + " menunggu review", Body: a.AuthorName + " mengirim artikel " + a.CategoryName + ".", Action: "Review sekarang", Href: "/admin/tulis?id=" + a.ID, Urgent: true, At: a.UpdatedAt})
 	}
 	if d.ReportsPending > 0 {
-		items = append(items, FeedItem{Kind: "comments", Title: fmt.Sprintf("%d komentar dilaporkan", d.ReportsPending), Body: "Laporan pembaca menunggu moderasi.", Action: "Buka moderasi", Href: "/admin/komentar?tab=reported", Urgent: true, At: now})
+		items = append(items, FeedItem{Kind: "comments", Title: fmt.Sprintf("%d komentar dilaporkan", d.ReportsPending), Body: "Laporan pembaca menunggu moderasi.", Action: "Buka moderasi", Href: "/admin/komentar?status=flagged", Urgent: true, At: now})
 	}
 	if d.CommentsPending > 0 {
-		items = append(items, FeedItem{Kind: "comments", Title: fmt.Sprintf("%d komentar menunggu persetujuan", d.CommentsPending), Body: "Komentar ditahan filter moderasi.", Action: "Buka moderasi", Href: "/admin/komentar", At: now})
+		items = append(items, FeedItem{Kind: "comments", Title: fmt.Sprintf("%d komentar menunggu persetujuan", d.CommentsPending), Body: "Komentar ditahan filter moderasi.", Action: "Buka moderasi", Href: "/admin/komentar?status=pending", At: now})
 	}
 	if d.CampaignsReview > 0 && can(r, "ads.manage") {
 		items = append(items, FeedItem{Kind: "ads", Title: fmt.Sprintf("%d kampanye iklan menunggu verifikasi", d.CampaignsReview), Body: "Periksa dokumen & materi sebelum tayang.", Action: "Verifikasi", Href: "/admin/iklan", Urgent: true, At: now})
+	}
+	if n, err := s.Store.PendingRequests(r.Context()); err == nil && n > 0 {
+		items = append(items, FeedItem{Kind: "users", Title: fmt.Sprintf("%d permintaan masuk menunggu tindakan", n), Body: "Verifikasi Student, permintaan data pribadi, atau kerja sama iklan.", Action: "Buka permintaan", Href: "/admin/pengguna?tab=permintaan", Urgent: true, At: now})
 	}
 	if d.MarketErrors > 0 {
 		items = append(items, FeedItem{Kind: "market", Title: fmt.Sprintf("%d error penyedia data hari ini", d.MarketErrors), Body: fmt.Sprintf("%d panggilan · rata-rata latensi %.0f ms.", d.MarketCalls, d.MarketLatencyMS), Action: "Buka Data Pasar", Href: "/admin/pasar", At: now})

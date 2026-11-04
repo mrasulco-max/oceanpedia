@@ -138,6 +138,61 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
       });
       return;
     }
+    // ------------------------------------------------------------ permintaan masuk (Student, data pribadi, iklan)
+    const rq = t.closest<HTMLElement>("[data-req]");
+    if (rq) {
+      stop(e);
+      const st = rq.dataset.status!;
+      if ((st === "rejected" || st === "lost") && !armed(rq, "Yakin?")) return;
+      const note = st === "rejected" ? window.prompt("Alasan (opsional, dikirim ke pemohon):")?.trim() ?? "" : "";
+      await run(async () => {
+        const r = await call("POST", `requests/${rq.dataset.req}/${rq.dataset.id}`, { status: st, note });
+        done(r.ok, r.data, "Permintaan diperbarui. Pemohon mendapat notifikasi.", "Gagal memperbarui permintaan.");
+      });
+      return;
+    }
+    // ------------------------------------------------------------ konten: ekspor CSV
+    const ex = t.closest<HTMLElement>("[data-cnt-export]");
+    if (ex) {
+      stop(e);
+      await run(async () => {
+        const r = await call("GET", `articles?status=${encodeURIComponent(ex.dataset.cntExport ?? "")}&limit=100`);
+        if (!r.ok) return void toast(host, msg(r.data, "Gagal mengambil data."));
+        const rows = ((r.data as { data?: Record<string, unknown>[] }).data ?? []) as Record<string, unknown>[];
+        const cols = ["title", "status", "category_name", "author_name", "is_breaking", "is_premium", "view_count", "published_at", "updated_at", "slug"];
+        const q = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+        const csv = [cols.join(","), ...rows.map((x) => cols.map((c) => q(x[c])).join(","))].join("\r\n");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+        a.download = `konten-${ex.dataset.cntExport || "semua"}-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        toast(host, `${rows.length} artikel diekspor.`, "ok");
+      });
+      return;
+    }
+    // ------------------------------------------------------------ live blog: sisipkan blok ke isi pembaruan
+    const ins = t.closest<HTMLElement>("[data-live-insert]");
+    if (ins) {
+      stop(e);
+      const ta = host.querySelector<HTMLTextAreaElement>('textarea[data-live="body"]');
+      if (!ta) return;
+      let add = "";
+      if (ins.dataset.liveInsert === "harga") {
+        const sym = window.prompt("Simbol harga (mis. IHSG, BBCA, BTCUSD):")?.trim().toUpperCase();
+        if (!sym) return;
+        add = `[harga:${sym}]`;
+      } else if (ins.dataset.liveInsert === "kutipan") {
+        const q = window.prompt("Kutipan narasumber:")?.trim();
+        if (!q) return;
+        const who = window.prompt("Nama narasumber:")?.trim() ?? "";
+        add = `> “${q}”${who ? ` — ${who}` : ""}`;
+      } else add = "- ";
+      ta.value = (ta.value.trim() ? ta.value.trimEnd() + "\n" : "") + add;
+      ta.focus();
+      return;
+    }
     // ------------------------------------------------------------ newsletter
     const nl = t.closest<HTMLElement>("[data-nl]");
     if (nl && (nl.dataset.nl === "save" || nl.dataset.nl === "save-send" || nl.dataset.nl === "send")) {
@@ -159,6 +214,26 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
   });
   // Unggah sampul short → isi URL sampul.
   const onChange = async (e: Event) => {
+    // Konten: saring baris per kategori/penulis & tugaskan editor.
+    const sel = e.target instanceof HTMLSelectElement ? e.target : null;
+    if (sel?.matches("[data-cnt-filter]")) {
+      const cat = host.querySelector<HTMLSelectElement>('[data-cnt-filter="cat"]')?.value ?? "";
+      const au = host.querySelector<HTMLSelectElement>('[data-cnt-filter="author"]')?.value ?? "";
+      host.querySelectorAll<HTMLElement>("[data-row]").forEach((r) => {
+        r.style.display = (!cat || r.dataset.cat === cat) && (!au || r.dataset.author === au) ? "" : "none";
+      });
+      return;
+    }
+    if (sel?.matches("[data-cnt-assign]") && sel.value) {
+      const name = sel.selectedOptions[0]?.textContent ?? "";
+      const r = await call("POST", `articles/${sel.dataset.cntAssign}/assign`, { user_id: sel.value });
+      if (!r.ok) {
+        sel.value = "";
+        return toast(host, msg(r.data, "Gagal menugaskan."));
+      }
+      toast(host, `Ditugaskan ke ${name.split(" · ")[0]}. Notifikasi terkirim.`, "ok");
+      return;
+    }
     const f = e.target instanceof HTMLInputElement && e.target.matches('[data-shf="cover-file"]') ? e.target : null;
     const file = f?.files?.[0];
     if (!f || !file) return;
