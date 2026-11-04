@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { currentUser, hasPlus } from "@/lib/session";
 import AIChat from "./AIChat";
 
-export const metadata: Metadata = { title: "Asisten AI", robots: { index: false } };
+export const metadata: Metadata = { title: "Aurora AI", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -18,7 +18,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       <main style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "#F6F8FC", fontFamily: "Roboto, Arial, sans-serif", color: "#0B0B0F" }}>
         <div style={{ maxWidth: 440, width: "100%", background: "#FFFFFF", border: "1px solid #E3EAF4", borderRadius: 28, padding: 28, display: "flex", flexDirection: "column", gap: 14, textAlign: "center" }}>
           <span style={{ alignSelf: "center", width: 56, height: 56, borderRadius: 18, background: "linear-gradient(110deg,#2563EB,#4285F4,#63A4FA)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>✦</span>
-          <h1 style={{ margin: 0, fontSize: 24 }}>Asisten AI khusus Plus</h1>
+          <h1 style={{ margin: 0, fontSize: 24 }}>Aurora AI khusus Plus</h1>
           <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: "#5F6B7D" }}>
             Ngobrol tentang semua berita & pergerakan pasar, dan unggah gambar chart untuk dianalisis support, resistance, pola, serta skenarionya.
           </p>

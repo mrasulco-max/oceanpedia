@@ -18,9 +18,9 @@ import (
 
 func aiUnavailable(err error) error {
 	if errors.Is(err, ai.ErrDisabled) {
-		return &httpx.Problem{Type: "about:blank", Title: "Analisis AI belum aktif", Status: 503}
+		return &httpx.Problem{Type: "about:blank", Title: "Aurora AI belum aktif", Status: 503}
 	}
-	return &httpx.Problem{Type: "about:blank", Title: "Analisis AI sedang sibuk", Status: 503, Detail: "Coba lagi sebentar lagi."}
+	return &httpx.Problem{Type: "about:blank", Title: "Aurora AI sedang sibuk", Status: 503, Detail: "Coba lagi sebentar lagi."}
 }
 
 // GET /v1/articles/{slug}/ai — Analisis AI sebuah berita (dibuat sekali per versi isi, lalu disimpan).
@@ -164,9 +164,9 @@ func needPlus(r *http.Request) error {
 		return nil
 	}
 	if uid(r) == "" {
-		return httpx.Unauthorized("Masuk dengan akun Ocean Pedia Plus untuk membuka Analisis AI.")
+		return httpx.Unauthorized("Masuk dengan akun Ocean Pedia Plus untuk membuka Aurora AI.")
 	}
-	return httpx.Forbidden("Analisis AI khusus pelanggan Ocean Pedia Plus.")
+	return httpx.Forbidden("Aurora AI khusus pelanggan Ocean Pedia Plus.")
 }
 
 // ======================================================================= Asisten AI (percakapan) & analisis chart
@@ -226,6 +226,14 @@ func isAlnum(b byte) bool {
 }
 
 func (s *Server) marketContext(ctx context.Context, question string) string {
+	text, _ := s.marketContextRefs(ctx, question, "")
+	return text
+}
+
+// marketContextRefs seperti marketContext, plus daftar berita (untuk tautan) & instrumen yang disebut.
+// focusHint: teks tambahan (mis. pesan pengguna sebelumnya) untuk menebak instrumen bila pertanyaan tidak menyebutnya.
+func (s *Server) marketContextRefs(ctx context.Context, question, focusHint string) (string, chatRefs) {
+	refs := chatRefs{Articles: map[string]store.ArticleCard{}}
 	var sb strings.Builder
 	ins, _ := s.Store.Instruments(ctx, nil)
 	q := strings.ToUpper(question)
@@ -255,6 +263,15 @@ func (s *Server) marketContext(ctx context.Context, question string) string {
 			focus = append(focus, in)
 		}
 	}
+	if len(focus) == 0 && focusHint != "" {
+		hq := strings.ToUpper(focusHint)
+		for _, in := range ins {
+			if len(focus) < 2 && mentions(hq, in) {
+				focus = append(focus, in)
+			}
+		}
+	}
+	refs.Focus = focus
 	wg.Wait()
 	for _, r := range rows {
 		if r.q == nil {
@@ -278,7 +295,8 @@ func (s *Server) marketContext(ctx context.Context, question string) string {
 	seen := map[string]bool{}
 	for _, a := range latest {
 		seen[a.Slug] = true
-		fmt.Fprintf(&sb, "- [%s · %s] %s — %s\n", a.Category.Name, a.PublishedAt.In(jakarta).Format("2 Jan 15:04"), a.Title, plainCut(a.Excerpt, 220))
+		refs.Articles[a.Slug] = a
+		fmt.Fprintf(&sb, "- [%s · %s] %s — %s (URL: /berita/%s)\n", a.Category.Name, a.PublishedAt.In(jakarta).Format("2 Jan 15:04"), a.Title, plainCut(a.Excerpt, 220), a.Slug)
 	}
 	// Berita yang cocok dengan kata kunci pertanyaan / instrumen yang disebut.
 	terms := []string{}
@@ -302,10 +320,12 @@ func (s *Server) marketContext(ctx context.Context, question string) string {
 				continue
 			}
 			seen[a.Slug] = true
-			fmt.Fprintf(&sb, "- [%s · %s] %s — %s\n", a.Category.Name, a.PublishedAt.In(jakarta).Format("2 Jan 15:04"), a.Title, plainCut(a.Excerpt, 220))
+			refs.Articles[a.Slug] = a
+			refs.Matched = append(refs.Matched, a)
+			fmt.Fprintf(&sb, "- [%s · %s] %s — %s (URL: /berita/%s)\n", a.Category.Name, a.PublishedAt.In(jakarta).Format("2 Jan 15:04"), a.Title, plainCut(a.Excerpt, 220), a.Slug)
 		}
 	}
-	return sb.String()
+	return sb.String(), refs
 }
 
 func plainCut(s string, n int) string {
@@ -360,14 +380,22 @@ func (s *Server) aiChat(w http.ResponseWriter, r *http.Request) error {
 	if !s.AI.Enabled() {
 		return aiUnavailable(ai.ErrDisabled)
 	}
-	ctxText := s.marketContext(ctx, last)
+	// Pesan pengguna sebelumnya membantu menebak instrumen untuk permintaan lanjutan ("tampilkan chartnya").
+	hint := ""
+	for i := len(in.Messages) - 2; i >= 0 && i >= len(in.Messages)-6; i-- {
+		hint += " " + in.Messages[i].Content
+	}
+	ctxText, refs := s.marketContextRefs(ctx, last, hint)
+	charts := s.chatCharts(ctx, last, refs.Focus)
+	ctxText += chartsContext(charts, chartIntent(last))
 	ans, model, err := s.AI.Chat(ctx, ctxText, turns)
 	if err != nil {
-		s.Log.Warn("asisten AI gagal", "err", err)
+		s.Log.Warn("Aurora AI gagal", "err", err)
 		return aiUnavailable(err)
 	}
+	ans, links := chatLinks(ans, refs, wantsLinks(last))
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.JSON(w, 200, map[string]string{"answer": ans, "model": model})
+	httpx.JSON(w, 200, map[string]any{"answer": ans, "model": model, "links": links, "charts": charts})
 	return nil
 }
 

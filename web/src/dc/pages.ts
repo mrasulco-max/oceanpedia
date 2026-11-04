@@ -31,11 +31,28 @@ import { currentOrigin } from "@/lib/origin";
 import { parseDisplay } from "@/lib/display-prefs";
 import { cookies } from "next/headers";
 
-/** Tombol melayang "Asisten AI" (khusus Plus) di halaman yang paling sering dibuka. */
+/**
+ * Nama asisten AI: "Aurora AI". Teks desain ("Analisis AI", "Asisten AI", "Tanya AI") diganti hanya pada teks
+ * yang terlihat & placeholder — atribut lain (aria-label yang dipakai enhancer sebagai penanda) tetap.
+ */
+export function auroraText(s: string): string {
+  const swap = (t: string) =>
+    t
+      .replace(/\bAsisten AI\b/g, "Aurora AI")
+      .replace(/\bAnalisis AI\b/g, "Analisis Aurora AI")
+      .replace(/\bTanya AI\b/g, "Tanya Aurora AI")
+      .replace(/\banalisis AI\b/g, "analisis Aurora AI");
+  if (!s.includes("<")) return swap(s);
+  return s
+    .replace(/>([^<]*)</g, (_m, t: string) => `>${swap(t)}<`)
+    .replace(/(placeholder|title)="([^"]*)"/g, (_m, k: string, v: string) => `${k}="${swap(v)}"`);
+}
+
+/** Tombol melayang "Aurora AI" (khusus Plus) di halaman yang paling sering dibuka. */
 const AI_FAB_PATHS = new Set(["/", "/market", "/market/[symbol]", "/berita/[slug]", "/watchlist"]);
 function aiFab(app: boolean): string {
   const bottom = app ? "calc(92px + env(safe-area-inset-bottom))" : "24px";
-  return `<a href="/ai" data-ai-fab aria-label="Buka Asisten AI" style="position: fixed; right: 16px; bottom: ${bottom}; z-index: 40; display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 999px; background: linear-gradient(110deg,#2563EB 0%,#4285F4 50%,#2563EB 100%); color: #FFFFFF; font-size: 14px; font-weight: 500; text-decoration: none; box-shadow: 0 8px 24px rgba(37,99,235,.35)"><span aria-hidden="true">✦</span>Asisten AI</a>`;
+  return `<a href="/ai" data-ai-fab aria-label="Buka Aurora AI" style="position: fixed; right: 16px; bottom: ${bottom}; z-index: 40; display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 999px; background: linear-gradient(110deg,#2563EB 0%,#4285F4 50%,#2563EB 100%); color: #FFFFFF; font-size: 14px; font-weight: 500; text-decoration: none; box-shadow: 0 8px 24px rgba(37,99,235,.35)"><span aria-hidden="true">✦</span>Aurora AI</a>`;
 }
 
 /** Footer web: semua tautan menuju halaman nyata; ikon media sosial tanpa akun resmi disembunyikan. */
@@ -840,5 +857,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const n = (pend?.data ?? []).filter((x) => (boardId === "admin-ads" || x.kind !== "ad") && (x.status === "new" || x.status === "pending")).length;
     html = html.replace(/(<span style="margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px">)/, `$1<a href="/admin/${boardId === "admin-ads" ? "iklan" : "pengguna"}?tab=permintaan" style="min-height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-radius: 999px; border: 1px solid ${n ? "#FB7A3C" : "#E3EBF7"}; background: #FFFFFF; color: #0B0B0F; font-size: 14px; font-weight: 500">Permintaan masuk${n ? ` <span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #FB7A3C; color: #FFFFFF; font-size: 12px; display: inline-flex; align-items: center; justify-content: center">${n}</span>` : ""}</a>`);
   }
+  html = auroraText(html);
+  title = auroraText(title);
   return { board, boardId, html, title, description, enhance, ctx };
 }

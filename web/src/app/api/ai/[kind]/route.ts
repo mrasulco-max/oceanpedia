@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ kin
   if (kind !== "ask" && kind !== "chat" && kind !== "chart") return NextResponse.json({ title: "Tidak ditemukan" }, { status: 404 });
   const token = (await cookies()).get("ob_at")?.value;
   if (!token) {
-    return NextResponse.json({ type: "about:blank", title: "Perlu masuk", status: 401, detail: "Masuk dulu untuk bertanya ke AI." }, { status: 401 });
+    return NextResponse.json({ type: "about:blank", title: "Perlu masuk", status: 401, detail: "Masuk dulu untuk bertanya ke Aurora AI." }, { status: 401 });
   }
   // chart: unggahan multipart diteruskan apa adanya (gambar tidak disimpan).
   const isForm = kind === "chart";
