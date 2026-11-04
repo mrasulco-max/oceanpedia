@@ -577,7 +577,7 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     if (!app) {
       const player = shortPlayer(cur.id, md, false);
       if (player) h = h.replace(/<span style="position: absolute; left: 50%; top: 45%; transform: translate\(-50%, -50%\);[^"]*">▶<\/span>/, player);
-      if (md.poster) h = h.replace(/src="\/img\/news-1\.jpg"/, `src="${esc(md.poster)}"`);
+      h = h.replace(/<img src="\/img\/news-1\.jpg"([^>]*border-radius: 28px[^>]*)>/, (_m, rest: string) => shortThumb(cur, rest));
     } else {
       // Aplikasi: video layar penuh menggantikan gambar contoh; tombol putar & progres nyata.
       const player = shortPlayer(cur.id, md, true);
@@ -598,7 +598,12 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
   }
   const id = cur?.id ?? "";
   const n = (k: "likes" | "comments", v: number) => `<span data-sh-n="${k}">${compact(v)}</span>`;
-  const meta = `<span data-sh-meta hidden data-id="${esc(id)}" data-url="${esc(url)}" data-title="${esc(cur?.title ?? "Ocean Short")}" data-logged="${sc.loggedIn ? 1 : 0}" data-login="${esc(login)}" data-liked="${cur?.liked ? 1 : 0}" data-saved="${cur?.saved ? 1 : 0}" data-likes="${cur?.likes ?? 0}" data-comments="${cur?.comments ?? 0}"></span>`;
+  // Geser atas/bawah ala Reels: video sebelumnya & berikutnya dalam urutan daftar.
+  const ix = cur ? list.findIndex((x) => x.id === cur.id) : -1;
+  const prevId = ix > 0 ? list[ix - 1]!.id : "";
+  const nextId = ix >= 0 && ix < list.length - 1 ? list[ix + 1]!.id : "";
+  const nextVid = nextId ? shortMedia(list[ix + 1]!.video_url, null) : null;
+  const meta = `<span data-sh-meta hidden data-prev="${esc(prevId)}" data-next="${esc(nextId)}" data-app="${app ? 1 : 0}"${nextVid?.kind === "file" ? ` data-next-src="${esc(nextVid.src)}"` : ""} data-id="${esc(id)}" data-url="${esc(url)}" data-title="${esc(cur?.title ?? "Ocean Short")}" data-logged="${sc.loggedIn ? 1 : 0}" data-login="${esc(login)}" data-liked="${cur?.liked ? 1 : 0}" data-saved="${cur?.saved ? 1 : 0}" data-likes="${cur?.likes ?? 0}" data-comments="${cur?.comments ?? 0}"></span>`;
   h = h.replace(/>Maya Lestari</g, ">Redaksi OceanBird<").replace(/>ML</, ">OB<").replace(/>Analis Saham</, ">Ocean Short<");
   const rest = list.filter((x) => x.id !== cur?.id);
   if (!app) {
@@ -618,13 +623,13 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     const nx = blocks(h, '<a href="#" style="display: flex; gap: 12px; align-items: center">', "a");
     if (nx.length) {
       const tpl = nx[0]!.html;
-      const built = rest.slice(0, 3).map((s) => tpl.replace('href="#"', `href="/short?v=${s.id}"`).replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`).replace(/(<span style="font-size: 12px; color: #5F6B7D">)[^<]*(<)/, `$1${dur(s.duration_s)} · ${compact(s.views)}$2`).replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/, (m, rest: string) => shortThumb(s, rest) ?? m)).join("");
+      const built = rest.slice(0, 3).map((s) => tpl.replace('href="#"', `href="/short?v=${s.id}"`).replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`).replace(/(<span style="font-size: 12px; color: #5F6B7D">)[^<]*(<)/, `$1${dur(s.duration_s)} · ${compact(s.views)}$2`).replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/, (_m, rest: string) => shortThumb(s, rest))).join("");
       h = h.slice(0, nx[0]!.start) + (built || '<span style="font-size: 13px; color: #5F6B7D">Belum ada video lain.</span>') + h.slice(nx[nx.length - 1]!.end);
     }
     const more = blocks(h, '<a href="#" style="position: relative; height: 340px;', "a");
     if (more.length) {
       const tpl = more[0]!.html;
-      const built = rest.slice(3, 11).map((s) => tpl.replace('href="#"', `href="/short?v=${s.id}"`).replace(/>▶ \d:\d\d</, `>▶ ${dur(s.duration_s)}<`).replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`).replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/, (m, rest: string) => shortThumb(s, rest) ?? m)).join("");
+      const built = rest.slice(3, 11).map((s) => tpl.replace('href="#"', `href="/short?v=${s.id}"`).replace(/>▶ \d:\d\d</, `>▶ ${dur(s.duration_s)}<`).replace(/(<strong[^>]*>)[^<]*(<\/strong>)/, `$1${esc(s.title)}$2`).replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/, (_m, rest: string) => shortThumb(s, rest))).join("");
       h = h.slice(0, more[0]!.start) + built + h.slice(more[more.length - 1]!.end);
       if (!built) h = h.replace(/<h2([^>]*)>Lainnya<\/h2>/, "<h2$1></h2>");
     }
@@ -644,6 +649,15 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     h = h.replace(/<button aria-label="Kirim komentar" onClick="\{\{ f5 \}\}"/, '<button aria-label="Kirim komentar" data-sh="comment-send" onClick="{{ f5 }}"');
     h = h.replace(/<a href="\/penulis\/maya-lestari"[^>]*>[\s\S]*?<\/a>/, "");
     h = h.replace(/<span style="display: flex; gap: 8px"><a href="\/market\/BBCA"[\s\S]*?<\/span>/, cur?.symbol ? `<span style="display: flex; gap: 8px"><a href="/market/${encodeURIComponent(cur.symbol)}" style="padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 12px; font-weight: 500">${esc(cur.symbol)}</a></span>` : "");
+  }
+  // Data contoh desain: tab kategori (tidak berfungsi) & foto contoh tanpa video.
+  h = h.replace(/<div style="margin: 20px 0"><div role="tablist" class="ob-scroll"[^>]*>[\s\S]*?<\/div><\/div>/, "");
+  h = h.replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/g, (_m, rest: string) => `<span aria-hidden="true" style="${/style="([^"]*)"/.exec(rest)?.[1] ?? ""}; background: linear-gradient(160deg, #1E293B, #0B0B0F)"></span>`);
+  if (app && cur) {
+    // Tombol geser (juga untuk pemutar platform yang menahan sentuhan): ▲ sebelumnya / ▼ berikutnya.
+    const nav = (dir: "prev" | "next", id2: string) => (id2 ? `<a href="/short?v=${esc(id2)}" data-sh-nav="${dir}" aria-label="${dir === "prev" ? "Video sebelumnya" : "Video berikutnya"}" style="width: 40px; height: 40px; border-radius: 999px; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; color: #FFFFFF"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir === "prev" ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"}"/></svg></a>` : "");
+    const pair = nav("prev", prevId) + nav("next", nextId);
+    if (pair) h = h.replace(/<span style="width: 40px"><\/span><\/div>/, `<span style="width: 40px"></span></div><div data-sh-navs style="position: absolute; right: 14px; top: 76px; z-index: 3; display: flex; flex-direction: column; gap: 8px">${pair}</div>`);
   }
   return meta + h;
 }
@@ -690,11 +704,13 @@ export function shortsAdminPanel(list: ShortRow[], comments: ShortComment[], fil
 }
 
 /** Gambar kecil Short di daftar: sampul, thumbnail platform, atau bingkai pertama video unggahan. */
-function shortThumb(s: { video_url: string | null; cover_url: string | null }, rest: string): string | null {
+function shortThumb(s: { video_url: string | null; cover_url: string | null }, rest: string): string {
   const md = shortMedia(s.video_url, s.cover_url);
   if (md.poster) return `<img src="${esc(md.poster)}"${rest}>`;
   if (md.kind === "file") return `<video src="${esc(md.src.includes("#") ? md.src : `${md.src}#t=0.1`)}" muted playsinline preload="metadata" aria-hidden="true"${rest.replace(/\s?alt="[^"]*"/, "")}></video>`;
-  return null;
+  // Tanpa sampul: blok gelap polos (bukan foto contoh).
+  const st = /style="([^"]*)"/.exec(rest)?.[1] ?? "position: absolute; inset: 0; width: 100%; height: 100%";
+  return `<span aria-hidden="true" style="${st}; background: linear-gradient(160deg, #1E293B, #0B0B0F)"></span>`;
 }
 
 /** Pemutar Short: <video> untuk berkas langsung, iframe pemutar resmi untuk YouTube/TikTok/Instagram/Vimeo dll. */
