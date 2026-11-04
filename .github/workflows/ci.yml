@@ -276,6 +276,11 @@ jobs:
           # Lot: emas 0,01 lot (100 oz/lot) 4000 → 4010 = 10 USD; EURUSD 0,1 lot +50 pip = 50 USD.
           curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"XAUUSD","market":"komoditas","side":"long","currency":"USD","entry_price":4000,"quantity":0.01,"take_profit":4010,"exit_price":4010}' | jq -e '.pnl == 10 and .contract_size == 100'
           curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"EURUSD","market":"forex","side":"long","currency":"USD","entry_price":1.1,"quantity":0.1,"exit_price":1.105}' | jq -e '(.pnl - 50 | fabs) < 0.000001 and .contract_size == 100000'
+          # Konversi mata uang: akun IDR dengan kurs tetap broker Rp10.000/USD; kurs pasar disimpan saat ditutup.
+          curl -sf -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"XAUUSD","market":"komoditas","side":"long","currency":"IDR","entry_price":4000,"quantity":0.01,"exit_price":4010,"fx_rate":10000}' | jq -e '.pnl == 100000 and .quote_currency == "USD" and .fx_source == "manual"'
+          R=$(curl -s -X POST -H "$RB" -H 'Content-Type: application/json' localhost:8080/v1/me/journal -d '{"symbol":"XAUUSD","market":"komoditas","side":"long","currency":"IDR","entry_price":4000,"quantity":0.01,"exit_price":4010}')
+          echo "$R" | jq -e '(.fx_source == "market" and .fx_rate > 1000 and (.pnl - (10 * .fx_rate) | fabs) < 0.01) or (.errors.fx_rate != null)'
+          curl -sf -H "$RB" localhost:8080/v1/me/journal | jq -e 'has("rates") and has("totals")'
           REQS=$(curl -sf -H "$SU" localhost:8080/v1/admin/requests)
           echo "$REQS" | jq -e '[.data[].kind] | (index("ad") != null) and (index("student") != null) and (index("privacy") != null)'
           STID=$(echo "$REQS" | jq -r '[.data[] | select(.kind == "student")][0].id')
