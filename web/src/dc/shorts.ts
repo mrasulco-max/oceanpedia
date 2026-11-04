@@ -92,6 +92,54 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
   offs.push(() => host.removeEventListener("dc:state", apply));
   apply();
 
+  // Pemutar aplikasi (layar penuh): ketuk untuk putar/jeda, progres & waktu nyata, pesan bila format tak didukung.
+  const mmss = (t: number) => (Number.isFinite(t) && t > 0 ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}` : "0:00");
+  const vid = () => host.querySelector<HTMLVideoElement>("video[data-short]");
+  const sync = () => {
+    const v = vid();
+    if (!v) return;
+    const btn = host.querySelector<HTMLElement>("[data-sh-play]");
+    if (btn) {
+      btn.style.opacity = v.paused ? "1" : "0";
+      btn.style.pointerEvents = v.paused ? "auto" : "none";
+      btn.setAttribute("aria-label", v.paused ? "Putar video" : "Jeda video");
+    }
+    const pct = v.duration > 0 ? (v.currentTime / v.duration) * 100 : 0;
+    const bar = host.querySelector<HTMLElement>("[data-sh-bar]");
+    if (bar) bar.style.width = `${pct}%`;
+    const prog = host.querySelector<HTMLElement>("[data-sh-prog]");
+    if (prog) {
+      prog.setAttribute("aria-valuenow", String(Math.round(pct)));
+      const time = prog.nextElementSibling as HTMLElement | null;
+      if (time && v.duration > 0) time.textContent = `${mmss(v.currentTime)} / ${mmss(v.duration)}`;
+    }
+  };
+  const onMedia = (e: Event) => {
+    if (!(e.target instanceof HTMLVideoElement) || !e.target.matches("video[data-short]")) return;
+    if (e.type === "error") {
+      const v = e.target;
+      if (v.dataset.failed) return;
+      v.dataset.failed = "1";
+      const note = document.createElement("div");
+      note.setAttribute("role", "alert");
+      note.style.cssText = "position: absolute; left: 24px; right: 24px; top: 40%; z-index: 3; padding: 14px 16px; border-radius: 16px; background: rgba(11,11,15,.82); color: #FFFFFF; font-size: 14px; line-height: 1.5; text-align: center";
+      note.textContent = "Video tidak bisa diputar di perangkat ini. Coba buka di browser lain, atau minta redaksi mengunggah ulang dalam format MP4 (H.264).";
+      v.parentElement?.appendChild(note);
+      return;
+    }
+    sync();
+  };
+  for (const ev of ["play", "pause", "timeupdate", "loadedmetadata", "ended", "error"]) {
+    host.addEventListener(ev, onMedia, true);
+    offs.push(() => host.removeEventListener(ev, onMedia, true));
+  }
+  const toggle = () => {
+    const v = vid();
+    if (!v) return;
+    if (v.paused) void v.play().catch(() => undefined);
+    else v.pause();
+  };
+
   const run = async (fn: () => Promise<void>) => {
     if (busy) return;
     busy = true;
@@ -146,6 +194,11 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
     };
     const el = <T extends HTMLElement = HTMLElement>(sel: string) => t.closest<T>(sel);
 
+    if (el("[data-sh-play]") || (t instanceof HTMLVideoElement && t.matches("video[data-short]:not([controls])"))) {
+      stop();
+      toggle();
+      return;
+    }
     const capBtn = el('[data-sh="cap"]');
     if (capBtn) {
       stop();

@@ -124,7 +124,7 @@ Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api
 | Iklan & permintaan iklan | `/admin/iklan` | `ad_slots`, `ad_campaigns`, `ad_inquiries` | ✅ | |
 | Pengguna, role & izin, undangan staf | `/admin/pengguna`, `/admin/role` | `users`, `roles`, `permissions`, `role_permissions`, `staff_invitations`, `staff_desks` | ✅ | Tab "Permintaan" untuk Student & data pribadi |
 | Laporan, kondisi sistem, pengaturan | `/admin/laporan`, `/admin/kondisi`, `/admin/pengaturan` | `app_settings` | ✅ | |
-| Ocean Short (kelola video) | `/admin/live?tab=short` | `shorts`, Vercel Blob `oceanpedia-short-video` | ✅ | Unggah video langsung dari peramban ke Vercel Blob (MP4/WebM/MOV, maks. 200 MB, progres unggah, durasi terisi otomatis) lewat token sekali pakai `/api/admin/shorts/upload` (hanya staf; `BLOB_READ_WRITE_TOKEN` hanya di server) — atau tempel URL https |
+| Ocean Short (kelola video) | `/admin/live?tab=short` | `shorts`, Vercel Blob `oceanpedia-short-video` | ✅ | Unggah video langsung dari peramban ke Vercel Blob (MP4, MOV, WebM, M4V, 3GP, MKV, AVI, OGV, MPEG; maks. 500 MB; dicek dulu bisa diputar browser; progres unggah; durasi terisi otomatis), atau tautan YouTube/Shorts, TikTok, Instagram Reels, Vimeo, Facebook, Google Drive, Dailymotion (diputar lewat pemutar resmi platform) lewat token sekali pakai `/api/admin/shorts/upload` (hanya staf; `BLOB_READ_WRITE_TOKEN` hanya di server) — atau tempel URL https |
 
 ### Belum dibuat / belum lengkap
 

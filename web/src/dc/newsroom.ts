@@ -2,6 +2,7 @@
  * Enhancer panel redaksi lanjutan ("newsroom"): pulihkan versi, breaking & live blog, newsletter.
  * Semua lewat BFF /api/admin/* (izin diperiksa API).
  */
+import { VIDEO_EXT } from "@/lib/short-media";
 import type { Cleanup, Env } from "./enhancers";
 import { armed, call, msg, onCapture, shrink, stop } from "./cms";
 import { toast } from "./toast";
@@ -254,8 +255,14 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
   const uploadVideo = async (input: HTMLInputElement, file: File) => {
     input.value = "";
     if (uploading) return toast(host, "Tunggu unggahan sebelumnya selesai.");
-    if (!["video/mp4", "video/webm", "video/quicktime"].includes(file.type)) return toast(host, "Format video harus MP4, WebM, atau MOV.");
-    if (file.size > 200 * 1024 * 1024) return toast(host, "Ukuran video maksimal 200 MB.");
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const type = (file.type && file.type !== "application/octet-stream" ? file.type : VIDEO_EXT[ext]) ?? "";
+    if (!UPLOAD_TYPES.includes(type)) return toast(host, "Format tidak dikenal. Gunakan MP4, MOV, WebM, M4V, 3GP, MKV, AVI, OGV, atau MPEG.");
+    if (file.size > 500 * 1024 * 1024) return toast(host, "Ukuran video maksimal 500 MB.");
+    // Pastikan browser bisa memutar video ini (codec), agar pembaca tidak melihat layar kosong.
+    toast(host, "Memeriksa video…");
+    const probe = await probeVideo(file);
+    if (!probe.ok) return toast(host, `Video ini tidak bisa diputar di browser (${type.replace("video/", "").toUpperCase()}${probe.why ? `: ${probe.why}` : ""}). Ubah ke MP4 (H.264 + AAC) lalu unggah lagi — mis. lewat CapCut, HandBrake, atau fitur ekspor galeri ponsel.`);
     const box = host.querySelector<HTMLElement>("[data-shv-progress]");
     const bar = host.querySelector<HTMLElement>("[data-shv-bar]");
     const label = host.querySelector<HTMLElement>("[data-shv-label]");
@@ -270,11 +277,11 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
     setP(0, `Mengunggah ${file.name}… 0%`);
     try {
       const { upload } = await import("@vercel/blob/client");
-      const safe = file.name.toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(-80) || "video.mp4";
+      const safe = file.name.toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(-80) || `video.${ext || "mp4"}`;
       const blob = await upload(`shorts/${safe}`, file, {
         access: "public",
         handleUploadUrl: "/api/admin/shorts/upload",
-        contentType: file.type,
+        contentType: type,
         multipart: file.size > 50 * 1024 * 1024,
         onUploadProgress: ({ percentage }) => setP(percentage, `Mengunggah ${file.name}… ${Math.round(percentage)}%`),
       });
@@ -282,15 +289,7 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
       if (inp) inp.value = blob.url;
       // Durasi otomatis dari metadata video bila kolom durasi masih kosong.
       const dur = host.querySelector<HTMLInputElement>('[data-shf="duration"]');
-      if (dur && !dur.value) {
-        const v = document.createElement("video");
-        v.preload = "metadata";
-        v.onloadedmetadata = () => {
-          if (Number.isFinite(v.duration) && !dur.value) dur.value = String(Math.round(v.duration));
-          URL.revokeObjectURL(v.src);
-        };
-        v.src = URL.createObjectURL(file);
-      }
+      if (dur && !dur.value && probe.duration) dur.value = String(Math.round(probe.duration));
       setP(100, `Video terunggah: ${file.name}`);
       toast(host, "Video terunggah. Lengkapi judul lalu simpan.", "ok");
     } catch (err) {
@@ -306,4 +305,34 @@ export function newsroom(host: HTMLElement, { router }: Env): Cleanup {
     off();
     host.removeEventListener("change", onChange);
   };
+}
+
+/** Jenis berkas video yang boleh diunggah (harus sama dengan /api/admin/shorts/upload). */
+const UPLOAD_TYPES = ["video/mp4", "video/x-m4v", "video/quicktime", "video/webm", "video/ogg", "video/3gpp", "video/3gpp2", "video/x-matroska", "video/x-msvideo", "video/avi", "video/mpeg"];
+
+/** Coba muat video di browser ini: lolos bila metadata & bingkai gambar terbaca (codec didukung). */
+function probeVideo(file: File): Promise<{ ok: boolean; duration: number; why?: string }> {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    let done = false;
+    const end = (r: { ok: boolean; duration: number; why?: string }) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      v.removeAttribute("src");
+      v.load();
+      URL.revokeObjectURL(url);
+      resolve(r);
+    };
+    const timer = setTimeout(() => end({ ok: false, duration: 0, why: "tidak terbaca" }), 15000);
+    v.muted = true;
+    v.preload = "metadata";
+    v.playsInline = true;
+    v.onloadeddata = v.onloadedmetadata = () => {
+      if (v.videoWidth > 0 && v.videoHeight > 0) end({ ok: true, duration: Number.isFinite(v.duration) ? v.duration : 0 });
+    };
+    v.onerror = () => end({ ok: false, duration: 0, why: v.error?.code === 4 ? "codec tidak didukung" : "berkas rusak" });
+    v.src = url;
+  });
 }
