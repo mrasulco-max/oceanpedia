@@ -5,6 +5,7 @@
  */
 import type { Cleanup, Env } from "./enhancers";
 import { toast } from "./toast";
+import { applyDisplay, displayFromPrefs } from "@/lib/display-prefs";
 
 type Res = { ok: boolean; status: number; data: { detail?: string; title?: string; errors?: Record<string, string> } & Record<string, unknown> };
 
@@ -56,7 +57,7 @@ async function squareJpeg(file: File, size = 512): Promise<Blob> {
   return new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("canvas"))), "image/jpeg", 0.85));
 }
 
-export function profile(host: HTMLElement, { router }: Env): Cleanup {
+export function profile(host: HTMLElement, { router, ctx }: Env): Cleanup {
   const offs: (() => void)[] = [];
   const $ = <T extends Element = HTMLInputElement>(sel: string) => host.querySelector<T>(sel);
   const closeSheet = (el: Element) => el.closest('[role="dialog"]')?.querySelector<HTMLElement>('[aria-label="Tutup"]')?.click();
@@ -65,8 +66,33 @@ export function profile(host: HTMLElement, { router }: Env): Cleanup {
   // ---------------------------------------------------------------- preferensi aplikasi: ikuti state desain
   let last = "";
   let timer = 0;
+  // Salin preferensi tampilan akun ke perangkat ini (cookie) saat halaman dibuka.
+  if (ctx.prefs) {
+    try {
+      applyDisplay(displayFromPrefs(JSON.parse(ctx.prefs) as Record<string, unknown>));
+    } catch {
+      /* abaikan */
+    }
+  }
+  let tfa = ctx.tfa === "1" ? 0 : 2;
+  let lang = "";
   const onState = (e: Event) => {
-    const prefs = prefsFromState((e as CustomEvent).detail ?? {});
+    const st = ((e as CustomEvent).detail ?? {}) as { u?: Record<string, boolean[]>; o?: Record<string, number[]> };
+    const prefs = prefsFromState(st);
+    // Tema, animasi & video otomatis langsung diterapkan di perangkat ini.
+    if (prefs.theme || "reduce_motion" in prefs || "autoplay_video" in prefs) applyDisplay(displayFromPrefs(prefs));
+    if (prefs.language === "en" && lang !== "en") toast(host, "Tampilan bahasa Inggris segera hadir; pilihanmu sudah disimpan.");
+    lang = String(prefs.language ?? "");
+    // Verifikasi 2 langkah (email) untuk pembaca.
+    const t = st.o?.tfa?.[0];
+    if (t != null && t !== tfa) {
+      if (t === 1) toast(host, "Aplikasi autentikator segera hadir. Gunakan verifikasi lewat email.");
+      else {
+        const on = t === 0;
+        void call("PATCH", "/api/me", { two_factor: on }).then((r) => toast(host, r.ok ? (on ? "Verifikasi 2 langkah aktif: kode dikirim ke email setiap masuk di perangkat baru." : "Verifikasi 2 langkah dimatikan.") : msg(r, "Gagal menyimpan."), r.ok ? "ok" : "error"));
+      }
+      tfa = t;
+    }
     const s = JSON.stringify(prefs);
     if (s === last) return; // mis. lembar dibuka/ditutup tanpa perubahan
     window.clearTimeout(timer);

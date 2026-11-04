@@ -567,6 +567,16 @@ func (p *PG) Subscribe(ctx context.Context, email, uid string, lists []string, s
 const qUnsubscribe = `UPDATE newsletter_subscribers SET status = 'unsubscribed', updated_at = now() WHERE (token = $1::text AND $1::text <> '') OR (email = lower($2::text) AND $2::text <> '')`
 
 // Unsubscribe berhenti berlangganan via token (tautan email) atau email (pengguna masuk).
+const qRemoveList = `UPDATE newsletter_subscribers SET lists = array_remove(lists, $2::text),
+  status = CASE WHEN cardinality(array_remove(lists, $2::text)) = 0 THEN 'unsubscribed' ELSE status END, updated_at = now()
+WHERE email = lower($1::text)`
+
+// RemoveList mengeluarkan email dari satu daftar newsletter (mis. "daily" saat Ringkasan pagi dimatikan).
+func (p *PG) RemoveList(ctx context.Context, email, list string) error {
+	_, err := p.DB.ExecContext(ctx, qRemoveList, email, list)
+	return err
+}
+
 func (p *PG) Unsubscribe(ctx context.Context, token, email string) error {
 	return affected(p.DB.ExecContext(ctx, qUnsubscribe, token, email))
 }
@@ -927,7 +937,7 @@ func newsroomQueries() map[string]string {
 	return map[string]string{
 		"snapshot": qSnapshot, "versions": qVersions, "restore_version": qRestoreVersion, "breaking": qBreaking, "breaking_extend": qBreakingExtend, "breaking_end": qBreakingEnd,
 		"live_current": qLiveCurrent, "live_posts": qLivePosts, "live_end_all": qLiveEndAll, "live_create": qLiveCreate, "live_end": qLiveEnd, "live_post": qLivePost,
-		"live_pin": qLivePin, "live_del": qLiveDel, "shorts": qShorts, "saved_shorts": qSavedShorts, "short_like": qShortLike, "short_save": qShortSave, "short_share": qShortShare, "short_comments": qShortComments, "short_comment_add": qShortCommentAdd, "short_comment_del": qShortCommentDel, "admin_short_comments": qAdminShortComments, "short_comment_status": qShortCommentStatus, "short_create": qShortCreate, "short_status": qShortStatus, "short_view": qShortView,
+		"live_pin": qLivePin, "live_del": qLiveDel, "remove_list": qRemoveList, "shorts": qShorts, "saved_shorts": qSavedShorts, "short_like": qShortLike, "short_save": qShortSave, "short_share": qShortShare, "short_comments": qShortComments, "short_comment_add": qShortCommentAdd, "short_comment_del": qShortCommentDel, "admin_short_comments": qAdminShortComments, "short_comment_status": qShortCommentStatus, "short_create": qShortCreate, "short_status": qShortStatus, "short_view": qShortView,
 		"subscribe": qSubscribe, "unsubscribe": qUnsubscribe, "nl_stats": qNLStats, "nl_subs": qNLSubs, "issues": qIssues, "issue_create": qIssueCreate,
 		"issue_recipients": qIssueRecipients, "issue_sent": qIssueSent, "issue_get": qIssueGet, "articles_by_ids": qArticlesByIDs,
 		"dashboard": qDashboard, "rep_days": qRepDays, "rep_plans": qRepPlans, "rep_top": qRepTop, "rep_ads": qRepAds, "rep_totals": qRepTotals, "admin_search": qAdminSearch,

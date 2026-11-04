@@ -96,6 +96,7 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) error {
 		DisplayName *string         `json:"display_name"`
 		Phone       *string         `json:"phone"`
 		Preferences json.RawMessage `json:"preferences"`
+		TwoFactor   *bool           `json:"two_factor"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
@@ -128,11 +129,39 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) error {
 		errs["preferences"] = err.Error()
 	}
 	up.Preferences = prefs
+	if in.TwoFactor != nil {
+		// Simpan sebagai preferensi pembaca (staf diatur lewat panel Keamanan).
+		b, _ := json.Marshal(map[string]bool{"login_2fa": *in.TwoFactor})
+		if len(up.Preferences) > 0 {
+			var m map[string]any
+			if json.Unmarshal(up.Preferences, &m) == nil {
+				m["login_2fa"] = *in.TwoFactor
+				b, _ = json.Marshal(m)
+			}
+		}
+		up.Preferences = b
+	}
 	if len(errs) > 0 {
 		return httpx.Validation(errs)
 	}
 	if err := s.Store.UpdateProfile(r.Context(), uid(r), up); err != nil {
 		return err
+	}
+	// "Ringkasan pagi" = newsletter harian untuk email akun.
+	var p struct {
+		Digest *bool `json:"morning_digest"`
+	}
+	if len(in.Preferences) > 0 && json.Unmarshal(in.Preferences, &p) == nil && p.Digest != nil {
+		if u, err := s.Store.UserByID(r.Context(), uid(r)); err == nil {
+			if *p.Digest {
+				_, err = s.Store.Subscribe(r.Context(), u.Email, u.ID, []string{"daily"}, "settings")
+			} else {
+				err = s.Store.RemoveList(r.Context(), u.Email, "daily")
+			}
+			if err != nil {
+				s.Log.Warn("sinkron ringkasan pagi gagal", "err", err)
+			}
+		}
 	}
 	return s.profile(w, r)
 }

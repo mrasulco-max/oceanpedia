@@ -4,6 +4,7 @@
  */
 import type { useRouter } from "next/navigation";
 import { toast } from "./toast";
+import { applyDisplay, displayFromPrefs } from "@/lib/display-prefs";
 import { content, editor } from "./editorial";
 import { tvchart } from "./tvchart";
 import { lwchart } from "./lwchart";
@@ -70,7 +71,8 @@ function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
           /* penyimpanan diblokir */
         }
         toast(host, data.detail ?? "Kode verifikasi dikirim ke email Anda.", "ok");
-        const nx = ctx.next?.startsWith("/admin") ? ctx.next : "/admin";
+        // Staf ke panel; pembaca yang mengaktifkan 2 langkah kembali ke halaman asal.
+        const nx = ctx.requireStaff === "1" ? (ctx.next?.startsWith("/admin") ? ctx.next : "/admin") : ctx.next && /^\/(?!\/)/.test(ctx.next) ? ctx.next : "/";
         router.push(`/admin/masuk/verifikasi?email=${encodeURIComponent(data.errors?.email ?? email)}&next=${encodeURIComponent(nx)}`);
         return;
       }
@@ -85,6 +87,13 @@ function login(host: HTMLElement, { router, ctx }: Env): Cleanup {
         return;
       }
       toast(host, "Berhasil masuk.", "ok");
+      // Preferensi tampilan akun (tema, animasi, video otomatis) diterapkan di perangkat ini.
+      try {
+        const pr = (await fetch("/api/me/profile").then((r) => (r.ok ? r.json() : null))) as { profile?: { preferences?: Record<string, unknown> } } | null;
+        if (pr?.profile?.preferences) applyDisplay(displayFromPrefs(pr.profile.preferences));
+      } catch {
+        /* abaikan */
+      }
       // Navigasi baru selalu merender ulang halaman dinamis dengan sesi terbaru.
       router.push(ctx.next || "/");
     } catch {

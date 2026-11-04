@@ -215,3 +215,47 @@ svg {
     bottom: calc(96px + env(safe-area-inset-bottom));
   }
 }
+
+/* ===================================================================== Tema gelap & kurangi animasi
+ * Artboard memakai warna inline; mode gelap dibuat dengan membalik warna pada elemen akar lalu
+ * mengembalikan foto, video, peta & grafik pihak ketiga agar tetap natural. Filter di elemen akar
+ * tidak memengaruhi posisi elemen fixed (spesifikasi Filter Effects).
+ */
+html[data-theme="dark"] {
+  background: #ffffff;
+  filter: invert(0.92) hue-rotate(180deg);
+  color-scheme: dark;
+}
+html[data-theme="dark"] img,
+html[data-theme="dark"] video,
+html[data-theme="dark"] iframe,
+html[data-theme="dark"] canvas,
+html[data-theme="dark"] picture,
+html[data-theme="dark"] [style*="background-image"],
+html[data-theme="dark"] [style*="url("] {
+  filter: invert(1) hue-rotate(180deg);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    background: #ffffff;
+    filter: invert(0.92) hue-rotate(180deg);
+    color-scheme: dark;
+  }
+  html[data-theme="system"] img,
+  html[data-theme="system"] video,
+  html[data-theme="system"] iframe,
+  html[data-theme="system"] canvas,
+  html[data-theme="system"] picture,
+  html[data-theme="system"] [style*="background-image"],
+  html[data-theme="system"] [style*="url("] {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}

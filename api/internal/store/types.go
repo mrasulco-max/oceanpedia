@@ -339,6 +339,8 @@ type Store interface {
 	PendingRequests(ctx context.Context) (int, error)
 	PublicStats(ctx context.Context) (map[string]int64, error)
 	AssignArticle(ctx context.Context, id, staffID string) (string, error)
+	RemoveList(ctx context.Context, email, list string) error
+	Reader2FA(ctx context.Context, id string) (bool, error)
 	ShortToggle(ctx context.Context, kind, id, uid string, on bool) (int64, error)
 	ShortShare(ctx context.Context, id string) (int64, error)
 	ShortComments(ctx context.Context, id, uid string, limit int) ([]ShortComment, error)

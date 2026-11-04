@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+import { cookies } from "next/headers";
 import { currentOrigin } from "@/lib/origin";
+import { parseDisplay } from "@/lib/display-prefs";
 
 // metadataBase mengikuti domain yang sedang dipakai (tautan & gambar Open Graph saat dibagikan).
 export async function generateMetadata(): Promise<Metadata> {
@@ -22,9 +24,11 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 // Artboard desain memakai nama keluarga font "Roboto" & "Roboto Mono" secara langsung.
 const FONTS = "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@500&display=swap";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Tema & animasi dari preferensi akun (disalin ke cookie ob_prefs) — dirender server, tanpa kedip.
+  const d = parseDisplay((await cookies()).get("ob_prefs")?.value);
   return (
-    <html lang="id">
+    <html lang="id" data-theme={d.theme} data-motion={d.reduceMotion ? "reduce" : undefined}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />

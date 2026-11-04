@@ -19,6 +19,7 @@ export interface Profile {
   preferences: Record<string, boolean | string>;
   stats: { watchlist: number; alerts_active: number; alerts_triggered: number; bookmarks: number; topics: number };
   topics: { slug: string; name: string }[];
+  two_factor?: boolean;
 }
 
 export interface Session {

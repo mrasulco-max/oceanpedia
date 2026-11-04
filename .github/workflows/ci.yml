@@ -112,6 +112,11 @@ jobs:
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/profile | jq -e '.profile.stats.watchlist == 0 and .alert_limit == 3'
           curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"full_name":"CI Bot 2","preferences":{"breaking":false,"theme":"dark"}}' | jq -e '.profile.full_name == "CI Bot 2" and .profile.preferences.breaking == false'
           curl -sf -H "Authorization: Bearer $TOKEN" localhost:8080/v1/me/sessions | jq -e '.data | length >= 1'
+          # Verifikasi 2 langkah opsional untuk pembaca (kode lewat email).
+          curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"two_factor":true}' | jq -e '.profile.two_factor == true and .profile.preferences.theme == "dark"'
+          curl -s -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -e '.type | contains("two-factor-required")'
+          curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"two_factor":false}' | jq -e '.profile.two_factor == false'
+          curl -sf -X POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"ci@example.com","password":"Sandi-rahasia1"}' | jq -e '.access_token | length > 20'
           # Fitur pembaca: topik, notifikasi, pengingat kalender, price alert yang terpicu.
           curl -sf localhost:8080/v1/topics/ihsg | jq -e '.topic.slug == "ihsg" and .topic.following == false and (.articles | type == "array")'
           code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/v1/topics/tidak-ada); test "$code" = 404
@@ -286,6 +291,11 @@ jobs:
           NLTOK=$(PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -tAc "SELECT token FROM newsletter_subscribers WHERE email='pembaca@example.com'")
           code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/v1/newsletter/unsubscribe?token=$NLTOK"); test "$code" = 302
           curl -sf -H "$ED" localhost:8080/v1/admin/newsletter | jq -e '.stats.active == 0 and .stats.unsubscribed == 1'
+          # Ringkasan pagi di Pengaturan = langganan newsletter harian akun.
+          curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"preferences":{"morning_digest":true}}' > /dev/null
+          test "$(PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -tAc "SELECT status || ':' || array_to_string(lists, ',') FROM newsletter_subscribers WHERE email='ci@example.com'")" = "active:daily"
+          curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' localhost:8080/v1/me -d '{"preferences":{"morning_digest":false}}' > /dev/null
+          test "$(PGPASSWORD=ci psql -h localhost -U oceanpedia -d oceanpedia -tAc "SELECT status FROM newsletter_subscribers WHERE email='ci@example.com'")" = "unsubscribed"
           # Undangan: pendaftar dengan email itu otomatis jadi Penulis.
           curl -sf -X POST -H "$SU" -H 'Content-Type: application/json' localhost:8080/v1/admin/rbac/invitations -d '{"email":"undangan@example.com","role":"author","categories":["saham"]}' | jq -e '.id | length == 36'
           curl -sf -X POST localhost:8080/v1/auth/register -H 'Content-Type: application/json' -d '{"email":"undangan@example.com","password":"Sandi-rahasia1","full_name":"CI Undangan"}' > /dev/null
@@ -512,6 +522,9 @@ jobs:
             curl -sf -b /tmp/pjar -X DELETE localhost:3000/api/v1/shorts/$SHID/like | jq -e '.liked == false'
             curl -sf -X POST -H 'Content-Type: application/json' localhost:3000/api/v1/shorts/$SHID/share -d '{"channel":"copy"}' | jq -e '.shares >= 1'
           fi
+          # Tema gelap / ikuti sistem dirender server dari preferensi (cookie ob_prefs).
+          curl -sf -b 'ob_prefs=t%3Ddark%26m%3D1%26a%3D1' localhost:3000/ | grep -q '<html lang="id" data-theme="dark" data-motion="reduce"'
+          curl -sf localhost:3000/ | grep -q '<html lang="id" data-theme="light"'
           # Fitur pembaca yang dulu tiruan desain: bagikan, ikuti, footer, bantuan, iklan, Student.
           curl -sf -A "$MOB" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'data-share="wa"'
           curl -sf -A "$DESK" localhost:3000/berita/outlook-bbca-dan-saham-bank-akhir-tahun | grep -q 'data-share="native"'
