@@ -46,8 +46,23 @@ func TestChatLinks(t *testing.T) {
 		t.Errorf("links = %+v", links)
 	}
 
+	ans, _ = chatLinks("Baca di [/berita/emas-naik-tajam](/berita/emas-naik-tajam).", refs, false)
+	if !strings.Contains(ans, "[Emas naik tajam setelah data inflasi AS](/berita/emas-naik-tajam)") {
+		t.Errorf("label URL harus jadi judul: %s", ans)
+	}
+
 	_, links = chatLinks("Tidak ada rujukan.", refs, true)
 	if len(links) != 1 || links[0].URL != "/berita/btc-tembus-80-ribu" {
 		t.Errorf("diminta tautan → berita cocok: %+v", links)
+	}
+}
+
+func TestMentionsUSDIDR(t *testing.T) {
+	usd := store.Instrument{Symbol: "USDIDR", Name: "Dolar AS / Rupiah"}
+	if mentions("HARGA ETH 2.300 USD", usd) {
+		t.Error("kata USD saja tidak boleh berarti USDIDR")
+	}
+	if !mentions("KURS USDIDR HARI INI", usd) || !mentions("BAGAIMANA RUPIAH?", usd) {
+		t.Error("USDIDR / rupiah harus dikenali")
 	}
 }

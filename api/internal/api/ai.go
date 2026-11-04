@@ -207,7 +207,8 @@ func mentions(q string, in store.Instrument) bool {
 		}
 		return false
 	}
-	if has(in.Symbol) || has(strings.TrimSuffix(strings.TrimSuffix(in.Symbol, "USD"), "IDR")) {
+	// Kode dasar (BTC dari BTCUSD); "USD" dari USDIDR terlalu umum sehingga tidak dipakai.
+	if base := strings.TrimSuffix(strings.TrimSuffix(in.Symbol, "USD"), "IDR"); has(in.Symbol) || (base != "USD" && has(base)) {
 		return true
 	}
 	if name := strings.ToUpper(strings.TrimSpace(strings.Split(in.Name, "/")[0])); has(name) {
@@ -383,7 +384,9 @@ func (s *Server) aiChat(w http.ResponseWriter, r *http.Request) error {
 	// Pesan pengguna sebelumnya membantu menebak instrumen untuk permintaan lanjutan ("tampilkan chartnya").
 	hint := ""
 	for i := len(in.Messages) - 2; i >= 0 && i >= len(in.Messages)-6; i-- {
-		hint += " " + in.Messages[i].Content
+		if in.Messages[i].Role == "user" {
+			hint += " " + in.Messages[i].Content
+		}
 	}
 	ctxText, refs := s.marketContextRefs(ctx, last, hint)
 	charts := s.chatCharts(ctx, last, refs.Focus)

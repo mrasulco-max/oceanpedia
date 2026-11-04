@@ -174,7 +174,11 @@ func chatLinks(ans string, refs chatRefs, asked bool) (string, []chatLink) {
 			return sm[1]
 		}
 		add(a)
-		return "[" + sm[1] + "](/berita/" + sm[3] + ")"
+		label := strings.TrimSpace(sm[1])
+		if strings.HasPrefix(label, "/") || strings.HasPrefix(label, "http") || strings.Contains(label, "/berita/") {
+			label = a.Title // label berupa URL → pakai judul berita
+		}
+		return "[" + label + "](/berita/" + sm[3] + ")"
 	})
 	// URL polos /berita/slug → tautan bila dikenal.
 	ans = replaceOutsideMd(ans, func(seg string) string {
