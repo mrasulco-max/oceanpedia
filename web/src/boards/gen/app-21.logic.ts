@@ -38,7 +38,7 @@ class Component extends DCLogic {
       v['sh_' + k] = sh === k ? 'transform: translateY(0)' : 'transform: translateY(105%); pointer-events: none';
       v['open_' + k] = (e) => { stop(e); this.setState({ sheet: k }); };
     }
-    const O = {"quiet": {"items": ["Nonaktif", "21:00 – 06:00", "22:00 – 06:00", "23:00 – 07:00"], "msg": "Jam tenang: %s", "multi": false}, "lang": {"items": ["Bahasa Indonesia", "English"], "msg": "Bahasa: %s", "multi": false}, "tz": {"items": ["WIB (UTC+7)", "WITA (UTC+8)", "WIT (UTC+9)"], "msg": "Zona waktu: %s", "multi": false}, "num": {"items": ["1.234,56 · Rp", "1,234.56 · Rp", "1 234,56 · Rp"], "msg": "Format angka: %s", "multi": false}, "tfa": {"items": ["Aktif lewat SMS", "Aktif lewat aplikasi autentikator", "Nonaktif"], "msg": "Verifikasi 2 langkah: %s", "multi": false}};
+    const O = {"quiet": {"items": ["Nonaktif", "21:00 – 06:00", "22:00 – 06:00", "23:00 – 07:00"], "msg": "Jam tenang: %s", "multi": false}, "lang": {"items": ["Bahasa Indonesia", "English (segera hadir)"], "msg": "Bahasa: %s", "multi": false}, "tz": {"items": ["WIB (UTC+7)", "WITA (UTC+8)", "WIT (UTC+9)"], "msg": "Zona waktu: %s", "multi": false}, "num": {"items": ["1.234,56 · Rp", "1,234.56 · Rp", "1 234,56 · Rp"], "msg": "Format angka: %s", "multi": false}, "tfa": {"items": ["Aktif lewat email", "Aplikasi autentikator (segera hadir)", "Nonaktif"], "msg": "Verifikasi 2 langkah: %s", "multi": false}};
     for (const k in O) {
       const o = O[k], cur = S.o[k], ov = { val: o.items[cur[0]] };
       o.items.forEach((it, i) => {
@@ -59,7 +59,7 @@ class Component extends DCLogic {
     v.toast = S.toast;
     v.toastSt = S.toastOn ? 'opacity: 1; transform: translate(-50%, 0)' : 'opacity: 0; transform: translate(-50%, 12px); pointer-events: none';
     v.f9 = (e) => { stop(e); this.setState({ sheet: null }); this.say("Kata sandi berhasil diubah"); };
-    v.f10 = (e) => { stop(e); this.setState({ sheet: null }); this.say("Cache dihapus · 48 MB dikosongkan"); };
+    v.f10 = (e) => { stop(e); this.setState({ sheet: null }); this.say("Cache dihapus"); };
     return v;
   }
 }

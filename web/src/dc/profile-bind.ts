@@ -120,6 +120,7 @@ export function settingsState(p: Profile): string {
     const i = vals.indexOf(String(p.preferences[key] ?? ""));
     if (i >= 0) o[k] = [i];
   }
+  o.tfa = [p.two_factor ? 0 : 2];
   return JSON.stringify({ u, o });
 }
 
@@ -138,9 +139,9 @@ export function bindSettingsApp(html: string, p: Profile, sessions: Session[]): 
   h = h.replace(/(Kata sandi baru)<input type="password" placeholder="Minimal 8 karakter"/, '$1<input type="password" data-pw-new autocomplete="new-password" placeholder="Min. 8, huruf &amp; angka, 1 huruf besar"');
   h = h.replace(/(Ulangi kata sandi baru)<input type="password"/, '$1<input type="password" data-pw-confirm autocomplete="new-password"');
   h = h.replace(/<button onClick="\{\{ f9 \}\}"([^>]*)>Simpan kata sandi<\/button>/, '<button data-pw-save$1>Simpan kata sandi</button>');
-  // Verifikasi 2 langkah belum tersedia (jujur ke pengguna, bukan tampilan contoh).
-  h = h.replace(/<a tabindex="0" role="button" onClick="\{\{ open_tfa \}\}"/, '<a tabindex="0" role="button" data-soon="Verifikasi 2 langkah segera hadir."');
-  h = h.replace("{{ op_tfa.val }}", "Segera hadir");
+  // Verifikasi 2 langkah lewat email (kode saat masuk di perangkat baru); autentikator menyusul.
+  h = h.replace(/>Aktif lewat SMS</, ">Aktif lewat email<").replace(/>Aktif lewat aplikasi autentikator</, ">Aplikasi autentikator (segera hadir)<");
+  h = h.replace(/>English</, ">English (segera hadir)<");
   // Perangkat aktif.
   h = h.replace(">2 perangkat aktif<", `>${sessions.length} perangkat aktif<`);
   h = h.replace(/(aria-label="Riwayat masuk"[\s\S]*?<\/div><div style="display: flex; flex-direction: column">)([\s\S]*?)(<\/div><\/div><div role="dialog")/, (_m, head: string, rows: string, tail: string) => {

@@ -307,7 +307,7 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
   }
   if (!challenge) {
     toast(host, "Sesi verifikasi berakhir. Masuk lagi dengan kata sandi.");
-    router.replace(`/admin/masuk?next=${encodeURIComponent(next)}`);
+    router.replace(next.startsWith("/admin") ? `/admin/masuk?next=${encodeURIComponent(next)}` : `/masuk?next=${encodeURIComponent(next)}`);
     return;
   }
   let busy = false;
@@ -330,7 +330,7 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
         digits[0]?.focus();
         if (res.status === 403) {
           toast(host, data.detail ?? "Verifikasi kedaluwarsa. Masuk lagi.");
-          router.replace(`/admin/masuk?next=${encodeURIComponent(next)}`);
+          router.replace(next.startsWith("/admin") ? `/admin/masuk?next=${encodeURIComponent(next)}` : `/masuk?next=${encodeURIComponent(next)}`);
           return;
         }
         return toast(host, (data.errors && Object.values(data.errors)[0]) || data.detail || "Kode salah atau kedaluwarsa.");
@@ -341,7 +341,7 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
         /* abaikan */
       }
       toast(host, "Berhasil masuk.", "ok");
-      router.push(data.user?.is_staff ? next : "/");
+      router.push(data.user?.is_staff ? next : next.startsWith("/admin") ? "/" : next);
     } finally {
       busy = false;
       submit?.removeAttribute("aria-busy");

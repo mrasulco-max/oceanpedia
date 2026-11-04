@@ -105,3 +105,16 @@ func TestMentions(t *testing.T) {
 		}
 	}
 }
+
+func TestQuietHours(t *testing.T) {
+	at := func(h int) time.Time { return time.Date(2026, 1, 1, h, 0, 0, 0, time.UTC) }
+	for _, c := range []struct {
+		q    string
+		h    int
+		want bool
+	}{{"off", 23, false}, {"21-06", 23, true}, {"21-06", 3, true}, {"21-06", 12, false}, {"22-06", 21, false}, {"23-07", 6, true}} {
+		if got := inQuietHours(c.q, at(c.h)); got != c.want {
+			t.Errorf("inQuietHours(%q, %d) = %v", c.q, c.h, got)
+		}
+	}
+}

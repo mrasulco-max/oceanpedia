@@ -116,7 +116,9 @@ WITH first AS (
     SELECT ua.user_id, 'Penulis ' || au.name FROM art JOIN articles a2 ON a2.id = art.id JOIN user_authors ua ON ua.author_id = a2.author_id JOIN authors au ON au.id = a2.author_id
     UNION ALL
     SELECT uc.user_id, 'Kategori ' || c.name FROM art JOIN articles a3 ON a3.id = art.id JOIN user_categories uc ON uc.category_id = a3.category_id JOIN categories c ON c.id = a3.category_id
-  ) x ORDER BY x.user_id
+  ) x JOIN users ux ON ux.id = x.user_id
+  WHERE ux.deleted_at IS NULL AND coalesce((ux.preferences->>'topics_notif')::boolean, true)
+  ORDER BY x.user_id
 ), breaking AS (
   SELECT u.id AS user_id FROM users u, art
   WHERE art.is_breaking AND u.deleted_at IS NULL AND coalesce((u.preferences->>'breaking')::boolean, true)
@@ -158,10 +160,14 @@ type AlertJob struct {
 	Channels    []string
 	LastPrice   *float64
 	TriggeredAt *time.Time
+	// Preferensi pengguna: notifikasi price alert (bawaan aktif) & jam tenang ("off" | "21-06" | ...).
+	NotifyOn   bool
+	QuietHours string
 }
 
 const qAlertJobs = `SELECT a.id, a.user_id, u.email, a.symbol, a.condition, a.threshold::float8, a.frequency, array_to_json(a.channels)::text,
-  a.last_price::float8, a.triggered_at
+  a.last_price::float8, a.triggered_at,
+  coalesce((u.preferences->>'price_alert')::boolean, true), coalesce(u.preferences->>'quiet_hours', 'off')
 FROM price_alerts a JOIN users u ON u.id = a.user_id
 WHERE a.active AND a.threshold IS NOT NULL AND a.symbol = ANY($1::text[]) AND u.deleted_at IS NULL
   AND a.condition IN ('price_above', 'price_below', 'change_pct') AND (a.expires_at IS NULL OR a.expires_at > now())`
@@ -176,7 +182,7 @@ func (p *PG) ActiveAlerts(ctx context.Context, symbols []string) ([]AlertJob, er
 	out := []AlertJob{}
 	for rows.Next() {
 		var a AlertJob
-		if err := rows.Scan(&a.ID, &a.UserID, &a.Email, &a.Symbol, &a.Condition, &a.Threshold, &a.Frequency, jsonArr{&a.Channels}, &a.LastPrice, &a.TriggeredAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.UserID, &a.Email, &a.Symbol, &a.Condition, &a.Threshold, &a.Frequency, jsonArr{&a.Channels}, &a.LastPrice, &a.TriggeredAt, &a.NotifyOn, &a.QuietHours); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

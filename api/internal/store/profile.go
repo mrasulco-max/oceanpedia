@@ -23,6 +23,7 @@ type Profile struct {
 	Preferences json.RawMessage `json:"preferences"`
 	Stats       ProfileStats    `json:"stats"`
 	Topics      []Tag           `json:"topics"`
+	TwoFactor   bool            `json:"two_factor"`
 }
 
 // Session adalah satu perangkat yang sedang masuk (refresh token aktif).
@@ -59,6 +60,15 @@ func (p *PG) Profile(ctx context.Context, id string) (Profile, error) {
 		return Profile{}, notFound(err)
 	}
 	out.Preferences = prefs
+	// Pembaca: verifikasi 2 langkah opsional (preferensi login_2fa); staf: kolom two_factor.
+	var pf struct {
+		Login2FA bool `json:"login_2fa"`
+	}
+	_ = json.Unmarshal(prefs, &pf)
+	out.TwoFactor = pf.Login2FA
+	if u.Role != "reader" {
+		out.TwoFactor = u.TwoFactor
+	}
 	rows, err := p.DB.QueryContext(ctx, qProfileTopics, id)
 	if err != nil {
 		return out, err
@@ -158,6 +168,15 @@ func (p *PG) UnfollowTopic(ctx context.Context, userID, slug string) error {
 
 const qActiveAlerts = `SELECT count(*) FROM price_alerts WHERE user_id = $1::uuid AND active`
 
+const qReader2FA = `SELECT coalesce((preferences->>'login_2fa')::boolean, false) FROM users WHERE id = $1::uuid`
+
+// Reader2FA: pembaca mengaktifkan verifikasi 2 langkah lewat email.
+func (p *PG) Reader2FA(ctx context.Context, id string) (bool, error) {
+	var on bool
+	err := p.DB.QueryRowContext(ctx, qReader2FA, id).Scan(&on)
+	return on, notFound(err)
+}
+
 func (p *PG) ActiveAlertCount(ctx context.Context, userID string) (int, error) {
 	var n int
 	err := p.DB.QueryRowContext(ctx, qActiveAlerts, userID).Scan(&n)
@@ -190,5 +209,5 @@ func (p *PG) RemoveAvatar(ctx context.Context, userID string) error {
 
 func profileQueries() map[string]string {
 	return map[string]string{"set_avatar": qSetAvatar, "remove_avatar": qRemoveAvatar, "profile_extra": qProfileExtra, "profile_topics": qProfileTopics, "update_profile": qUpdateProfile, "sessions": qSessions,
-		"revoke_session": qRevokeSession, "follow_topic": qFollowTopic, "tag_exists": qTagExists, "unfollow_topic": qUnfollowTopic, "active_alerts": qActiveAlerts}
+		"revoke_session": qRevokeSession, "follow_topic": qFollowTopic, "tag_exists": qTagExists, "unfollow_topic": qUnfollowTopic, "active_alerts": qActiveAlerts, "reader_2fa": qReader2FA}
 }

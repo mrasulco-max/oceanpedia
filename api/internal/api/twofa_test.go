@@ -58,3 +58,6 @@ func TestStaffTwoFactor(t *testing.T) {
 		t.Fatal("token lintas tujuan diterima")
 	}
 }
+
+// Reader2FA: pembaca di uji tidak mengaktifkan verifikasi 2 langkah.
+func (f *fake) Reader2FA(context.Context, string) (bool, error) { return false, nil }

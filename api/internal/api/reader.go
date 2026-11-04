@@ -116,18 +116,36 @@ func (s *Server) evaluateAlerts(ctx context.Context, items []QuoteItem) {
 		if !fire {
 			continue
 		}
+		// Preferensi pengguna: price alert dimatikan → tidak dikirim; jam tenang → tanpa email.
+		if !a.NotifyOn {
+			continue
+		}
 		title, body := alertText(a, it, now.In(wib))
 		price, chg := q.Price, q.ChangePercent
+		quiet := inQuietHours(a.QuietHours, now.In(wib))
 		if err := s.Store.Notify(ctx, a.UserID, store.NotifyInput{Kind: "price_alert", Title: title, Body: body, Link: "/market/" + a.Symbol, Symbol: a.Symbol, Price: &price, Change: &chg}); err != nil {
 			s.Log.Warn("notifikasi price alert gagal", "err", err)
 		}
-		if s.Mail != nil && contains(a.Channels, "email") {
+		if s.Mail != nil && contains(a.Channels, "email") && !quiet {
 			text := body + "\n\nLihat grafik: " + s.Cfg.SiteURL + "/market/" + a.Symbol + "\n\nOceanBird — Berita & data pasar\n"
 			if err := s.Mail.SendMessage(ctx, a.Email, title, text, "<p>"+htmlEsc(body)+`</p><p><a href="`+s.Cfg.SiteURL+"/market/"+a.Symbol+`">Lihat grafik</a></p>`); err != nil {
 				s.Log.Warn("email price alert gagal", "err", err)
 			}
 		}
 	}
+}
+
+// inQuietHours: "21-06" berarti 21:00–06:00 WIB (melewati tengah malam); "off" = tidak ada jam tenang.
+func inQuietHours(q string, t time.Time) bool {
+	var from, to int
+	if _, err := fmt.Sscanf(q, "%d-%d", &from, &to); err != nil || from == to {
+		return false
+	}
+	h := t.Hour()
+	if from > to {
+		return h >= from || h < to
+	}
+	return h >= from && h < to
 }
 
 func alertHit(cond string, threshold, price, changePct float64) bool {

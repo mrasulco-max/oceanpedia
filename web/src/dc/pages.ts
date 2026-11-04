@@ -28,6 +28,8 @@ import type { Candle, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
 import { currentOrigin } from "@/lib/origin";
+import { parseDisplay } from "@/lib/display-prefs";
+import { cookies } from "next/headers";
 
 /** Tombol melayang "Asisten AI" (khusus Plus) di halaman yang paling sering dibuka. */
 const AI_FAB_PATHS = new Set(["/", "/market", "/market/[symbol]", "/berita/[slug]", "/watchlist"]);
@@ -309,6 +311,9 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
         html = bindSettingsApp(html, pr.profile, sessions);
         ctx.state = settingsState(pr.profile);
       }
+      // Preferensi tampilan akun → perangkat ini (tema, animasi, video otomatis).
+      ctx.prefs = JSON.stringify(pr.profile.preferences ?? {});
+      ctx.tfa = pr.profile.two_factor ? "1" : "0";
       enhance.push("profile");
     }
     html = bindArticleCards(html, all);
@@ -321,7 +326,10 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const list = await safe(api.shorts(token), { data: [] });
     const cur = list.data.find((x) => x.id === search.v) ?? list.data[0];
     const cm = cur ? await safe(api.shortComments(cur.id, token), { data: [] }) : { data: [] };
+    const disp = parseDisplay((await cookies()).get("ob_prefs")?.value);
     html = bindShorts(html, list.data, search.v ?? "", board.kind === "app", { loggedIn: !!user, me: user?.full_name ?? "", comments: cm.data, siteUrl: await currentOrigin() });
+    // Preferensi "Putar video otomatis" (tanpa suara agar diizinkan peramban).
+    if (disp.autoplay) html = html.replace(/<video data-short="/, '<video autoplay muted data-short="');
     if (board.kind === "app" && cur) ctx.state = JSON.stringify({ u: { u6: [cur.liked], u7: [cur.saved] } });
     enhance.push("reader", "shorts");
     title = "Ocean Short";
@@ -595,7 +603,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   } else if (boardId === "admin-login-2-f-a") {
     const email = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(search.email ?? "") ? search.email! : "";
     if (!email) redirect("/admin/masuk");
-    html = bindTwoFactor(html, { email, next: search.next?.startsWith("/admin") ? search.next : "/admin" });
+    html = bindTwoFactor(html, { email, next: search.next && /^\/(?!\/)/.test(search.next) ? search.next : "/admin" });
     enhance.push("twofa");
     title = "Verifikasi 2 langkah";
   } else if (boardId === "admin-login") {

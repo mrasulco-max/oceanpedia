@@ -52,8 +52,15 @@ func (s *Server) needsTwoFactor(r *http.Request, u store.User, device string) (b
 	if err != nil {
 		return false, err
 	}
-	if !a.IsStaff || a.Blocked {
+	if a.Blocked {
 		return false, nil
+	}
+	if !a.IsStaff {
+		// Pembaca: hanya bila diaktifkan sendiri di Pengaturan › Verifikasi 2 langkah.
+		on, err := s.Store.Reader2FA(r.Context(), u.ID)
+		if err != nil || !on {
+			return false, err
+		}
 	}
 	return !(device != "" && s.checkToken(device, "td", u.ID)), nil
 }
