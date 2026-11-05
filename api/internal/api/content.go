@@ -221,7 +221,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) error {
 	if impact != "" && impact != "low" && impact != "medium" && impact != "high" {
 		return httpx.BadRequest("impact harus low, medium, atau high")
 	}
-	l, err := s.Store.Events(r.Context(), from, from.AddDate(0, 0, days), impact)
+	to := from.AddDate(0, 0, days)
+	if s.Calendar != nil {
+		s.Calendar.EnsureSynced(r.Context(), from, to)
+	}
+	l, err := s.Store.Events(r.Context(), from, to, impact)
 	if err != nil {
 		return err
 	}

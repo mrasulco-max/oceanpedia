@@ -916,6 +916,7 @@ func (s *Server) adminSettings(w http.ResponseWriter, r *http.Request) error {
 		"integrations": []map[string]any{
 			{"key": "midtrans", "name": "Midtrans (pembayaran)", "ok": s.Pay.Enabled(), "detail": map[bool]string{true: "Produksi", false: "Sandbox"}[c.MidtransProduction], "notify_url": c.APIPublicURL + "/v1/billing/midtrans/notify"},
 			{"key": "twelvedata", "name": "Twelve Data (harga pasar)", "ok": set(c.TwelveDataKey), "detail": fmt.Sprintf("Cache harga %s · lewati %s", c.QuoteTTL, strings.Join(c.MarketSkip, ", "))},
+			{"key": "tradingview", "name": "TradingView Data (kalender ekonomi)", "ok": set(c.TradingViewAPIKey), "detail": fmt.Sprintf("TTL %s · pasar %s", c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
 			{"key": "gemini", "name": "Gemini (analisis AI)", "ok": set(c.GeminiKey), "detail": strings.Join(c.GeminiModels, ", ")},
 			{"key": "email", "name": "Email transaksional (Bird)", "ok": s.Mail != nil, "detail": c.OTPEmailFrom},
 			{"key": "otp", "name": "OTP / verifikasi (Bird)", "ok": set(c.BirdKey), "detail": ""},

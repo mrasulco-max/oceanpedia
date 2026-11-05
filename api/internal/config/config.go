@@ -38,6 +38,11 @@ type Config struct {
 	MidtransServerKey  string
 	MidtransProduction bool
 	APIPublicURL       string // untuk URL notifikasi pembayaran (webhook)
+	// TradingView Data API — kalender ekonomi (opsional; kosong = seed lokal).
+	TradingViewAPIKey          string
+	TradingViewAPIBase         string
+	TradingViewCalendarTTL     time.Duration
+	TradingViewCalendarMarkets string
 }
 
 // Load membaca dan memvalidasi konfigurasi.
@@ -70,6 +75,11 @@ func Load() (Config, error) {
 		MidtransServerKey:  strings.TrimSpace(os.Getenv("MIDTRANS_SERVER_KEY")),
 		MidtransProduction: env("MIDTRANS_PRODUCTION", "false") == "true",
 		APIPublicURL:       strings.TrimRight(env("API_PUBLIC_URL", "https://oceanpedia-api.vercel.app"), "/"),
+
+		TradingViewAPIKey:          strings.TrimSpace(os.Getenv("TRADINGVIEW_API_KEY")),
+		TradingViewAPIBase:         strings.TrimRight(env("TRADINGVIEW_API_BASE", "https://api.tradingviewapi.com"), "/"),
+		TradingViewCalendarTTL:     dur("TRADINGVIEW_CALENDAR_TTL", 15*time.Minute),
+		TradingViewCalendarMarkets: env("TRADINGVIEW_CALENDAR_MARKETS", "america,china,indonesia"),
 	}
 	// Kunci sandbox Midtrans berawalan "SB-": selalu pakai endpoint sandbox walau MIDTRANS_PRODUCTION=true.
 	if strings.HasPrefix(c.MidtransServerKey, "SB-") {

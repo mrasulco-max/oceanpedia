@@ -17,6 +17,7 @@ import (
 
 	"github.com/mrasulco-max/oceanpedia/api/internal/ai"
 	"github.com/mrasulco-max/oceanpedia/api/internal/api"
+	"github.com/mrasulco-max/oceanpedia/api/internal/calendar"
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
 	"github.com/mrasulco-max/oceanpedia/api/internal/migrate"
@@ -66,13 +67,26 @@ func run(log *slog.Logger) error {
 		}
 	}
 
+	pg := &store.PG{DB: db}
 	var provider market.Provider = market.Sample{}
 	if cfg.TwelveDataKey != "" {
-		provider = market.Live(cfg.TwelveDataKey, &store.PG{DB: db}, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
+		provider = market.Live(cfg.TwelveDataKey, pg, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
 	} else {
 		log.Warn("TWELVEDATA_API_KEY kosong: memakai data pasar contoh")
 	}
-	srv := &api.Server{Store: &store.PG{DB: db}, Market: provider, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: &store.PG{DB: db}}, Cfg: cfg, Log: log}
+	srv := &api.Server{Store: pg, Market: provider, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: pg}, Cfg: cfg, Log: log}
+	if cfg.TradingViewAPIKey != "" {
+		srv.Calendar = &calendar.Syncer{
+			Client:  calendar.New(cfg.TradingViewAPIKey, cfg.TradingViewAPIBase),
+			Store:   pg,
+			KV:      pg,
+			TTL:     cfg.TradingViewCalendarTTL,
+			Markets: cfg.TradingViewCalendarMarkets,
+			Log:     log,
+		}
+	} else {
+		log.Warn("TRADINGVIEW_API_KEY kosong: kalender ekonomi memakai data seed lokal")
+	}
 	srv.Pay = &pay.Midtrans{ServerKey: cfg.MidtransServerKey, Production: cfg.MidtransProduction, NotifyURL: cfg.APIPublicURL + "/v1/billing/midtrans/notify"}
 	if cfg.BirdKey != "" {
 		srv.OTP = otp.NewBird(cfg.BirdKey, cfg.BirdURL)
