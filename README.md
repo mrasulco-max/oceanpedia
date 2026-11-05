@@ -13,11 +13,12 @@ Platform berita & data pasar (fokus saham AS & forex, plus komoditas dan crypto;
 
 `web/src/middleware.ts` mendeteksi perangkat (Client Hint `Sec-CH-UA-Mobile`, lalu User-Agent):
 
-- **Desktop / tablet → UI website** (header, rail iklan 160×600, grafik ala TradingView).
+- **Desktop / tablet lebar → UI website** (header, rail iklan 160×600, grafik ala TradingView).
 - **Ponsel → UI app** (header ringkas, bottom navigation, slider).
+- **Jendela sempit (&lt; ~900px)** juga memakai UI app (cookie sesi viewport), agar artboard website tidak di-zoom sampai sulit dibaca; di atas ~1024px cookie itu dibersihkan dan UI website kembali.
 
 URL, SEO, dan data tetap sama; akun, watchlist, dan langganan otomatis sinkron karena satu API.
-Paksa tampilan untuk uji: tambahkan `?layout=web` atau `?layout=app` (tersimpan di cookie).
+Paksa tampilan untuk uji: tambahkan `?layout=web` atau `?layout=app` (tersimpan di cookie, mengalahkan deteksi viewport).
 
 ## Struktur
 

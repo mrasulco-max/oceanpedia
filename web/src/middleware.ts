@@ -1,17 +1,24 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { LAYOUT_COOKIE, LAYOUT_HEADER, detectLayout } from "@/lib/device";
+import { LAYOUT_COOKIE, LAYOUT_HEADER, LAYOUT_VP_COOKIE, detectLayout } from "@/lib/device";
 
 const API = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
 /**
  * 1. Memilih UI per perangkat pada URL yang sama: desktop/tablet → artboard website, ponsel → artboard app.
+ *    Jendela sempit (cookie viewport) juga memakai UI app agar tidak di-zoom terlalu kecil.
  *    Bisa dipaksa lewat ?layout=web|app (disimpan di cookie 30 hari).
  * 2. Memperpanjang sesi (refresh token) secara diam-diam untuk halaman yang butuh login.
  */
 export async function middleware(req: NextRequest) {
   const forced = req.nextUrl.searchParams.get("layout");
   const cookie = forced === "web" || forced === "app" ? forced : req.cookies.get(LAYOUT_COOKIE)?.value;
-  const layout = detectLayout({ cookie, chMobile: req.headers.get("sec-ch-ua-mobile"), ua: req.headers.get("user-agent") });
+  const viewport = forced === "web" || forced === "app" ? null : req.cookies.get(LAYOUT_VP_COOKIE)?.value;
+  const layout = detectLayout({
+    cookie,
+    viewport,
+    chMobile: req.headers.get("sec-ch-ua-mobile"),
+    ua: req.headers.get("user-agent"),
+  });
 
   const headers = new Headers(req.headers);
   headers.set(LAYOUT_HEADER, layout);
@@ -47,6 +54,8 @@ export async function middleware(req: NextRequest) {
   res.headers.append("Vary", "Sec-CH-UA-Mobile, User-Agent");
   if (forced === "web" || forced === "app") {
     res.cookies.set(LAYOUT_COOKIE, forced, { path: "/", maxAge: 60 * 60 * 24 * 30, sameSite: "lax" });
+    // Paksaan eksplisit mengalahkan preferensi viewport otomatis.
+    res.cookies.set(LAYOUT_VP_COOKIE, "", { path: "/", maxAge: 0, sameSite: "lax" });
   }
   if (fresh) {
     const secure = process.env.NODE_ENV === "production";

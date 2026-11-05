@@ -363,14 +363,14 @@ export default function AIChat({ firstName, userId, initialQuestion }: { firstNa
 
   return (
     <main style={{ height: "100dvh", display: "flex", flexDirection: "column", background: "#F6F8FC", fontFamily: "Roboto, Arial, sans-serif", color: "#0B0B0F" }}>
-      <header style={{ flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "max(10px, env(safe-area-inset-top)) 16px 10px", background: "#FFFFFF", borderBottom: "1px solid #E3EAF4" }}>
-        <Link href="/" aria-label="Kembali" style={{ width: 40, height: 40, borderRadius: 999, border: "1px solid #E3EAF4", display: "flex", alignItems: "center", justifyContent: "center", color: "#0B0B0F", textDecoration: "none", fontSize: 18 }}>‹</Link>
-        <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <header style={{ flex: "none", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "max(10px, env(safe-area-inset-top)) 16px 10px", background: "#FFFFFF", borderBottom: "1px solid #E3EAF4" }}>
+        <Link href="/" aria-label="Kembali" style={{ width: 40, height: 40, flex: "none", borderRadius: 999, border: "1px solid #E3EAF4", display: "flex", alignItems: "center", justifyContent: "center", color: "#0B0B0F", textDecoration: "none", fontSize: 18 }}>‹</Link>
+        <span style={{ flex: "1 1 140px", minWidth: 0, display: "flex", flexDirection: "column" }}>
           <strong style={{ fontSize: 18 }}>Aurora AI</strong>
-          <span style={{ fontSize: 12, color: "#5F6B7D" }}>Berita, pasar & analisis chart · Ocean Pedia Plus</span>
+          <span style={{ fontSize: 12, color: "#5F6B7D", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Berita, pasar & analisis chart · Ocean Pedia Plus</span>
         </span>
         {msgs.length ? (
-          <button type="button" onClick={() => setMsgs([])} style={{ border: "1px solid #E3EAF4", background: "#fff", borderRadius: 999, padding: "8px 12px", fontSize: 13, cursor: "pointer" }}>
+          <button type="button" onClick={() => setMsgs([])} style={{ flex: "none", border: "1px solid #E3EAF4", background: "#fff", borderRadius: 999, padding: "8px 12px", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
             Percakapan baru
           </button>
         ) : null}
