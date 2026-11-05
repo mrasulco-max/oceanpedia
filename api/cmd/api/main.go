@@ -81,7 +81,7 @@ func run(log *slog.Logger) error {
 	if cfg.BirdEmailKey != "" && cfg.OTPEmailFrom != "" {
 		srv.OTP = &otp.Email{Store: &store.PG{DB: db}, Key: cfg.BirdEmailKey, BaseURL: cfg.BirdURL, From: cfg.OTPEmailFrom, Pepper: cfg.JWTSecret, Fallback: srv.OTP}
 		srv.Mail = srv.OTP.(*otp.Email)
-	} else if cfg.Env == "development" {
+	} else if srv.OTP == nil && cfg.Env == "development" {
 		srv.OTP = otp.Dev{}
 		log.Warn("BIRD_API_KEY kosong: OTP pengembangan aktif (kode 000000)")
 	}
