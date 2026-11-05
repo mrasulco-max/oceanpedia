@@ -590,7 +590,7 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
       const playBtn = /<div style="position: absolute; left: 50%; top: 46%; transform: translate\(-50%, -50%\); width: 76px;[^"]*" aria-hidden="true">(<svg[\s\S]*?<\/svg>)<\/div>/;
       const prog = /<span role="progressbar" aria-label="Posisi video" aria-valuenow="40"([^>]*)><span style="display: block; width: 40%;/;
       if (md.kind === "file") {
-        h = h.replace(playBtn, (_m, svg: string) => `<button type="button" data-sh-play aria-label="Putar video" style="position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: 76px; height: 76px; border-radius: 999px; border: 0; background: rgba(255,255,255,.22); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2">${svg}</button>`);
+        h = h.replace(playBtn, (_m, svg: string) => `<button type="button" data-sh-play aria-label="Putar video" style="position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: 72px; height: 72px; border-radius: 999px; border: 0; background: rgba(11,11,15,.38); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2; transition: opacity .2s">${svg}</button>`);
         h = h.replace(prog, '<span role="progressbar" data-sh-prog aria-label="Posisi video" aria-valuenow="0"$1><span data-sh-bar style="display: block; width: 0%;');
       } else {
         // Pemutar platform / tanpa video: tombol putar & progres contoh disembunyikan.
@@ -637,10 +637,16 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
       if (!built) h = h.replace(/<h2([^>]*)>Lainnya<\/h2>/, "<h2$1></h2>");
     }
   } else {
-    // Aksi aplikasi: suka & simpan (status awal lewat ctx.state), jumlah nyata.
-    h = h.replace(rx(`(<button onClick="\\{\\{ u6\\.m0\\.pick \\}\\}"[^>]*aria-label="Suka")([^>]*>(?:<span[^>]*>${SVGX}</span>))1,2 rb</button>`), (_m, a: string, b: string) => `${a} data-sh="like"${b}${n("likes", cur?.likes ?? 0)}</button>`);
-    h = h.replace(rx(`(<button aria-haspopup="dialog" onClick="\\{\\{ open_comment \\}\\}" aria-label="Komentar"[^>]*>(?:<span[^>]*>${SVGX}</span>))86</button>`), (_m, a: string) => `${a}${n("comments", cur?.comments ?? 0)}</button>`);
-    h = h.replace(/(<button onClick="\{\{ u7\.m0\.pick \}\}"[^>]*aria-label="Simpan")/, '$1 data-sh="save"');
+    // Aksi aplikasi ala TikTok / Reels / YouTube Shorts: ikon solid di kanan, angka di bawahnya.
+    // Suka & simpan ditangani enhancer "shorts"; komentar & bagikan membuka lembar desain.
+    const railStart = h.indexOf('<div style="position: absolute; right: 14px; bottom: 150px;');
+    const railEnd = h.indexOf('<div style="position: absolute; left: 20px; right: 84px; bottom: 56px;', railStart);
+    if (railStart >= 0 && railEnd > railStart) h = h.slice(0, railStart) + shortRail(cur, n) + "\n" + h.slice(railEnd);
+    // Judul & keterangan: teks berbayang agar terbaca di video terang.
+    h = h.replace(
+      '<div style="position: absolute; left: 20px; right: 84px; bottom: 56px; display: flex; flex-direction: column; gap: 10px; color: #FFFFFF">',
+      '<div data-sh-info style="position: absolute; left: 16px; right: 84px; bottom: 56px; z-index: 2; display: flex; flex-direction: column; gap: 8px; color: #FFFFFF; text-shadow: 0 1px 3px rgba(0,0,0,.55)">',
+    );
     // Lembar bagikan: kanal nyata + tautan short ini.
     ([["f1", "wa"], ["f2", "tg"], ["f3", "x"], ["f4", "copy"]] as const).forEach(([f, ch]) => (h = h.replace(`<button onClick="{{ ${f} }}"`, `<button onClick="{{ ${f} }}" data-sh-share="${ch}"`)));
     h = h.replace(/>oceanpedia\.id\/berita\/ihsg-menguat-perbankan</, `>${esc(url.replace(/^https?:\/\//, ""))}<`);
@@ -650,19 +656,35 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
     h = h.replace(/(<div class="ob-scroll" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 4px 0">)[\s\S]*?(<\/div><div[^>]*>\s*<span[^>]*>)NA(<\/span>)/, (_m, a: string, b: string, c: string) => `${a.replace("<div ", "<div data-sh-list ")}${shortCommentRows(sc.comments, true)}${b}${esc(sc.me ? initials(sc.me) : "?")}${c}`);
     h = h.replace(/<input type="text" placeholder="Tulis komentar…"/, `<input type="text" data-sh="comment" maxlength="1000"${sc.loggedIn ? "" : ` data-login="${esc(login)}" readonly`} placeholder="${sc.loggedIn ? "Tulis komentar…" : "Masuk untuk berkomentar"}"`);
     h = h.replace(/<button aria-label="Kirim komentar" onClick="\{\{ f5 \}\}"/, '<button aria-label="Kirim komentar" data-sh="comment-send" onClick="{{ f5 }}"');
-    h = h.replace(/<a href="\/penulis\/maya-lestari"[^>]*>[\s\S]*?<\/a>/, "");
+    h = h.replace(
+      /<a href="\/penulis\/maya-lestari"[^>]*>[\s\S]*?<\/a>/,
+      '<span style="display: flex; align-items: center; gap: 8px"><span style="flex: none; width: 34px; height: 34px; border-radius: 999px; background: #FFFFFF; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; text-shadow: none; box-shadow: 0 1px 4px rgba(0,0,0,.35)">OB</span><strong style="font-size: 15px; font-weight: 600">@oceanbird</strong></span>',
+    );
     h = h.replace(/<span style="display: flex; gap: 8px"><a href="\/market\/BBCA"[\s\S]*?<\/span>/, cur?.symbol ? `<span style="display: flex; gap: 8px"><a href="/market/${encodeURIComponent(cur.symbol)}" style="padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 12px; font-weight: 500">${esc(cur.symbol)}</a></span>` : "");
   }
   // Data contoh desain: tab kategori (tidak berfungsi) & foto contoh tanpa video.
   h = h.replace(/<div style="margin: 20px 0"><div role="tablist" class="ob-scroll"[^>]*>[\s\S]*?<\/div><\/div>/, "");
   h = h.replace(/<img src="\/img\/news-\d\.jpg"([^>]*)>/g, (_m, rest: string) => `<span aria-hidden="true" style="${/style="([^"]*)"/.exec(rest)?.[1] ?? ""}; background: linear-gradient(160deg, #1E293B, #0B0B0F)"></span>`);
-  if (app && cur) {
-    // Tombol geser (juga untuk pemutar platform yang menahan sentuhan): ▲ sebelumnya / ▼ berikutnya.
-    const nav = (dir: "prev" | "next", id2: string) => (id2 ? `<a href="/short?v=${esc(id2)}" data-sh-nav="${dir}" aria-label="${dir === "prev" ? "Video sebelumnya" : "Video berikutnya"}" style="width: 40px; height: 40px; border-radius: 999px; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; color: #FFFFFF"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir === "prev" ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"}"/></svg></a>` : "");
-    const pair = nav("prev", prevId) + nav("next", nextId);
-    if (pair) h = h.replace(/<span style="width: 40px"><\/span><\/div>/, `<span style="width: 40px"></span></div><div data-sh-navs style="position: absolute; right: 14px; top: 76px; z-index: 3; display: flex; flex-direction: column; gap: 8px">${pair}</div>`);
-  }
   return meta + h;
+}
+
+const RAIL_ICON = {
+  like: '<path d="M12 20.6s-7.6-4.6-9.4-9.3C1.4 8 3.6 4.4 7.2 4.4c2 0 3.6 1.1 4.8 2.8 1.2-1.7 2.8-2.8 4.8-2.8 3.6 0 5.8 3.6 4.6 6.9-1.8 4.7-9.4 9.3-9.4 9.3z"/>',
+  comment: '<path d="M12 3.4c-5.1 0-9.2 3.5-9.2 7.8 0 2.4 1.3 4.6 3.4 6l-.7 3.2c-.1.6.5 1 1 .7l3.7-2.1c.6.1 1.2.2 1.8.2 5.1 0 9.2-3.5 9.2-7.8S17.1 3.4 12 3.4z"/><circle cx="8" cy="11.2" r="1.25" fill="#0B0B0F" fill-opacity=".55"/><circle cx="12" cy="11.2" r="1.25" fill="#0B0B0F" fill-opacity=".55"/><circle cx="16" cy="11.2" r="1.25" fill="#0B0B0F" fill-opacity=".55"/>',
+  share: '<path d="M13.4 4.5c0-.7.8-1 1.3-.6l7 6.4c.4.4.4.9 0 1.3l-7 6.4c-.5.4-1.3.1-1.3-.6v-3.3c-4.9 0-8.1 1.5-10.4 4.9.6-5.4 3.6-9.7 10.4-10.4z"/>',
+  save: '<path d="M6.6 3.4h10.8c.9 0 1.6.7 1.6 1.6v15.2c0 .7-.8 1.1-1.3.7L12 16.7l-5.7 4.2c-.5.4-1.3 0-1.3-.7V5c0-.9.7-1.6 1.6-1.6z"/>',
+};
+
+/** Kolom aksi Short aplikasi: ikon solid berbayang di lingkaran gelap transparan agar terlihat di video terang. */
+function shortRail(cur: ShortRow | undefined, n: (k: "likes" | "comments", v: number) => string): string {
+  const btn = (attrs: string, icon: string, label: string) =>
+    `<button type="button" ${attrs} style="display: flex; flex-direction: column; align-items: center; gap: 5px; border: 0; padding: 0; background: transparent; color: #FFFFFF; font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1; text-shadow: 0 1px 3px rgba(0,0,0,.6); cursor: pointer; -webkit-tap-highlight-color: transparent"><span data-ic style="width: 48px; height: 48px; border-radius: 999px; background: rgba(11,11,15,.32); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; transition: color .2s, transform .15s"><svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,.45))">${icon}</svg></span>${label}</button>`;
+  return `<div data-sh-rail style="position: absolute; right: 10px; bottom: 140px; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 16px">${[
+    btn(`data-sh="like" aria-label="Suka" aria-pressed="${cur?.liked ? "true" : "false"}"`, RAIL_ICON.like, n("likes", cur?.likes ?? 0)),
+    btn('aria-haspopup="dialog" onClick="{{ open_comment }}" aria-label="Komentar"', RAIL_ICON.comment, n("comments", cur?.comments ?? 0)),
+    btn('onClick="{{ open_share }}" aria-label="Bagikan"', RAIL_ICON.share, "Bagikan"),
+    btn(`data-sh="save" aria-label="Simpan" aria-pressed="${cur?.saved ? "true" : "false"}"`, RAIL_ICON.save, `<span data-sh-t="save">${cur?.saved ? "Tersimpan" : "Simpan"}</span>`),
+  ].join("")}</div>`;
 }
 
 // ======================================================================= Beranda: Ocean Short

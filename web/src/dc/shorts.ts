@@ -68,13 +68,9 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
       const on = b.dataset.sh === "like" ? st.liked : st.saved;
       b.setAttribute("aria-pressed", String(on));
       if (b.tagName === "BUTTON") {
-        // Aplikasi: lingkaran ikon biru saat aktif.
-        const dot = b.querySelector<HTMLElement>("span");
-        if (dot) dot.style.background = on ? "#2F74EB" : "rgba(255,255,255,.18)";
-        if (b.dataset.sh === "save") {
-          const txt = [...b.childNodes].reverse().find((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim());
-          if (txt) txt.textContent = on ? "Tersimpan" : "Simpan";
-        }
+        // Aplikasi: warna ikon aktif (hati merah, bookmark kuning) diatur CSS lewat aria-pressed.
+        const t = b.querySelector<HTMLElement>('[data-sh-t="save"]');
+        if (t) t.textContent = on ? "Tersimpan" : "Simpan";
       } else {
         b.style.borderColor = on ? "#2F74EB" : "#E3EAF4";
         b.style.color = on ? "#2F74EB" : "";
@@ -382,12 +378,6 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
     if (el("[data-sh-play]") || (t instanceof HTMLVideoElement && t.matches("video[data-short]:not([controls])"))) {
       stop();
       toggle();
-      return;
-    }
-    const navBtn = el("[data-sh-nav]");
-    if (navBtn) {
-      stop();
-      go(navBtn.dataset.shNav === "prev" ? "prev" : "next");
       return;
     }
     const capBtn = el('[data-sh="cap"]');
