@@ -92,6 +92,20 @@ type EconomicEvent struct {
 	RelatedSymbols []string  `json:"related_symbols"`
 }
 
+// EconomicEventInput adalah baris untuk upsert dari penyedia eksternal (TradingView).
+type EconomicEventInput struct {
+	ExternalID     string
+	Country        string
+	Title          string
+	Impact         string
+	ScheduledAt    time.Time
+	Actual         *string
+	Forecast       *string
+	Previous       *string
+	RelatedSymbols []string
+	Source         string
+}
+
 type Plan struct {
 	Code          string   `json:"code"`
 	Name          string   `json:"name"`
@@ -206,6 +220,8 @@ type Store interface {
 	Instruments(ctx context.Context, symbols []string) ([]Instrument, error)
 	InstrumentBySymbol(ctx context.Context, symbol string) (Instrument, error)
 	Events(ctx context.Context, from, to time.Time, impact string) ([]EconomicEvent, error)
+	UpsertEconomicEvents(ctx context.Context, events []EconomicEventInput) error
+	ClearSeedEconomicEvents(ctx context.Context, from, to time.Time) error
 	Plans(ctx context.Context) ([]Plan, error)
 	PlanByCode(ctx context.Context, code string) (Plan, error)
 	AdSlots(ctx context.Context, surface, page string) ([]AdSlot, error)

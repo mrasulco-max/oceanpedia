@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mrasulco-max/oceanpedia/api/internal/ai"
+	"github.com/mrasulco-max/oceanpedia/api/internal/calendar"
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/httpx"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
@@ -29,6 +30,8 @@ type Server struct {
 	Mail Mailer
 	// Pay (opsional): Midtrans Snap; nil/tanpa kunci = mode manual (pengembangan).
 	Pay *pay.Midtrans
+	// Calendar (opsional): sync kalender ekonomi TradingView Data API.
+	Calendar *calendar.Syncer
 }
 
 // Mailer mengirim email transaksional.

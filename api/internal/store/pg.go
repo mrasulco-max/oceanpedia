@@ -272,6 +272,71 @@ func (p *PG) Events(ctx context.Context, from, to time.Time, impact string) ([]E
 	return out, rows.Err()
 }
 
+const qUpsertEconomic = `
+INSERT INTO economic_events (external_id, country, title, impact, scheduled_at, actual, forecast, previous, related_symbols, source, updated_at)
+VALUES (
+  $1, $2, $3, $4, $5, $6, $7, $8,
+  COALESCE((SELECT array_agg(x) FROM jsonb_array_elements_text($9::jsonb) t(x)), '{}'),
+  $10, now()
+)
+ON CONFLICT (external_id) DO UPDATE SET
+  country = EXCLUDED.country,
+  title = EXCLUDED.title,
+  impact = EXCLUDED.impact,
+  scheduled_at = EXCLUDED.scheduled_at,
+  actual = EXCLUDED.actual,
+  forecast = EXCLUDED.forecast,
+  previous = EXCLUDED.previous,
+  related_symbols = EXCLUDED.related_symbols,
+  source = EXCLUDED.source,
+  updated_at = now()`
+
+func (p *PG) UpsertEconomicEvents(ctx context.Context, events []EconomicEventInput) error {
+	if len(events) == 0 {
+		return nil
+	}
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, qUpsertEconomic)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, e := range events {
+		if e.ExternalID == "" {
+			continue
+		}
+		src := e.Source
+		if src == "" {
+			src = "tradingview"
+		}
+		rel := e.RelatedSymbols
+		if rel == nil {
+			rel = []string{}
+		}
+		raw, err := json.Marshal(rel)
+		if err != nil {
+			return err
+		}
+		if _, err := stmt.ExecContext(ctx, e.ExternalID, e.Country, e.Title, e.Impact, e.ScheduledAt, e.Actual, e.Forecast, e.Previous, string(raw), src); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (p *PG) ClearSeedEconomicEvents(ctx context.Context, from, to time.Time) error {
+	_, err := p.DB.ExecContext(ctx, `
+DELETE FROM economic_events
+WHERE scheduled_at >= $1 AND scheduled_at < $2
+  AND external_id IS NULL
+  AND coalesce(source, 'seed') = 'seed'`, from, to)
+	return err
+}
+
 const qPlans = `SELECT code, name, price_amount, currency, billing_period, min_seats, features::text FROM subscription_plans WHERE active AND ($1 = '' OR code = $1) ORDER BY price_amount`
 
 func (p *PG) plans(ctx context.Context, code string) ([]Plan, error) {

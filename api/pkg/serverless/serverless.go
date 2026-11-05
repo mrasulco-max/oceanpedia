@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrasulco-max/oceanpedia/api/internal/ai"
 	"github.com/mrasulco-max/oceanpedia/api/internal/api"
+	"github.com/mrasulco-max/oceanpedia/api/internal/calendar"
 	"github.com/mrasulco-max/oceanpedia/api/internal/config"
 	"github.com/mrasulco-max/oceanpedia/api/internal/httpx"
 	"github.com/mrasulco-max/oceanpedia/api/internal/market"
@@ -45,11 +46,22 @@ func build() {
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(2)
 	db.SetConnMaxIdleTime(30 * time.Second)
+	pg := &store.PG{DB: db}
 	var p market.Provider = market.Sample{}
 	if cfg.TwelveDataKey != "" {
-		p = market.Live(cfg.TwelveDataKey, &store.PG{DB: db}, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
+		p = market.Live(cfg.TwelveDataKey, pg, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
 	}
-	srv := &api.Server{Store: &store.PG{DB: db}, Market: p, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: &store.PG{DB: db}}, Cfg: cfg, Log: log}
+	srv := &api.Server{Store: pg, Market: p, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: pg}, Cfg: cfg, Log: log}
+	if cfg.TradingViewAPIKey != "" {
+		srv.Calendar = &calendar.Syncer{
+			Client:  calendar.New(cfg.TradingViewAPIKey, cfg.TradingViewAPIBase),
+			Store:   pg,
+			KV:      pg,
+			TTL:     cfg.TradingViewCalendarTTL,
+			Markets: cfg.TradingViewCalendarMarkets,
+			Log:     log,
+		}
+	}
 	srv.Pay = &pay.Midtrans{ServerKey: cfg.MidtransServerKey, Production: cfg.MidtransProduction, NotifyURL: cfg.APIPublicURL + "/v1/billing/midtrans/notify"}
 	if cfg.BirdKey != "" {
 		srv.OTP = otp.NewBird(cfg.BirdKey, cfg.BirdURL)

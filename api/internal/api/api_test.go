@@ -374,6 +374,11 @@ func TestQuotesUnknownSymbolParam(t *testing.T) {
 func (f *fake) ActiveAlerts(context.Context, []string) ([]store.AlertJob, error) { return nil, nil }
 func (f *fake) NotifyArticle(context.Context, string) (int, error)               { return 0, nil }
 func (f *fake) DispatchReminders(context.Context) (int, error)                   { return 0, nil }
+func (f *fake) Events(context.Context, time.Time, time.Time, string) ([]store.EconomicEvent, error) {
+	return nil, nil
+}
+func (f *fake) UpsertEconomicEvents(context.Context, []store.EconomicEventInput) error { return nil }
+func (f *fake) ClearSeedEconomicEvents(context.Context, time.Time, time.Time) error    { return nil }
 func (f *fake) CreatePayment(context.Context, string, string, string, string, int64, time.Time) (string, error) {
 	return "00000000-0000-0000-0000-0000000000aa", nil
 }
