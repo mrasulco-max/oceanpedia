@@ -218,6 +218,21 @@ svg {
   display: none !important;
 }
 
+/* Ocean Short (aplikasi): kolom aksi ala TikTok / Reels / YouTube Shorts. */
+[data-sh-rail] [data-sh="like"][aria-pressed="true"] [data-ic] {
+  color: #fe2c55;
+}
+[data-sh-rail] [data-sh="save"][aria-pressed="true"] [data-ic] {
+  color: #facc15;
+}
+[data-sh-rail] button:active [data-ic] {
+  transform: scale(0.88);
+}
+[data-sh-rail] button:focus-visible [data-ic] {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
 /* Halaman Cari: filter tab (enhancer "search"). */
 [data-search-tab="aset"] [data-sec]:not([data-sec="aset"]),
 [data-search-tab="berita"] [data-sec]:not([data-sec="berita"]),
