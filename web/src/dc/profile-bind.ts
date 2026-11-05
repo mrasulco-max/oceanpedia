@@ -167,6 +167,13 @@ export function bindSettingsApp(html: string, p: Profile, sessions: Session[]): 
   h = h.replace(/<button onClick="\{\{ f9 \}\}"([^>]*)>Simpan kata sandi<\/button>/, '<button data-pw-save$1>Simpan kata sandi</button>');
   // Verifikasi 2 langkah lewat email (kode saat masuk di perangkat baru); autentikator menyusul.
   h = h.replace(/>Aktif lewat SMS</, ">Aktif lewat email<").replace(/>Aktif lewat aplikasi autentikator</, ">Aplikasi autentikator<").replace(/>Aplikasi autentikator \(segera hadir\)</, ">Aplikasi autentikator<");
+  // Autentikator aktif: buat ulang kode cadangan (juga untuk akun yang mengaktifkan sebelum ada kode cadangan).
+  if (p.totp) {
+    h = h.replace(
+      /(\{\{ op_tfa\.i2\.mark \}\}[^<]*<svg[\s\S]*?<\/svg><\/span><\/button>)(<\/div><\/div><div role="dialog" aria-modal="true" aria-label="Riwayat masuk")/,
+      `$1<button type="button" data-totp-recovery style="min-height: 48px; margin-top: 8px; border-radius: 14px; border: 1px solid #E3EAF4; background: #F6F8FC; color: #2F74EB; font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer">Buat kode cadangan baru</button><span style="font-size: 12px; line-height: 1.5; color: #5F6B7D">Kode cadangan dipakai untuk masuk bila ponsel hilang. Membuat kode baru membatalkan kode lama.</span>$2`,
+    );
+  }
   h = h.replace(/>English \(segera hadir\)</, ">English (beta)<").replace(/>English</, ">English (beta)<");
   // Ukuran huruf artikel: slider desain → pilihan 4 tingkat yang tersimpan di akun.
   const fi = Math.max(0, ["small", "medium", "large", "xlarge"].indexOf(String(p.preferences.font_size ?? "medium")));

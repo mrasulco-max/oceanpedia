@@ -96,6 +96,7 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /v1/me/2fa/totp/setup", s.totpSetup)
 	auth("POST /v1/me/2fa/totp/enable", s.totpEnable)
 	auth("POST /v1/me/2fa/totp/disable", s.totpDisable)
+	auth("POST /v1/me/2fa/totp/recovery", s.totpRecovery)
 	auth("POST /v1/me/delete", s.deleteMe)
 	// Jurnal Trading: semua jenis akun yang masuk.
 	auth("GET /v1/me/journal", s.journalList)
@@ -231,6 +232,7 @@ func (s *Server) Handler() http.Handler {
 	staff("POST /v1/admin/users/{id}/suspend", s.suspendUser)
 	staff("POST /v1/admin/users/{id}/unblock", s.unblockUser)
 	staff("POST /v1/admin/users/{id}/warn", s.warnUser)
+	staff("POST /v1/admin/users/{id}/2fa/reset", s.resetUserTOTP)
 	staff("GET /v1/admin/ads", s.adminAds)
 	staff("POST /v1/admin/ads/campaigns", s.createCampaign)
 	staff("PUT /v1/admin/ads/campaigns/{id}", s.updateCampaign)

@@ -348,6 +348,11 @@ type Store interface {
 	ExportUser(ctx context.Context, uid string) (string, error)
 	TOTP(ctx context.Context, uid string) (active, pending string, err error)
 	SetTOTP(ctx context.Context, uid, key, value string) error
+	ClearTOTP(ctx context.Context, uid string) error
+	UseTOTPStep(ctx context.Context, uid string, step int64) (bool, error)
+	TOTPAttempt(ctx context.Context, uid string, now, windowSec int64) (int, error)
+	TOTPRecovery(ctx context.Context, uid string) ([]string, error)
+	UseRecoveryCode(ctx context.Context, uid, hash string) (left int, ok bool, err error)
 	DeleteAccount(ctx context.Context, uid string) error
 	Journal(ctx context.Context, uid string, limit int) ([]JournalEntry, error)
 	JournalCount(ctx context.Context, uid string) (int, error)

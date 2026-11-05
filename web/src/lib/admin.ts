@@ -180,6 +180,8 @@ export interface AdminUser {
   watchlist: number;
   bookmarks: number;
   warnings: number;
+  /** Aplikasi autentikator (TOTP) aktif. */
+  totp?: boolean;
 }
 export interface UserStats {
   total: number;

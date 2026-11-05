@@ -227,6 +227,8 @@ export function bindUsers(
     canBan && !self && u.status !== "blocked" ? actionBtn(p, "Blokir 7 hari", `data-us-action="suspend" data-days="7" data-id="${u.id}"`) : "",
     canBan && !self && !(u.status === "blocked" && !u.blocked_until) && u.status === "blocked" ? actionBtn(p, "Blokir 7 hari", `data-us-action="suspend" data-days="0" data-id="${u.id}"`, "Blokir permanen") : "",
     canWarn && !self ? actionBtn(p, "Kirim peringatan", `data-us-action="warn" data-id="${u.id}"`) : "",
+    // Pemulihan akun: pengguna kehilangan ponsel autentikator & kode cadangan.
+    canBan && !self && u.totp ? actionBtn(p, "Kirim peringatan", `data-us-action="reset2fa" data-id="${u.id}"`, "Reset 2FA") : "",
   ].join("");
   p = p.replace(/(<div style="display: flex; gap: 10px; flex-wrap: wrap">)[\s\S]*?(<\/div><\/section>)/, `$1${acts || '<span style="font-size: 13px; color: #5F6B7D">Tidak ada aksi untuk akun ini.</span>'}$2`);
   return h.slice(0, ps) + p + h.slice(pe);
@@ -796,6 +798,18 @@ export function bindTwoFactor(html: string, opts: { email: string; next: string;
   h = h.replace(/<span style="font-size: 13px; color: #5F6B7D">Kode berganti dalam <strong[^>]*>[^<]*<\/strong>\s*<\/span>/, `<span data-tf="resend-note" style="font-size: 13px; color: #5F6B7D">${totp ? "Kode di aplikasi berganti setiap 30 detik." : "Tidak menerima kode? Periksa folder spam."}</span>`);
   h = h.replace(/<input type="checkbox" style="width: 18px; height: 18px">Jangan minta lagi di perangkat ini selama 30 hari/, '<input type="checkbox" data-tf="remember" style="width: 18px; height: 18px">Jangan minta lagi di perangkat ini selama 30 hari');
   h = h.replace(/<a href="\/admin"( class=ob-anim[^>]*)>Verifikasi &(?:amp;)? masuk<\/a>/, `<a href="#" data-tf="submit" data-email="${esc(opts.email)}" data-next="${esc(opts.next)}"$1>Verifikasi &amp; masuk</a>`);
-  h = h.replace(/Tidak bisa akses aplikasi\? <a href="#"([^>]*)>Pakai kode cadangan<\/a>/, totp ? 'Tidak bisa membuka aplikasi? <a href="/bantuan#kontak"$1>Hubungi bantuan</a>' : 'Belum menerima email? <a href="#" data-tf="resend"$1>Kirim ulang kode</a>');
+  h = h.replace(
+    /Tidak bisa akses aplikasi\? <a href="#"([^>]*)>Pakai kode cadangan<\/a>/,
+    totp
+      ? 'Tidak bisa membuka aplikasi? <a href="#" data-tf="recovery"$1>Pakai kode cadangan</a><br><span style="font-size: 13px">Kode cadangan juga hilang? <a href="/bantuan#kontak"$1>Hubungi bantuan</a></span>'
+      : 'Belum menerima email? <a href="#" data-tf="resend"$1>Kirim ulang kode</a>',
+  );
+  if (totp) {
+    // Kolom kode cadangan (tersembunyi sampai "Pakai kode cadangan" diketuk).
+    h = h.replace(
+      /(<label[^>]*><input type="checkbox" data-tf="remember")/,
+      `<label data-tf="recovery-box" style="display: none; flex-direction: column; gap: 6px; font-size: 14px; color: #5F6B7D">Kode cadangan (sekali pakai)<input data-tf="recovery-input" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="11" placeholder="ABCDE-FGH23" style="min-height: 52px; padding: 0 16px; border-radius: 16px; border: 1px solid #E3EBF7; background: #FFFFFF; font-size: 18px; letter-spacing: .15em; text-align: center; font-family: 'Roboto Mono', monospace; text-transform: uppercase"></label>$1`,
+    );
+  }
   return h;
 }

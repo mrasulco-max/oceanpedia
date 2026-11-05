@@ -12,7 +12,7 @@ const qExportUser = `SELECT json_build_object(
   'exported_at', now(),
   'account', (SELECT json_build_object('id', u.id, 'email', u.email, 'full_name', u.full_name, 'display_name', u.display_name,
       'phone', u.phone_e164, 'role', u.role, 'created_at', u.created_at, 'last_login_at', u.last_login_at, 'email_verified_at', u.email_verified_at,
-      'preferences', u.preferences - 'totp_secret' - 'totp_pending', 'two_factor_reader', COALESCE((u.preferences->>'login_2fa')::boolean, false))
+      'preferences', u.preferences - 'totp_secret' - 'totp_pending' - 'totp_recovery' - 'totp_last_step' - 'totp_fail', 'totp_enabled', COALESCE(u.preferences->>'totp_secret', '') <> '', 'two_factor_reader', COALESCE((u.preferences->>'login_2fa')::boolean, false))
     FROM users u WHERE u.id = $1::uuid),
   'watchlist', (SELECT COALESCE(json_agg(json_build_object('watchlist', w.name, 'symbol', wi.symbol, 'added_at', wi.added_at) ORDER BY wi.added_at), '[]')
     FROM watchlist_items wi JOIN watchlists w ON w.id = wi.watchlist_id WHERE w.user_id = $1::uuid),
