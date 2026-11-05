@@ -50,7 +50,7 @@ export default function DCBoard({ Logic, tpl, css, kind, enhance, ctx }: BoardPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Skala untuk layar yang lebih sempit dari kanvas desktop.
+  // Skala untuk layar yang lebih sempit dari kanvas desktop (900–1279 setelah switch viewport ke app).
   useIsoLayoutEffect(() => {
     // Aplikasi menyesuaikan sendiri; panel admin responsif (tata letak HP/tablet dari desain), tidak diperkecil.
     if (kind !== "web") return;
@@ -61,7 +61,9 @@ export default function DCBoard({ Logic, tpl, css, kind, enhance, ctx }: BoardPr
       const z = vw < WEB_MIN ? vw / WEB_MIN : 1;
       el.style.zoom = z === 1 ? "" : String(z);
       el.style.width = z === 1 ? "" : `${WEB_MIN}px`;
-      if (kind === "web") el.style.height = `${window.innerHeight / z}px`;
+      // Tinggi layout = viewport visual / zoom agar gulir vertikal di frame tidak terpotong.
+      el.style.height = `${Math.ceil(window.innerHeight / z)}px`;
+      el.style.minHeight = z === 1 ? "" : `${Math.ceil(window.innerHeight / z)}px`;
     };
     fit();
     window.addEventListener("resize", fit);

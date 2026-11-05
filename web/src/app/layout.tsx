@@ -4,6 +4,7 @@ import "./globals.css";
 import { cookies } from "next/headers";
 import { currentOrigin } from "@/lib/origin";
 import { FONT_KEYS, parseDisplay } from "@/lib/display-prefs";
+import ViewportLayoutSync from "./ViewportLayoutSync";
 
 // metadataBase mengikuti domain yang sedang dipakai (tautan & gambar Open Graph saat dibagikan).
 export async function generateMetadata(): Promise<Metadata> {
@@ -35,7 +36,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link rel="stylesheet" href={FONTS} />
       </head>
-      <body>{children}</body>
+      <body>
+        <ViewportLayoutSync />
+        {children}
+      </body>
     </html>
   );
 }

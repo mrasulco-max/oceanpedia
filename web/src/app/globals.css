@@ -49,17 +49,22 @@ svg {
 .dc-frame-web {
   position: fixed;
   inset: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: #fff;
+  -webkit-overflow-scrolling: touch;
 }
 .dc-web {
   width: 100%;
   height: 100%;
+  min-height: 100%;
+  transform-origin: top left;
 }
 
 /* Panel admin: dokumen biasa yang menggulir, responsif sampai layar HP. */
 .dc-admin {
   min-height: 100vh;
+  max-width: 100vw;
   overflow-x: hidden;
 }
 .dc-admin [data-ed="title"] {
@@ -129,6 +134,22 @@ svg {
   .dc-admin [data-row] > span:nth-child(4),
   .dc-admin [data-row] > span:nth-child(5) {
     display: none !important;
+  }
+  /* Tabel/matriks lebar: gulir horizontal lokal, bukan seluruh halaman. */
+  .dc-admin .scroll-x,
+  .dc-admin *:has(> [data-rb="matrix"]),
+  .dc-admin *:has(> [data-cnt-table]) {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dc-admin [data-rb="matrix"] {
+    max-width: none;
+  }
+  .dc-admin [data-us-row],
+  .dc-admin [data-ad-row],
+  .dc-admin [data-mk-row] {
+    min-width: 0 !important;
   }
 }
 
