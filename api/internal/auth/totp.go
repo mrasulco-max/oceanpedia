@@ -63,21 +63,91 @@ func TOTPCode(secret string, t time.Time) (string, error) {
 
 // VerifyTOTP menerima kode dari langkah sebelumnya, sekarang, atau berikutnya (toleransi jam ±30 detik).
 func VerifyTOTP(secret, code string, t time.Time) bool {
+	_, ok := TOTPStep(secret, code, t)
+	return ok
+}
+
+// TOTPStep seperti VerifyTOTP, tetapi juga mengembalikan nomor langkah (counter) kode yang cocok,
+// supaya pemanggil bisa menolak kode yang sama dipakai dua kali (lihat Store.UseTOTPStep).
+func TOTPStep(secret, code string, t time.Time) (int64, bool) {
 	code = strings.ReplaceAll(strings.TrimSpace(code), " ", "")
 	if len(code) != totpDigits {
-		return false
+		return 0, false
 	}
 	key, err := b32.DecodeString(strings.ToUpper(strings.TrimSpace(secret)))
 	if err != nil {
-		return false
+		return 0, false
 	}
-	c := uint64(t.Unix() / totpStep)
+	c := t.Unix() / totpStep
 	for _, d := range []int64{-1, 0, 1} {
-		if hmac.Equal([]byte(totpAt(key, uint64(int64(c)+d))), []byte(code)) {
-			return true
+		if hmac.Equal([]byte(totpAt(key, uint64(c+d))), []byte(code)) {
+			return c + d, true
 		}
 	}
-	return false
+	return 0, false
+}
+
+// ======================================================================= kode cadangan
+
+// Alfabet kode cadangan: tanpa karakter yang mudah tertukar (0/O, 1/I/L).
+const recoveryAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+// RecoveryCount: jumlah kode cadangan yang dibuat sekali jalan.
+const RecoveryCount = 10
+
+const recoveryLen = 10 // 10 karakter dari 31 simbol ≈ 49 bit acak per kode
+
+// NewRecoveryCodes membuat n kode cadangan sekali pakai, format "ABCDE-FGH23".
+func NewRecoveryCodes(n int) ([]string, error) {
+	out := make([]string, 0, n)
+	buf := make([]byte, recoveryLen)
+	for len(out) < n {
+		if _, err := rand.Read(buf); err != nil {
+			return nil, err
+		}
+		var b strings.Builder
+		for i, x := range buf {
+			if i == recoveryLen/2 {
+				b.WriteByte('-')
+			}
+			// 248 = 8 × 31: tolak nilai ≥ 248 agar sebaran merata (tanpa bias modulo).
+			for x >= 248 {
+				var one [1]byte
+				if _, err := rand.Read(one[:]); err != nil {
+					return nil, err
+				}
+				x = one[0]
+			}
+			b.WriteByte(recoveryAlphabet[int(x)%len(recoveryAlphabet)])
+		}
+		out = append(out, b.String())
+	}
+	return out, nil
+}
+
+// NormalizeRecovery menyeragamkan masukan kode cadangan (huruf besar, tanpa spasi/tanda hubung).
+// Mengembalikan "" bila bentuknya bukan kode cadangan.
+func NormalizeRecovery(code string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(code) {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else if r != '-' && r != ' ' {
+			return ""
+		}
+	}
+	if b.Len() != recoveryLen {
+		return ""
+	}
+	return b.String()
+}
+
+// HashRecovery: hash HMAC-SHA256 kode cadangan (terikat ke pengguna). Hanya hash yang disimpan.
+// Kode berentropi tinggi (≈49 bit) sehingga HMAC dengan rahasia server cukup — tidak perlu hash lambat.
+func HashRecovery(serverSecret []byte, uid, code string) string {
+	m := hmac.New(sha256.New, append([]byte("oceanpedia-recovery:"), serverSecret...))
+	m.Write([]byte(uid + "\x00" + NormalizeRecovery(code)))
+	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
 func sealKey(secret []byte) []byte {

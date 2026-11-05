@@ -71,6 +71,13 @@ export function ops(host: HTMLElement, { router }: Env): Cleanup {
           if (!r.ok) return toast(host, msg(r.data, "Gagal membuka blokir."));
           done("Blokir dibuka.");
         });
+      } else if (a === "reset2fa") {
+        if (!armed(us, "Ketuk lagi: matikan autentikator & keluarkan semua sesi")) return;
+        await run(async () => {
+          const r = await call("POST", `users/${id}/2fa/reset`);
+          if (!r.ok) return toast(host, msg(r.data, "Gagal mereset verifikasi 2 langkah."));
+          done("Verifikasi 2 langkah direset. Pengguna diberi tahu lewat email dan perlu masuk ulang.");
+        });
       } else if (a === "warn") {
         const reason = window.prompt("Isi peringatan (dikirim ke notifikasi akun pengguna):", "Komentar Anda melanggar pedoman komunitas OceanBird.")?.trim();
         if (!reason) return;
@@ -311,11 +318,19 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
     return;
   }
   let busy = false;
-  const code = () => digits.map((d) => d.value.trim().toUpperCase()).join("");
+  const recoveryBox = host.querySelector<HTMLElement>('[data-tf="recovery-box"]');
+  const recoveryInput = host.querySelector<HTMLInputElement>('[data-tf="recovery-input"]');
+  const recoveryMode = () => !!recoveryBox && recoveryBox.style.display !== "none";
+  const code = () => (recoveryMode() ? (recoveryInput?.value ?? "").replace(/[\s-]/g, "").toUpperCase() : digits.map((d) => d.value.trim().toUpperCase()).join(""));
   const send = async () => {
     if (busy) return;
     const c = code();
-    if (c.length < 6) {
+    if (recoveryMode()) {
+      if (!/^[A-Z0-9]{10}$/.test(c)) {
+        recoveryInput?.focus();
+        return toast(host, "Kode cadangan terdiri dari 10 huruf & angka, mis. ABCDE-FGH23.");
+      }
+    } else if (c.length < 6) {
       digits.find((d) => !d.value)?.focus();
       return toast(host, "Masukkan 6 karakter kode verifikasi.");
     }
@@ -327,7 +342,9 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
       const data = (await res.json().catch(() => ({}))) as { detail?: string; errors?: Record<string, string>; user?: { is_staff?: boolean } };
       if (!res.ok) {
         digits.forEach((d) => (d.value = ""));
-        digits[0]?.focus();
+        if (recoveryInput) recoveryInput.value = "";
+        if (recoveryMode()) recoveryInput?.focus();
+        else digits[0]?.focus();
         if (res.status === 403) {
           toast(host, data.detail ?? "Verifikasi kedaluwarsa. Masuk lagi.");
           router.replace(next.startsWith("/admin") ? `/admin/masuk?next=${encodeURIComponent(next)}` : `/masuk?next=${encodeURIComponent(next)}`);
@@ -340,7 +357,8 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
       } catch {
         /* abaikan */
       }
-      toast(host, "Berhasil masuk.", "ok");
+      const left = res.headers.get("x-recovery-codes-left");
+      toast(host, left != null ? `Berhasil masuk dengan kode cadangan. Sisa ${left} kode${Number(left) <= 3 ? " — buat kode baru di Pengaturan." : "."}` : "Berhasil masuk.", "ok");
       router.push(data.user?.is_staff ? next : next.startsWith("/admin") ? "/" : next);
     } finally {
       busy = false;
@@ -360,10 +378,17 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
       el.value = v;
       if (v) digits[i + 1]?.focus();
     }
-    if (code().length === 6) void send();
+    if (!recoveryMode() && code().length === 6) void send();
   };
   const onKey = (e: KeyboardEvent) => {
     const el = e.target as HTMLInputElement;
+    if (el.matches?.('[data-tf="recovery-input"]')) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void send();
+      }
+      return;
+    }
     if (!el.matches?.("[data-tf-digit]")) return;
     const i = Number(el.dataset.tfDigit);
     if (e.key === "Backspace" && !el.value) digits[i - 1]?.focus();
@@ -373,6 +398,15 @@ export function twofa(host: HTMLElement, { router }: Env): Cleanup {
     if (t.closest('[data-tf="submit"]')) {
       stop(e);
       await send();
+    } else if (t.closest('[data-tf="recovery"]')) {
+      stop(e);
+      if (!recoveryBox) return;
+      const on = !recoveryMode();
+      recoveryBox.style.display = on ? "flex" : "none";
+      const link = t.closest<HTMLElement>('[data-tf="recovery"]');
+      if (link) link.textContent = on ? "Pakai kode dari aplikasi" : "Pakai kode cadangan";
+      if (on) recoveryInput?.focus();
+      else digits[0]?.focus();
     } else if (t.closest('[data-tf="resend"]')) {
       stop(e);
       const r = await fetch("/api/auth/otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });

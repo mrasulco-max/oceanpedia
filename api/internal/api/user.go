@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -315,14 +316,18 @@ func (s *Server) verifyOTP(w http.ResponseWriter, r *http.Request) error {
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
 	}
-	// Langkah kedua dengan aplikasi autentikator: challenge dari langkah pertama + kode TOTP.
+	// Langkah kedua dengan aplikasi autentikator: challenge dari langkah pertama + kode TOTP atau kode cadangan.
 	if in.Challenge != "" {
 		if tu, err := s.Store.UserByEmail(r.Context(), strings.TrimSpace(strings.ToLower(in.Email))); err == nil && s.checkToken(in.Challenge, "2fa", tu.ID) {
 			if secret := s.totpSecret(r, tu.ID); secret != "" {
-				if !auth.VerifyTOTP(secret, in.Code, s.Now()) {
-					return httpx.Validation(map[string]string{"code": "Kode autentikator salah atau kedaluwarsa."})
+				method, left, err := s.checkSecondFactor(r.Context(), tu.ID, secret, in.Code)
+				if err != nil {
+					return err
 				}
-				s.audit2(r, tu.ID, "auth.2fa", map[string]any{"method": "totp", "remember": in.Remember})
+				s.audit2(r, tu.ID, "auth.2fa", map[string]any{"method": method, "remember": in.Remember, "recovery_left": left})
+				if method == "recovery" {
+					w.Header().Set("X-Recovery-Codes-Left", strconv.Itoa(left))
+				}
 				if in.Remember {
 					r = withDevice(r, s.signToken("td", tu.ID, 30*24*time.Hour))
 				}

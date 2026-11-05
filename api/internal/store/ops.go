@@ -34,6 +34,7 @@ type AdminUser struct {
 	Watchlist    int        `json:"watchlist"`
 	Bookmarks    int        `json:"bookmarks"`
 	Warnings     int        `json:"warnings"`
+	TOTP         bool       `json:"totp"` // aplikasi autentikator aktif
 }
 
 // UserStats adalah ringkasan kartu atas halaman Pengguna.
@@ -79,7 +80,8 @@ const adminUserCols = `u.id, u.email, u.full_name, u.role, r.name, r.is_staff,
   (SELECT count(DISTINCT cr.comment_id) FROM comment_reports cr JOIN comments c ON c.id = cr.comment_id WHERE c.user_id = u.id)::int,
   (SELECT count(*) FROM watchlist_items wi JOIN watchlists wl ON wl.id = wi.watchlist_id WHERE wl.user_id = u.id)::int,
   (SELECT count(*) FROM bookmarks b WHERE b.user_id = u.id)::int,
-  (SELECT count(*) FROM user_warnings w WHERE w.user_id = u.id)::int`
+  (SELECT count(*) FROM user_warnings w WHERE w.user_id = u.id)::int,
+  COALESCE(u.preferences->>'totp_secret', '') <> ''`
 
 const qAdminUsers = `SELECT ` + adminUserCols + `
 FROM users u JOIN roles r ON r.key = u.role
@@ -113,7 +115,7 @@ FROM users u JOIN roles r ON r.key = u.role WHERE u.deleted_at IS NULL`
 func scanAdminUser(s scanner) (AdminUser, error) {
 	var u AdminUser
 	err := s.Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &u.RoleName, &u.IsStaff, &u.Status, &u.BlockedAt, &u.BlockedUntil, &u.BlockReason,
-		&u.CreatedAt, &u.LastLoginAt, &u.Verified, jsonArr{&u.Agents}, &u.Comments, &u.Reported, &u.Watchlist, &u.Bookmarks, &u.Warnings)
+		&u.CreatedAt, &u.LastLoginAt, &u.Verified, jsonArr{&u.Agents}, &u.Comments, &u.Reported, &u.Watchlist, &u.Bookmarks, &u.Warnings, &u.TOTP)
 	if err != nil {
 		return u, notFound(err)
 	}

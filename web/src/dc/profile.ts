@@ -164,6 +164,11 @@ export function profile(host: HTMLElement, { router, ctx }: Env): Cleanup {
       e.stopPropagation();
     };
     let el: HTMLElement | null;
+    if (hit("[data-totp-recovery]")) {
+      stop();
+      if (await totpDialog("recovery")) toast(host, "Kode cadangan baru tersimpan. Kode lama tidak berlaku lagi.", "ok");
+      return;
+    }
     if ((el = hit("[data-avatar-pick]"))) {
       stop();
       if (busy) return;
