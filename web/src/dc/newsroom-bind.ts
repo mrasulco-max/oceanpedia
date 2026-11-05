@@ -580,6 +580,9 @@ export function bindShorts(html: string, list: ShortRow[], sel: string, app: boo
       h = h.replace(/<img src="\/img\/news-1\.jpg"([^>]*border-radius: 28px[^>]*)>/, (_m, rest: string) => shortThumb(cur, rest));
     } else {
       // Aplikasi: video layar penuh menggantikan gambar contoh; tombol putar & progres nyata.
+      // Lapisan media dibuat konteks tumpukan sendiri agar z-index pemutar tidak menutupi header,
+      // tombol aksi (suka/komentar/bagikan/simpan), dan keterangan di atas video.
+      h = h.replace('<div style="position: absolute; inset: 0; background: #0B0B0F">', '<div style="position: absolute; inset: 0; z-index: 0; isolation: isolate; background: #0B0B0F">');
       const player = shortPlayer(cur.id, md, true);
       h = h.replace(/<img src="\/img\/news-1\.jpg" alt="" style="position: absolute; inset: 0;[^"]*">/, player || (md.poster ? `<img src="${esc(md.poster)}" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block">` : ""));
       // Gradasi tidak menghalangi sentuhan ke pemutar.
