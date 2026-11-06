@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// Quote adalah harga terkini sebuah instrumen.
+// Quote adalah harga terkini sebuah instrumen (bentuk respons /quote Twelve Data).
 type Quote struct {
 	Symbol        string    `json:"symbol"`
 	Price         float64   `json:"price"`
@@ -26,8 +26,10 @@ type Quote struct {
 	Low           float64   `json:"low"`
 	PrevClose     float64   `json:"previous_close"`
 	Volume        float64   `json:"volume"`
+	AvgVolume     float64   `json:"average_volume,omitempty"`
 	Week52Low     float64   `json:"week52_low"`
 	Week52High    float64   `json:"week52_high"`
+	MarketOpen    *bool     `json:"is_market_open,omitempty"`
 	AsOf          time.Time `json:"as_of"`
 	Source        string    `json:"source"`
 }
@@ -48,8 +50,17 @@ type Provider interface {
 	Candles(ctx context.Context, providerSymbol, interval string, n int) ([]Candle, error)
 }
 
-// Intervals yang diizinkan (format Twelve Data).
-var Intervals = map[string]bool{"1min": true, "5min": true, "15min": true, "30min": true, "1h": true, "4h": true, "1day": true, "1week": true, "1month": true}
+// BatchQuoter (opsional): beberapa harga dalam satu panggilan HTTP (Twelve Data: symbol=A,B,C).
+type BatchQuoter interface {
+	Quotes(ctx context.Context, providerSymbols []string) (map[string]Quote, error)
+}
+
+// Intervals yang diizinkan (format Twelve Data time_series / quote).
+var Intervals = map[string]bool{
+	"1min": true, "5min": true, "15min": true, "30min": true, "45min": true,
+	"1h": true, "2h": true, "4h": true, "8h": true,
+	"1day": true, "1week": true, "1month": true,
+}
 
 // ---------------------------------------------------------------- Twelve Data
 
@@ -116,36 +127,137 @@ type num string
 
 func (n num) f() float64 { v, _ := strconv.ParseFloat(string(n), 64); return v }
 
+// tdQuote adalah bentuk JSON /quote (satu simbol) sesuai dokumentasi Twelve Data.
+type tdQuote struct {
+	Symbol        string `json:"symbol"`
+	Datetime      string `json:"datetime"`
+	Timestamp     int64  `json:"timestamp"`
+	LastQuoteAt   int64  `json:"last_quote_at"`
+	Open          num    `json:"open"`
+	High          num    `json:"high"`
+	Low           num    `json:"low"`
+	Close         num    `json:"close"`
+	Volume        num    `json:"volume"`
+	PreviousClose num    `json:"previous_close"`
+	Change        num    `json:"change"`
+	PercentChange num    `json:"percent_change"`
+	AverageVolume num    `json:"average_volume"`
+	IsMarketOpen  *bool  `json:"is_market_open"`
+	FiftyTwoWeek  struct {
+		Low  num `json:"low"`
+		High num `json:"high"`
+	} `json:"fifty_two_week"`
+	Status  string `json:"status"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func (r tdQuote) toQuote() Quote {
+	asOf := time.Unix(r.LastQuoteAt, 0).UTC()
+	if r.LastQuoteAt == 0 {
+		asOf = time.Unix(r.Timestamp, 0).UTC()
+	}
+	if asOf.IsZero() || asOf.Year() < 2000 {
+		if t, err := time.Parse("2006-01-02 15:04:05", r.Datetime); err == nil {
+			asOf = t.UTC()
+		} else if t, err := time.Parse("2006-01-02", r.Datetime); err == nil {
+			asOf = t.UTC()
+		}
+	}
+	return Quote{
+		Symbol: r.Symbol, Price: r.Close.f(), Change: r.Change.f(), ChangePercent: r.PercentChange.f(),
+		Open: r.Open.f(), High: r.High.f(), Low: r.Low.f(), PrevClose: r.PreviousClose.f(),
+		Volume: r.Volume.f(), AvgVolume: r.AverageVolume.f(),
+		Week52Low: r.FiftyTwoWeek.Low.f(), Week52High: r.FiftyTwoWeek.High.f(),
+		MarketOpen: r.IsMarketOpen, AsOf: asOf, Source: "twelvedata",
+	}
+}
+
 func (t *TwelveData) Quote(ctx context.Context, ps string) (Quote, error) {
 	sym, ex := splitSymbol(ps)
 	q := url.Values{"symbol": {sym}}
 	if ex != "" {
 		q.Set("exchange", ex)
 	}
-	var r struct {
-		Datetime      string `json:"datetime"`
-		Open          num    `json:"open"`
-		High          num    `json:"high"`
-		Low           num    `json:"low"`
-		Close         num    `json:"close"`
-		Volume        num    `json:"volume"`
-		PreviousClose num    `json:"previous_close"`
-		Change        num    `json:"change"`
-		PercentChange num    `json:"percent_change"`
-		FiftyTwoWeek  struct {
-			Low  num `json:"low"`
-			High num `json:"high"`
-		} `json:"fifty_two_week"`
-	}
+	var r tdQuote
 	if err := t.get(ctx, "/quote", q, &r); err != nil {
 		return Quote{}, err
 	}
-	asOf, _ := time.Parse("2006-01-02", r.Datetime)
-	return Quote{Price: r.Close.f(), Change: r.Change.f(), ChangePercent: r.PercentChange.f(), Open: r.Open.f(), High: r.High.f(), Low: r.Low.f(),
-		PrevClose: r.PreviousClose.f(), Volume: r.Volume.f(), Week52Low: r.FiftyTwoWeek.Low.f(), Week52High: r.FiftyTwoWeek.High.f(), AsOf: asOf, Source: "twelvedata"}, nil
+	out := r.toQuote()
+	if out.Price == 0 && out.PrevClose == 0 {
+		return Quote{}, &APIError{Code: 404, Message: "quote kosong untuk " + ps}
+	}
+	return out, nil
+}
+
+// Quotes mengambil beberapa harga sekaligus (GET /quote?symbol=A,B,C) — 1 kredit/simbol, 1 round-trip.
+// Simbol dengan :exchange (mis. BBCA:IDX) dipanggil satu-satu karena batch tidak mendukung exchange per item.
+func (t *TwelveData) Quotes(ctx context.Context, pss []string) (map[string]Quote, error) {
+	out := make(map[string]Quote, len(pss))
+	if len(pss) == 0 {
+		return out, nil
+	}
+	var batch []string
+	var batchKeys []string
+	for _, ps := range pss {
+		sym, ex := splitSymbol(ps)
+		if ex != "" {
+			q, err := t.Quote(ctx, ps)
+			if err != nil {
+				continue
+			}
+			out[ps] = q
+			continue
+		}
+		batch = append(batch, sym)
+		batchKeys = append(batchKeys, ps)
+	}
+	if len(batch) == 0 {
+		return out, nil
+	}
+	if len(batch) == 1 {
+		q, err := t.Quote(ctx, batchKeys[0])
+		if err != nil {
+			return out, err
+		}
+		out[batchKeys[0]] = q
+		return out, nil
+	}
+	q := url.Values{"symbol": {strings.Join(batch, ",")}}
+	var raw json.RawMessage
+	if err := t.get(ctx, "/quote", q, &raw); err != nil {
+		return out, err
+	}
+	// Multi-simbol → objek { "AAPL": {...}, "XAU/USD": {...} }; satu simbol → objek flat (gagal di-unmarshal ke map).
+	var multi map[string]tdQuote
+	if err := json.Unmarshal(raw, &multi); err == nil && len(multi) > 0 {
+		for i, sym := range batch {
+			r, ok := multi[sym]
+			if !ok || r.Status == "error" {
+				continue
+			}
+			out[batchKeys[i]] = r.toQuote()
+		}
+		return out, nil
+	}
+	var single tdQuote
+	if err := json.Unmarshal(raw, &single); err != nil {
+		return out, fmt.Errorf("twelvedata: batch quote tidak valid: %w", err)
+	}
+	if single.Status == "error" {
+		return out, &APIError{Code: single.Code, Message: single.Message}
+	}
+	out[batchKeys[0]] = single.toQuote()
+	return out, nil
 }
 
 func (t *TwelveData) Candles(ctx context.Context, ps, interval string, n int) ([]Candle, error) {
+	if n < 1 {
+		n = 30
+	}
+	if n > 5000 {
+		n = 5000
+	}
 	sym, ex := splitSymbol(ps)
 	q := url.Values{"symbol": {sym}, "interval": {interval}, "outputsize": {strconv.Itoa(n)}, "order": {"ASC"}, "timezone": {"UTC"}}
 	if ex != "" {
@@ -160,6 +272,9 @@ func (t *TwelveData) Candles(ctx context.Context, ps, interval string, n int) ([
 			Close    num    `json:"close"`
 			Volume   num    `json:"volume"`
 		} `json:"values"`
+		Status  string `json:"status"`
+		Code    int    `json:"code"`
+		Message string `json:"message"`
 	}
 	if err := t.get(ctx, "/time_series", q, &r); err != nil {
 		return nil, err
@@ -170,7 +285,7 @@ func (t *TwelveData) Candles(ctx context.Context, ps, interval string, n int) ([
 		if err != nil {
 			ts, _ = time.Parse("2006-01-02", v.Datetime)
 		}
-		out = append(out, Candle{Time: ts, Open: v.Open.f(), High: v.High.f(), Low: v.Low.f(), Close: v.Close.f(), Volume: v.Volume.f()})
+		out = append(out, Candle{Time: ts.UTC(), Open: v.Open.f(), High: v.High.f(), Low: v.Low.f(), Close: v.Close.f(), Volume: v.Volume.f()})
 	}
 	return out, nil
 }
@@ -185,6 +300,10 @@ var sampleBase = map[string][2]float64{ // harga, perubahan %
 	"ASII:IDX": {5050, -0.49}, "GOTO:IDX": {64, -3.03}, "JKSE": {7284.16, 0.84}, "JKLQ45": {912.40, 0.66},
 	"BTC/USD": {68420, 2.31}, "ETH/USD": {3512, 1.48}, "XAU/USD": {2384.1, -0.42}, "USD/IDR": {15612, -0.18},
 	"SOL/USD": {168.4, -0.84}, "BNB/USD": {598.2, 0.35}, "XRP/USD": {0.52, 1.1}, "DOGE/USD": {0.16, -1.2}, "EUR/IDR": {16904, 0.12}, "SGD/IDR": {11588, -0.05},
+	"XBR/USD": {82.14, 1.05}, "WTI/USD": {78.40, 0.62}, "NI1": {17240, 0.92}, "XAG/USD": {31.20, -0.35},
+	"AAPL": {345.12, 0.28}, "MSFT": {535.59, -0.06}, "NVDA": {192.40, 1.10}, "TSLA": {358.09, 2.40},
+	"AMZN": {228.50, 0.55}, "GOOGL": {178.20, -0.22}, "META": {612.30, 0.80},
+	"EUR/USD": {1.0850, -0.12}, "GBP/USD": {1.2980, 0.08}, "USD/JPY": {153.40, 0.15}, "AUD/USD": {0.6520, -0.05},
 }
 
 func (Sample) Quote(_ context.Context, ps string) (Quote, error) {
@@ -203,7 +322,14 @@ func (s Sample) Candles(ctx context.Context, ps, interval string, n int) ([]Cand
 	if err != nil {
 		return nil, err
 	}
-	step := map[string]time.Duration{"1min": time.Minute, "5min": 5 * time.Minute, "15min": 15 * time.Minute, "30min": 30 * time.Minute, "1h": time.Hour, "4h": 4 * time.Hour, "1day": 24 * time.Hour, "1week": 7 * 24 * time.Hour, "1month": 30 * 24 * time.Hour}[interval]
+	step := map[string]time.Duration{
+		"1min": time.Minute, "5min": 5 * time.Minute, "15min": 15 * time.Minute, "30min": 30 * time.Minute, "45min": 45 * time.Minute,
+		"1h": time.Hour, "2h": 2 * time.Hour, "4h": 4 * time.Hour, "8h": 8 * time.Hour,
+		"1day": 24 * time.Hour, "1week": 7 * 24 * time.Hour, "1month": 30 * 24 * time.Hour,
+	}[interval]
+	if step == 0 {
+		step = 24 * time.Hour
+	}
 	out := make([]Candle, n)
 	price := q.Price * 0.9
 	end := time.Now().UTC().Truncate(step)
@@ -274,6 +400,36 @@ func (c *Cached) Quote(ctx context.Context, ps string) (Quote, error) {
 		c.put("q:"+ps, q)
 	}
 	return q, err
+}
+
+func (c *Cached) Quotes(ctx context.Context, pss []string) (map[string]Quote, error) {
+	out := make(map[string]Quote, len(pss))
+	var miss []string
+	for _, ps := range pss {
+		if v, ok := c.get("q:" + ps); ok && !fresh(ctx) {
+			out[ps] = v.(Quote)
+			continue
+		}
+		miss = append(miss, ps)
+	}
+	if len(miss) == 0 {
+		return out, nil
+	}
+	if bq, ok := c.P.(BatchQuoter); ok {
+		m, err := bq.Quotes(ctx, miss)
+		for ps, q := range m {
+			c.put("q:"+ps, q)
+			out[ps] = q
+		}
+		return out, err
+	}
+	for _, ps := range miss {
+		q, err := c.Quote(ctx, ps)
+		if err == nil {
+			out[ps] = q
+		}
+	}
+	return out, nil
 }
 
 func (c *Cached) Candles(ctx context.Context, ps, interval string, n int) ([]Candle, error) {

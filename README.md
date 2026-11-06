@@ -73,7 +73,7 @@ Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api
 | Layanan | Kegunaan | Variabel env (server saja) | Status | Catatan |
 |---|---|---|---|---|
 | Supabase PostgreSQL | Database utama | `DATABASE_URL` | ✅ | Migrasi `api/migrations`, RLS + policy `api_all` untuk role `oceanpedia_api` |
-| Twelve Data (+ Binance untuk crypto) | Harga, candle, kurs | `TWELVEDATA_API_KEY` | ✅ | Saham AS (AAPL, MSFT, NVDA, TSLA, AMZN, GOOGL, META), forex (EUR/USD, GBP/USD, USD/JPY, AUD/USD, USD/IDR), emas, crypto. Paket Basic: 8 kredit/menit, 800/hari — jumlah simbol dibatasi; grafik saham AS & forex memakai widget TradingView. Saham IDX dinonaktifkan |
+| Twelve Data (+ Binance untuk crypto) | Harga, candle | `TWELVEDATA_API_KEY` | ✅ | Docs: [twelvedata.com/docs](https://twelvedata.com/docs). Dipakai: `/quote` (batch multi-simbol), `/time_series`. Kripto real-time lewat Binance. Instrumen: saham AS, forex, emas/perak, Brent (`XBR/USD`), WTI, nikel (`NI1`). Paket Basic: 8 kredit/menit, 800/hari; cache DB + batch menghemat kuota. IDX di-skip (`TWELVEDATA_SKIP`). Migrasi `0023` menambah komoditas ticker |
 | Google Gemini | Aurora AI (analisis berita/market, percakapan, analisis gambar chart) | `GEMINI_API_KEY`, `GEMINI_MODELS` | ✅ | Khusus pelanggan Plus & staf |
 | Bird | OTP email, email transaksional & newsletter | `BIRD_API_KEY`, `BIRD_EMAIL_KEY`, `BIRD_API_URL`, `OTP_EMAIL_FROM` | ⚠️ | Domain `mail.psi.id` belum terverifikasi (DKIM & return-path) → email bisa gagal/masuk spam |
 | Midtrans Snap | Pembayaran langganan (QRIS, GoPay, VA) | `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_PRODUCTION` | ⚠️ | Kode siap, tetapi Server Key ditolak (401) → perlu buat ulang di dashboard Midtrans |

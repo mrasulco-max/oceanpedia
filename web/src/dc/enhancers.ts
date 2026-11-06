@@ -21,9 +21,10 @@ import { newsroom } from "./newsroom";
 import { shorts } from "./shorts";
 import { mkt } from "./market-tabs";
 import { share } from "./share";
+import { ticker } from "./ticker";
 import { wire } from "./wire";
 
-export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile" | "rbac" | "taxonomy" | "catform" | "moderation" | "medialib" | "activity" | "ops" | "twofa" | "reader" | "plus" | "newsroom" | "shorts" | "mkt" | "share" | "wire";
+export type EnhancerId = "login" | "logout" | "editor" | "content" | "tvchart" | "lwchart" | "ai" | "auth" | "search" | "profile" | "rbac" | "taxonomy" | "catform" | "moderation" | "medialib" | "activity" | "ops" | "twofa" | "reader" | "plus" | "newsroom" | "shorts" | "mkt" | "share" | "wire" | "ticker";
 
 export interface Env {
   router: ReturnType<typeof useRouter>;
@@ -135,7 +136,7 @@ function logout(host: HTMLElement, { router }: Env): Cleanup {
   return () => host.removeEventListener("click", onClick, true);
 }
 
-const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile, rbac, taxonomy, catform, moderation, medialib, activity, ops, twofa, reader, plus, newsroom, shorts, mkt, share, wire };
+const REGISTRY: Record<EnhancerId, (host: HTMLElement, env: Env) => Cleanup> = { login, logout, editor, content, tvchart, lwchart, ai, auth, search, profile, rbac, taxonomy, catform, moderation, medialib, activity, ops, twofa, reader, plus, newsroom, shorts, mkt, share, wire, ticker };
 
 export function runEnhancer(id: EnhancerId, host: HTMLElement, env: Env): Cleanup {
   return REGISTRY[id]?.(host, env);

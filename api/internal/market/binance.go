@@ -134,3 +134,37 @@ func (r Router) Quote(ctx context.Context, ps string) (Quote, error) {
 func (r Router) Candles(ctx context.Context, ps, interval string, n int) ([]Candle, error) {
 	return r.pick(ps).Candles(ctx, ps, interval, n)
 }
+
+// Quotes memisahkan kripto (Binance) vs sisanya (Twelve Data), batch di masing-masing sisi.
+func (r Router) Quotes(ctx context.Context, pss []string) (map[string]Quote, error) {
+	out := make(map[string]Quote, len(pss))
+	var crypto, rest []string
+	for _, ps := range pss {
+		if r.Crypto != nil && BinancePair(ps) != "" {
+			crypto = append(crypto, ps)
+		} else {
+			rest = append(rest, ps)
+		}
+	}
+	pull := func(p Provider, list []string) {
+		if len(list) == 0 || p == nil {
+			return
+		}
+		if bq, ok := p.(BatchQuoter); ok {
+			if m, err := bq.Quotes(ctx, list); err == nil {
+				for k, v := range m {
+					out[k] = v
+				}
+				return
+			}
+		}
+		for _, ps := range list {
+			if q, err := p.Quote(ctx, ps); err == nil {
+				out[ps] = q
+			}
+		}
+	}
+	pull(r.Crypto, crypto)
+	pull(r.Default, rest)
+	return out, nil
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -176,6 +177,74 @@ func (s *Shared) Quote(ctx context.Context, ps string) (Quote, error) {
 		ttl = SaverTTL
 	}
 	return load(ctx, s, "q:"+ps, ttl, func() (Quote, error) { return s.P.Quote(ctx, ps) })
+}
+
+// Quotes mengisi dari cache dulu; sisanya satu batch HTTP ke penyedia (bila BatchQuoter).
+func (s *Shared) Quotes(ctx context.Context, pss []string) (map[string]Quote, error) {
+	out := make(map[string]Quote, len(pss))
+	var miss []string
+	for _, ps := range pss {
+		if ps == "" || (s.Skip != nil && s.Skip(ps)) {
+			continue
+		}
+		ttl := s.quoteTTL()
+		if s.saverOn(ctx, ps) && ttl < SaverTTL {
+			ttl = SaverTTL
+		}
+		key := "q:" + ps
+		body, errText, at, found, err := s.KV.MarketCacheGet(ctx, key)
+		if err == nil && found && errText == "" && len(body) > 0 && s.now().Sub(at) < ttl && !fresh(ctx) {
+			var q Quote
+			if json.Unmarshal(body, &q) == nil {
+				out[ps] = q
+				continue
+			}
+		}
+		if err == nil && found && errText != "" && s.now().Sub(at) < s.ErrTTL {
+			continue // negative cache
+		}
+		miss = append(miss, ps)
+	}
+	if len(miss) == 0 {
+		return out, nil
+	}
+	if _, _, cAt, cFound, cErr := s.KV.MarketCacheGet(ctx, s.cooldownKey()); cErr == nil && cFound && s.now().Sub(cAt) < cooldown {
+		return out, nil
+	}
+	fetched := map[string]Quote{}
+	var ferr error
+	start := time.Now()
+	if bq, ok := s.P.(BatchQuoter); ok {
+		fetched, ferr = bq.Quotes(ctx, miss)
+	} else {
+		fetched = make(map[string]Quote, len(miss))
+		for _, ps := range miss {
+			q, err := s.P.Quote(ctx, ps)
+			if err != nil {
+				ferr = err
+				if Permanent(err) {
+					_ = s.KV.MarketCachePut(ctx, "q:"+ps, nil, err.Error())
+				}
+				continue
+			}
+			fetched[ps] = q
+		}
+	}
+	took := time.Since(start)
+	if rec, ok := s.KV.(Recorder); ok {
+		rec.MarketFetched(ctx, "q:batch:"+strconv.Itoa(len(miss)), s.Name, took, ferr == nil || len(fetched) > 0, rateLimited(ferr))
+	}
+	if rateLimited(ferr) {
+		_ = s.KV.MarketCachePut(ctx, s.cooldownKey(), nil, "429")
+	}
+	for ps, q := range fetched {
+		if b, err := json.Marshal(q); err == nil {
+			_ = s.KV.MarketCachePut(ctx, "q:"+ps, b, "")
+		}
+		out[ps] = q
+	}
+	// Simbol yang diminta batch tapi tidak kembali → anggap sementara kosong (bukan permanent).
+	return out, nil
 }
 
 // saverOn: daftar simbol mode hemat dibaca dari database paling sering sekali per menit.
