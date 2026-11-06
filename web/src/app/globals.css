@@ -301,11 +301,7 @@ html[data-font="s"] [data-ab] { zoom: 0.9; }
 html[data-font="l"] [data-ab] { zoom: 1.15; }
 html[data-font="xl"] [data-ab] { zoom: 1.3; }
 
-/* LIVE MARKET: marquee CSS; diam saat kursor/fokus di strip. */
-[data-lm]:hover .ob-marq,
-[data-lm]:focus-within .ob-marq {
-  animation-play-state: paused;
-}
+/* LIVE MARKET: digerakkan enhancer "ticker". */
 [data-lm] a:focus-visible {
   outline: 2px solid #2f74eb;
   outline-offset: 2px;
