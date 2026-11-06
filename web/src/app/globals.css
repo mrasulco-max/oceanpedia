@@ -301,19 +301,13 @@ html[data-font="s"] [data-ab] { zoom: 0.9; }
 html[data-font="l"] [data-ab] { zoom: 1.15; }
 html[data-font="xl"] [data-ab] { zoom: 1.3; }
 
-/* LIVE MARKET: track geser kiri/kanan; sembunyikan scrollbar; tombol aktif. */
-[data-lm-track] {
-  scrollbar-width: none;
+/* LIVE MARKET: marquee CSS; diam saat kursor/fokus di strip. */
+[data-lm]:hover .ob-marq,
+[data-lm]:focus-within .ob-marq {
+  animation-play-state: paused;
 }
-[data-lm-track]::-webkit-scrollbar {
-  display: none;
-}
-[data-lm] [data-lm-prev]:active,
-[data-lm] [data-lm-next]:active {
-  background: #e8eef8 !important;
-}
-[data-lm] [data-lm-prev]:focus-visible,
-[data-lm] [data-lm-next]:focus-visible {
+[data-lm] a:focus-visible {
   outline: 2px solid #2f74eb;
-  outline-offset: 1px;
+  outline-offset: 2px;
+  border-radius: 4px;
 }
