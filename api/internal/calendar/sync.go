@@ -17,9 +17,10 @@ type Writer interface {
 	ClearSeedEconomicEvents(ctx context.Context, from, to time.Time) error
 }
 
-// Syncer menyinkronkan kalender TV ke DB (on-demand, dengan TTL).
+// Syncer menyinkronkan kalender ekonomi ke DB (on-demand, dengan TTL).
 type Syncer struct {
-	Client  *Client
+	// Client: sumber utama (Finnhub atau TradingView). Nama field dipertahankan agar kompatibel.
+	Client  Source
 	Store   Writer
 	KV      market.KV
 	TTL     time.Duration
@@ -29,14 +30,14 @@ type Syncer struct {
 	mu sync.Mutex
 }
 
-// ErrorBackoff: jeda sebelum mencoba lagi setelah sync gagal (hindari memanggil TV di tiap request).
+// ErrorBackoff: jeda sebelum mencoba lagi setelah sync gagal (hindari memanggil API di tiap request).
 const ErrorBackoff = 2 * time.Minute
 
 // SyncTimeout membatasi fetch+upsert agar request /v1/events tidak menggantung.
 const SyncTimeout = 12 * time.Second
 
 // EnsureSynced mengisi economic_events untuk [from, to) bila cache sync sudah kedaluwarsa.
-// Galat TV → no-op (data seed/DB lama tetap dipakai), dicoba lagi setelah ErrorBackoff.
+// Galat penyedia → no-op (data seed/DB lama tetap dipakai), dicoba lagi setelah ErrorBackoff.
 func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
 	if s == nil || s.Client == nil || s.Store == nil {
 		return
@@ -44,15 +45,18 @@ func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
 	if !to.After(from) {
 		return
 	}
-	// API membatasi rentang ≤40 hari.
-	if to.Sub(from) > maxRange {
-		to = from.Add(maxRange)
+	limit := maxRange
+	if s.Client.Mode() == "finnhub" {
+		limit = finnhubMaxRange
+	}
+	if to.Sub(from) > limit {
+		to = from.Add(limit)
 	}
 	ttl := s.TTL
 	if ttl <= 0 {
 		ttl = 15 * time.Minute
 	}
-	key := fmt.Sprintf("cal:tv:%s:%s:%s", s.Client.Mode(), from.UTC().Format("2006-01-02T15"), to.UTC().Format("2006-01-02T15"))
+	key := fmt.Sprintf("cal:%s:%s:%s", s.Client.Mode(), from.UTC().Format("2006-01-02T15"), to.UTC().Format("2006-01-02T15"))
 	if s.fresh(ctx, key, ttl) {
 		return
 	}
@@ -67,7 +71,7 @@ func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
 
 	raw, err := s.Client.Economic(ctx, from, to, s.Markets)
 	if err != nil {
-		s.fail(ctx, key, "kalender TV gagal", err, "mode", s.Client.Mode(), "from", from, "to", to)
+		s.fail(ctx, key, "kalender ekonomi gagal", err, "mode", s.Client.Mode(), "from", from, "to", to)
 		return
 	}
 	in := make([]store.EconomicEventInput, 0, len(raw))
@@ -79,18 +83,18 @@ func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
 		in = append(in, e)
 	}
 	if err := s.Store.UpsertEconomicEvents(ctx, in); err != nil {
-		s.fail(ctx, key, "kalender TV upsert gagal", err, "n", len(in))
+		s.fail(ctx, key, "kalender ekonomi upsert gagal", err, "n", len(in))
 		return
 	}
 	// Hapus contoh seed di jendela yang sama agar tidak bercampur dengan data nyata.
 	if err := s.Store.ClearSeedEconomicEvents(ctx, from, to); err != nil && s.Log != nil {
-		s.Log.Warn("kalender TV bersihkan seed gagal", "err", err)
+		s.Log.Warn("kalender ekonomi bersihkan seed gagal", "err", err)
 	}
 	if s.KV != nil {
 		_ = s.KV.MarketCachePut(ctx, key, []byte(`{"ok":true}`), "")
 	}
 	if s.Log != nil {
-		s.Log.Info("kalender TV tersinkron", "mode", s.Client.Mode(), "n", len(in), "from", from.Format(time.RFC3339), "to", to.Format(time.RFC3339))
+		s.Log.Info("kalender ekonomi tersinkron", "mode", s.Client.Mode(), "n", len(in), "from", from.Format(time.RFC3339), "to", to.Format(time.RFC3339))
 	}
 }
 

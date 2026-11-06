@@ -909,9 +909,12 @@ func calendarDetail(c *calendar.Syncer, ttl time.Duration, markets string) strin
 	if c == nil || c.Client == nil {
 		return "Nonaktif · memakai data seed"
 	}
-	src := "Feed publik (tanpa kunci)"
-	if c.Client.Mode() == "api" {
-		src = "Data API (kunci)"
+	src := "TradingView feed publik"
+	switch c.Client.Mode() {
+	case "finnhub":
+		src = "Finnhub /calendar/economic"
+	case "api":
+		src = "TradingView Data API"
 	}
 	return fmt.Sprintf("%s · TTL %s · pasar %s", src, ttl, markets)
 }
@@ -928,7 +931,8 @@ func (s *Server) adminSettings(w http.ResponseWriter, r *http.Request) error {
 		"integrations": []map[string]any{
 			{"key": "midtrans", "name": "Midtrans (pembayaran)", "ok": s.Pay.Enabled(), "detail": map[bool]string{true: "Produksi", false: "Sandbox"}[c.MidtransProduction], "notify_url": c.APIPublicURL + "/v1/billing/midtrans/notify"},
 			{"key": "twelvedata", "name": "Twelve Data (harga pasar)", "ok": set(c.TwelveDataKey), "detail": fmt.Sprintf("Cache harga %s · lewati %s", c.QuoteTTL, strings.Join(c.MarketSkip, ", "))},
-			{"key": "tradingview", "name": "TradingView (kalender ekonomi)", "ok": s.Calendar != nil, "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
+			{"key": "finnhub", "name": "Finnhub (kalender ekonomi)", "ok": set(c.FinnhubAPIKey), "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
+			{"key": "tradingview", "name": "TradingView (cadangan kalender)", "ok": s.Calendar != nil && c.FinnhubAPIKey == "", "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
 			{"key": "gemini", "name": "Gemini (analisis AI)", "ok": set(c.GeminiKey), "detail": strings.Join(c.GeminiModels, ", ")},
 			{"key": "email", "name": "Email transaksional (Bird)", "ok": s.Mail != nil, "detail": c.OTPEmailFrom},
 			{"key": "otp", "name": "OTP / verifikasi (Bird)", "ok": set(c.BirdKey), "detail": ""},
