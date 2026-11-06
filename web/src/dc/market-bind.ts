@@ -551,25 +551,24 @@ export function bindMarketApp(html: string, instruments: Instrument[], quotes: M
 }
 
 /**
- * Strip LIVE MARKET: pastikan marquee CSS (ob-marq) tetap jalan sendiri,
- * tanpa tombol kiri/kanan. Item <a> tetap bisa diklik; hover/fokus menghentikan
- * animasi lewat CSS `[data-lm]:hover .ob-marq`.
+ * Strip LIVE MARKET: marquee CSS desain (ob-marq) mati bila OS meminta reduced-motion,
+ * jadi diganti track yang digerakkan enhancer "ticker" (berhenti saat hover/fokus).
  */
 export function bindLiveMarket(html: string): string {
   if (!html.includes("LIVE MARKET") || !html.includes("ob-marq")) return html;
   return html.replace(
     /<div style="height: 34px; display: flex; align-items: center; background: #F6F8FC">(\s*<span style="flex: none;[\s\S]*?LIVE MARKET<\/span>)<div style="flex: 1; overflow: hidden"><div class="ob-marq">([\s\S]*?)<\/div><\/div><\/div>/g,
     (_m, label: string, inner: string) => {
-      // Hapus set duplikat desain lalu duplikasi ulang agar loop translateX(-50%) mulus.
+      // Hapus set duplikat desain lalu duplikasi ulang: setengah lebar track = satu putaran.
       const items = inner.match(/<a\b[\s\S]*?<\/a>/g) ?? [];
       const half = items.length >= 4 && items.length % 2 === 0 ? items.length / 2 : items.length;
       const unique = items.slice(0, half);
-      const loop = [...unique, ...unique].join("");
+      const copy = unique.map((a) => a.replace(/^<a\b/, '<a aria-hidden="true" tabindex="-1"'));
       return (
         `<div data-lm style="height: 34px; display: flex; align-items: center; background: #F6F8FC">` +
         label +
-        `<div style="flex: 1; min-width: 0; overflow: hidden">` +
-        `<div class="ob-marq">${loop}</div>` +
+        `<div style="flex: 1; min-width: 0; height: 100%; overflow: hidden; display: flex; align-items: center">` +
+        `<div data-lm-inner style="display: flex; width: max-content; height: 100%; align-items: center; will-change: transform">${unique.join("")}${copy.join("")}</div>` +
         `</div></div>`
       );
     },

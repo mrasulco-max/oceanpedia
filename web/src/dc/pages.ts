@@ -609,6 +609,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   html = bindLiveMarket(html);
   html = bindCryptoVolume(html, quotes);
   html = bindDataCredits(html);
+  if (html.includes("data-lm") && !enhance.includes("ticker")) enhance.push("ticker");
   if (board.kind !== "admin" && plus) {
     // Pelanggan Plus: tanpa iklan + tombol cepat Asisten AI.
     html = removeAdSlots(html);
