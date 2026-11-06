@@ -19,7 +19,7 @@ import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArtic
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, bindHomeShorts, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
-import { bindCryptoVolume, bindDataCredits, bindMarketApp, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
+import { bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import { bindCoinLogos } from "./kit";
 import { bindContentExtras, bindDetailCards, bindLiveExtras, deAlur, requestsPanel } from "./admin-wire-bind";
@@ -218,8 +218,8 @@ function dedupe(list: (ArticleCard | null | undefined)[]): ArticleCard[] {
   return out;
 }
 
-const KNOWN_SYMBOLS = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "GOTO", "ANTM", "ADRO", "UNVR", "ICBP", "INDF", "IHSG", "LQ45", "BTC", "ETH", "SOL", "BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "USDIDR", "EUR/IDR", "SGD/IDR", "XAU/USD", "USD/IDR", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
-const SYMBOL_ALIAS: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", "EUR/IDR": "EURIDR", "SGD/IDR": "SGDIDR", "XAU/USD": "XAUUSD", "USD/IDR": "USDIDR", "EUR/USD": "EURUSD", "GBP/USD": "GBPUSD", "USD/JPY": "USDJPY", "AUD/USD": "AUDUSD" };
+const KNOWN_SYMBOLS = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "GOTO", "ANTM", "ADRO", "UNVR", "ICBP", "INDF", "IHSG", "LQ45", "BTC", "ETH", "SOL", "BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "Emas", "USDIDR", "EUR/IDR", "SGD/IDR", "XAU/USD", "USD/IDR", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
+const SYMBOL_ALIAS: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", Emas: "XAUUSD", "EUR/IDR": "EURIDR", "SGD/IDR": "SGDIDR", "XAU/USD": "XAUUSD", "USD/IDR": "USDIDR", "EUR/USD": "EURUSD", "GBP/USD": "GBPUSD", "USD/JPY": "USDJPY", "AUD/USD": "AUDUSD" };
 
 /** Baris pasar yang menautkan ke contoh BBCA diarahkan ke simbolnya masing-masing. */
 function bindSymbolLinks(html: string): string {
@@ -606,8 +606,10 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   // Harga dulu (contoh IDX diganti instrumen aktif), lalu tautan baris mengikuti label barunya.
   html = bindQuotes(html, quotes);
   html = bindSymbolLinks(html);
+  html = bindLiveMarket(html);
   html = bindCryptoVolume(html, quotes);
   html = bindDataCredits(html);
+  if (html.includes("data-lm") && !enhance.includes("ticker")) enhance.push("ticker");
   if (board.kind !== "admin" && plus) {
     // Pelanggan Plus: tanpa iklan + tombol cepat Asisten AI.
     html = removeAdSlots(html);
