@@ -86,6 +86,10 @@ func ToStore(r RawEvent) (store.EconomicEventInput, error) {
 	if err != nil {
 		return store.EconomicEventInput{}, fmt.Errorf("calendar: tanggal %q: %w", r.Date, err)
 	}
+	src := strings.TrimSpace(r.Source)
+	if src == "" {
+		src = "tradingview"
+	}
 	return store.EconomicEventInput{
 		ExternalID:     id,
 		Country:        country,
@@ -96,6 +100,6 @@ func ToStore(r RawEvent) (store.EconomicEventInput, error) {
 		Forecast:       FormatValue(r.Forecast, r.Unit, r.Scale),
 		Previous:       FormatValue(r.Previous, r.Unit, r.Scale),
 		RelatedSymbols: []string{},
-		Source:         "tradingview",
+		Source:         src,
 	}, nil
 }

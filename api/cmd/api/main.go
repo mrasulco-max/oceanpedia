@@ -75,7 +75,7 @@ func run(log *slog.Logger) error {
 		log.Warn("TWELVEDATA_API_KEY kosong: memakai data pasar contoh")
 	}
 	srv := &api.Server{Store: pg, Market: provider, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: pg}, Cfg: cfg, Log: log}
-	if c := calendar.FromSource(cfg.TradingViewCalendarSource, cfg.TradingViewAPIKey, cfg.TradingViewAPIBase); c != nil {
+	if c := calendar.NewSource(cfg.FinnhubAPIKey, cfg.TradingViewCalendarSource, cfg.TradingViewAPIKey, cfg.TradingViewAPIBase); c != nil {
 		srv.Calendar = &calendar.Syncer{
 			Client:  c,
 			Store:   pg,
@@ -84,9 +84,9 @@ func run(log *slog.Logger) error {
 			Markets: cfg.TradingViewCalendarMarkets,
 			Log:     log,
 		}
-		log.Info("kalender ekonomi TradingView aktif", "mode", c.Mode())
+		log.Info("kalender ekonomi aktif", "mode", c.Mode())
 	} else {
-		log.Warn("kalender ekonomi TradingView nonaktif: memakai data seed lokal", "source", cfg.TradingViewCalendarSource)
+		log.Warn("kalender ekonomi nonaktif: memakai data seed lokal", "finnhub", cfg.FinnhubAPIKey != "", "tv_source", cfg.TradingViewCalendarSource)
 	}
 	srv.Pay = &pay.Midtrans{ServerKey: cfg.MidtransServerKey, Production: cfg.MidtransProduction, NotifyURL: cfg.APIPublicURL + "/v1/billing/midtrans/notify"}
 	if cfg.BirdKey != "" {

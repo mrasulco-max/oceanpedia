@@ -1,8 +1,9 @@
-// Package calendar mengambil kalender ekonomi TradingView.
+// Package calendar mengambil kalender ekonomi dari penyedia eksternal.
 //
-// Dua sumber dengan bentuk data yang sama ({status, result:[…]}):
-//   - TradingView Data API (GET /api/calendar/economic, dokumentasi tradingviewapi.com) — butuh kunci;
-//   - feed publik TradingView (economic-calendar.tradingview.com/events) — tanpa kunci, dipakai bila kunci kosong.
+// Sumber (prioritas di NewSource):
+//   - Finnhub GET /calendar/economic (https://finnhub.io/docs/api/economic-calendar) — butuh FINNHUB_API_KEY;
+//   - TradingView Data API (GET /api/calendar/economic) — butuh TRADINGVIEW_API_KEY;
+//   - feed publik TradingView (economic-calendar.tradingview.com/events) — tanpa kunci.
 package calendar
 
 import (
@@ -77,7 +78,13 @@ func (c *Client) Mode() string {
 	return "public"
 }
 
-// RawEvent adalah satu baris kalender (field sama di Data API dan feed publik).
+// Source adalah penyedia kalender (Finnhub atau TradingView).
+type Source interface {
+	Economic(ctx context.Context, from, to time.Time, markets string) ([]RawEvent, error)
+	Mode() string
+}
+
+// RawEvent adalah bentuk normal internal (TV + Finnhub dipetakan ke sini).
 type RawEvent struct {
 	ID         string   `json:"id"`
 	Title      string   `json:"title"`
@@ -90,6 +97,20 @@ type RawEvent struct {
 	Unit       string   `json:"unit"`
 	Scale      string   `json:"scale"`
 	Currency   string   `json:"currency"`
+	Source     string   `json:"-"` // finnhub | tradingview
+}
+
+// NewSource memilih penyedia: Finnhub (jika kunci ada) → TradingView (FromSource).
+func NewSource(finnhubKey, tvSource, tvKey, tvBase string) Source {
+	if strings.TrimSpace(finnhubKey) != "" {
+		return NewFinnhub(finnhubKey)
+	}
+	// Hindari interface non-nil berisi *Client(nil).
+	c := FromSource(tvSource, tvKey, tvBase)
+	if c == nil {
+		return nil
+	}
+	return c
 }
 
 type result struct {
