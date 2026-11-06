@@ -550,32 +550,27 @@ export function bindMarketApp(html: string, instruments: Instrument[], quotes: M
   return html.slice(0, first) + list + link + html.slice(end);
 }
 
-const LM_CHEVRON = (dir: "left" | "right") =>
-  `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="${dir === "left" ? "M7.5 2.5 4 6l3.5 3.5" : "M4.5 2.5 8 6 4.5 9.5"}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
 /**
- * Strip LIVE MARKET: overflow:hidden + CSS marquee beku saat reduce-motion,
- * sehingga item terpotong tanpa bisa digeser. Ubah jadi track yang bisa digeser
- * (tombol kiri/kanan + drag), enhancer "ticker" yang menggulir otomatis.
+ * Strip LIVE MARKET: pastikan marquee CSS (ob-marq) tetap jalan sendiri,
+ * tanpa tombol kiri/kanan. Item <a> tetap bisa diklik; hover/fokus menghentikan
+ * animasi lewat CSS `[data-lm]:hover .ob-marq`.
  */
 export function bindLiveMarket(html: string): string {
   if (!html.includes("LIVE MARKET") || !html.includes("ob-marq")) return html;
   return html.replace(
     /<div style="height: 34px; display: flex; align-items: center; background: #F6F8FC">(\s*<span style="flex: none;[\s\S]*?LIVE MARKET<\/span>)<div style="flex: 1; overflow: hidden"><div class="ob-marq">([\s\S]*?)<\/div><\/div><\/div>/g,
     (_m, label: string, inner: string) => {
-      // Hapus set duplikat desain (8×2); enhancer menduplikasi ulang untuk loop mulus.
+      // Hapus set duplikat desain lalu duplikasi ulang agar loop translateX(-50%) mulus.
       const items = inner.match(/<a\b[\s\S]*?<\/a>/g) ?? [];
       const half = items.length >= 4 && items.length % 2 === 0 ? items.length / 2 : items.length;
-      const unique = items.slice(0, half).join("");
+      const unique = items.slice(0, half);
+      const loop = [...unique, ...unique].join("");
       return (
         `<div data-lm style="height: 34px; display: flex; align-items: center; background: #F6F8FC">` +
         label +
-        `<button type="button" data-lm-prev aria-label="Geser ticker ke kiri" style="flex: none; width: 28px; height: 28px; margin-left: 4px; border: 0; border-radius: 999px; background: transparent; color: #5F6B7D; display: inline-flex; align-items: center; justify-content: center; cursor: pointer">${LM_CHEVRON("left")}</button>` +
-        `<div data-lm-track class="ob-scroll" style="flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; cursor: grab; -webkit-overflow-scrolling: touch">` +
-        `<div data-lm-inner style="display: flex; width: max-content; align-items: center">${unique}</div>` +
-        `</div>` +
-        `<button type="button" data-lm-next aria-label="Geser ticker ke kanan" style="flex: none; width: 28px; height: 28px; margin-right: 8px; border: 0; border-radius: 999px; background: transparent; color: #5F6B7D; display: inline-flex; align-items: center; justify-content: center; cursor: pointer">${LM_CHEVRON("right")}</button>` +
-        `</div>`
+        `<div style="flex: 1; min-width: 0; overflow: hidden">` +
+        `<div class="ob-marq">${loop}</div>` +
+        `</div></div>`
       );
     },
   );
