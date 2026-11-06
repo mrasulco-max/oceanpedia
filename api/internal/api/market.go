@@ -46,17 +46,40 @@ func (s *Server) quotes(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	byPS := make(map[string]QuoteItem, len(ins))
+	pss := make([]string, 0, len(ins))
+	for _, in := range ins {
+		pss = append(pss, in.ProviderSymbol)
+		byPS[in.ProviderSymbol] = QuoteItem{Instrument: in}
+	}
+	// Batch Twelve Data (symbol=A,B,C) + Binance untuk kripto — hemat round-trip HTTP.
+	batched := false
+	if bq, ok := s.Market.(market.BatchQuoter); ok && len(pss) > 0 {
+		batched = true
+		got, _ := bq.Quotes(r.Context(), pss)
+		for ps, q := range got {
+			it := byPS[ps]
+			q.Symbol = it.Instrument.Symbol
+			cp := q
+			it.Quote = &cp
+			byPS[ps] = it
+		}
+	}
 	out := make([]QuoteItem, len(ins))
 	for i, in := range ins {
-		out[i].Instrument = in
-		q, err := s.Market.Quote(r.Context(), in.ProviderSymbol)
-		if err != nil {
-			s.Log.Warn("quote gagal", "symbol", in.Symbol, "err", err)
-			out[i].Error = "Harga sementara tidak tersedia."
-			continue
+		it := byPS[in.ProviderSymbol]
+		if it.Quote == nil && !batched {
+			if q, err := s.Market.Quote(r.Context(), in.ProviderSymbol); err == nil {
+				q.Symbol = in.Symbol
+				it.Quote = &q
+			} else {
+				s.Log.Warn("quote gagal", "symbol", in.Symbol, "err", err)
+				it.Error = "Harga sementara tidak tersedia."
+			}
+		} else if it.Quote == nil {
+			it.Error = "Harga sementara tidak tersedia."
 		}
-		q.Symbol = in.Symbol
-		out[i].Quote = &q
+		out[i] = it
 	}
 	s.evaluateAlerts(r.Context(), out)
 	s.dispatchReminders(r.Context())

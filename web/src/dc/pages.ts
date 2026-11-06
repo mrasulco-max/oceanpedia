@@ -218,8 +218,8 @@ function dedupe(list: (ArticleCard | null | undefined)[]): ArticleCard[] {
   return out;
 }
 
-const KNOWN_SYMBOLS = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "GOTO", "ANTM", "ADRO", "UNVR", "ICBP", "INDF", "IHSG", "LQ45", "BTC", "ETH", "SOL", "BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "Emas", "USDIDR", "EUR/IDR", "SGD/IDR", "XAU/USD", "USD/IDR", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
-const SYMBOL_ALIAS: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", Emas: "XAUUSD", "EUR/IDR": "EURIDR", "SGD/IDR": "SGDIDR", "XAU/USD": "XAUUSD", "USD/IDR": "USDIDR", "EUR/USD": "EURUSD", "GBP/USD": "GBPUSD", "USD/JPY": "USDJPY", "AUD/USD": "AUDUSD" };
+const KNOWN_SYMBOLS = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "GOTO", "ANTM", "ADRO", "UNVR", "ICBP", "INDF", "IHSG", "LQ45", "BTC", "ETH", "SOL", "BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "Emas", "Brent", "XBRUSD", "WTI", "WTIUSD", "Nikel", "Nickel", "NI1", "Perak", "XAGUSD", "USDIDR", "EUR/IDR", "SGD/IDR", "XAU/USD", "USD/IDR", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
+const SYMBOL_ALIAS: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", Emas: "XAUUSD", Brent: "XBRUSD", WTI: "WTIUSD", Nikel: "NI1", Nickel: "NI1", Perak: "XAGUSD", "EUR/IDR": "EURIDR", "SGD/IDR": "SGDIDR", "XAU/USD": "XAUUSD", "USD/IDR": "USDIDR", "EUR/USD": "EURUSD", "GBP/USD": "GBPUSD", "USD/JPY": "USDJPY", "AUD/USD": "AUDUSD" };
 
 /** Baris pasar yang menautkan ke contoh BBCA diarahkan ke simbolnya masing-masing. */
 function bindSymbolLinks(html: string): string {

@@ -65,8 +65,10 @@ export interface Quote {
   low: number;
   previous_close: number;
   volume: number;
+  average_volume?: number;
   week52_low: number;
   week52_high: number;
+  is_market_open?: boolean;
   as_of: string;
   source: "twelvedata" | "binance" | "sample";
 }
