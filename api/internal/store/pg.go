@@ -300,11 +300,6 @@ func (p *PG) UpsertEconomicEvents(ctx context.Context, events []EconomicEventInp
 		return err
 	}
 	defer tx.Rollback()
-	stmt, err := tx.PrepareContext(ctx, qUpsertEconomic)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
 	for _, e := range events {
 		if e.ExternalID == "" {
 			continue
@@ -321,7 +316,7 @@ func (p *PG) UpsertEconomicEvents(ctx context.Context, events []EconomicEventInp
 		if err != nil {
 			return err
 		}
-		if _, err := stmt.ExecContext(ctx, e.ExternalID, e.Country, e.Title, e.Impact, e.ScheduledAt, e.Actual, e.Forecast, e.Previous, string(raw), src); err != nil {
+		if _, err := tx.ExecContext(ctx, qUpsertEconomic, e.ExternalID, e.Country, e.Title, e.Impact, e.ScheduledAt, e.Actual, e.Forecast, e.Previous, string(raw), src); err != nil {
 			return err
 		}
 	}
