@@ -52,9 +52,9 @@ func build() {
 		p = market.Live(cfg.TwelveDataKey, pg, cfg.QuoteTTL, cfg.CandleTTL, cfg.MarketCacheTTL, market.SkipList(cfg.MarketSkip))
 	}
 	srv := &api.Server{Store: pg, Market: p, AI: &ai.Service{G: ai.NewGemini(cfg.GeminiKey, cfg.GeminiModels), KV: pg}, Cfg: cfg, Log: log}
-	if cfg.TradingViewAPIKey != "" {
+	if c := calendar.FromSource(cfg.TradingViewCalendarSource, cfg.TradingViewAPIKey, cfg.TradingViewAPIBase); c != nil {
 		srv.Calendar = &calendar.Syncer{
-			Client:  calendar.New(cfg.TradingViewAPIKey, cfg.TradingViewAPIBase),
+			Client:  c,
 			Store:   pg,
 			KV:      pg,
 			TTL:     cfg.TradingViewCalendarTTL,

@@ -29,46 +29,45 @@ type Syncer struct {
 	mu sync.Mutex
 }
 
+// ErrorBackoff: jeda sebelum mencoba lagi setelah sync gagal (hindari memanggil TV di tiap request).
+const ErrorBackoff = 2 * time.Minute
+
+// SyncTimeout membatasi fetch+upsert agar request /v1/events tidak menggantung.
+const SyncTimeout = 12 * time.Second
+
 // EnsureSynced mengisi economic_events untuk [from, to) bila cache sync sudah kedaluwarsa.
-// Kunci kosong / galat TV → no-op (data seed/DB lama tetap dipakai).
+// Galat TV → no-op (data seed/DB lama tetap dipakai), dicoba lagi setelah ErrorBackoff.
 func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
-	if s == nil || s.Client == nil || s.Client.Key == "" || s.Store == nil {
+	if s == nil || s.Client == nil || s.Store == nil {
 		return
 	}
 	if !to.After(from) {
 		return
 	}
 	// API membatasi rentang ≤40 hari.
-	if to.Sub(from) > 40*24*time.Hour {
-		to = from.Add(40 * 24 * time.Hour)
+	if to.Sub(from) > maxRange {
+		to = from.Add(maxRange)
 	}
 	ttl := s.TTL
 	if ttl <= 0 {
 		ttl = 15 * time.Minute
 	}
-	key := fmt.Sprintf("cal:tv:%s:%s", from.UTC().Format("2006-01-02"), to.UTC().Format("2006-01-02"))
-	if s.KV != nil {
-		if _, errText, at, found, err := s.KV.MarketCacheGet(ctx, key); err == nil && found && errText == "" && time.Since(at) < ttl {
-			return
-		}
+	key := fmt.Sprintf("cal:tv:%s:%s:%s", s.Client.Mode(), from.UTC().Format("2006-01-02T15"), to.UTC().Format("2006-01-02T15"))
+	if s.fresh(ctx, key, ttl) {
+		return
 	}
 	// Satu sync per proses untuk kunci yang sama (hindari stampede singkat).
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.KV != nil {
-		if _, errText, at, found, err := s.KV.MarketCacheGet(ctx, key); err == nil && found && errText == "" && time.Since(at) < ttl {
-			return
-		}
+	if s.fresh(ctx, key, ttl) {
+		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, SyncTimeout)
+	defer cancel()
 
 	raw, err := s.Client.Economic(ctx, from, to, s.Markets)
 	if err != nil {
-		if s.Log != nil {
-			s.Log.Warn("kalender TV gagal", "err", err, "from", from, "to", to)
-		}
-		if s.KV != nil {
-			_ = s.KV.MarketCachePut(ctx, key, nil, err.Error())
-		}
+		s.fail(ctx, key, "kalender TV gagal", err, "mode", s.Client.Mode(), "from", from, "to", to)
 		return
 	}
 	in := make([]store.EconomicEventInput, 0, len(raw))
@@ -80,9 +79,7 @@ func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
 		in = append(in, e)
 	}
 	if err := s.Store.UpsertEconomicEvents(ctx, in); err != nil {
-		if s.Log != nil {
-			s.Log.Warn("kalender TV upsert gagal", "err", err, "n", len(in))
-		}
+		s.fail(ctx, key, "kalender TV upsert gagal", err, "n", len(in))
 		return
 	}
 	// Hapus contoh seed di jendela yang sama agar tidak bercampur dengan data nyata.
@@ -93,6 +90,30 @@ func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
 		_ = s.KV.MarketCachePut(ctx, key, []byte(`{"ok":true}`), "")
 	}
 	if s.Log != nil {
-		s.Log.Info("kalender TV tersinkron", "n", len(in), "from", from.Format(time.RFC3339), "to", to.Format(time.RFC3339))
+		s.Log.Info("kalender TV tersinkron", "mode", s.Client.Mode(), "n", len(in), "from", from.Format(time.RFC3339), "to", to.Format(time.RFC3339))
+	}
+}
+
+// fresh: sync sukses masih dalam TTL, atau galat terakhir masih dalam ErrorBackoff.
+func (s *Syncer) fresh(ctx context.Context, key string, ttl time.Duration) bool {
+	if s.KV == nil {
+		return false
+	}
+	_, errText, at, found, err := s.KV.MarketCacheGet(ctx, key)
+	if err != nil || !found {
+		return false
+	}
+	if errText != "" {
+		return time.Since(at) < ErrorBackoff
+	}
+	return time.Since(at) < ttl
+}
+
+func (s *Syncer) fail(ctx context.Context, key, msg string, err error, attrs ...any) {
+	if s.Log != nil {
+		s.Log.Warn(msg, append([]any{"err", err}, attrs...)...)
+	}
+	if s.KV != nil {
+		_ = s.KV.MarketCachePut(context.WithoutCancel(ctx), key, nil, err.Error())
 	}
 }

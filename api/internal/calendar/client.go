@@ -1,5 +1,8 @@
-// Package calendar mengambil kalender ekonomi dari TradingView Data API
-// (GET /api/calendar/economic — lihat dokumentasi tradingviewapi.com).
+// Package calendar mengambil kalender ekonomi TradingView.
+//
+// Dua sumber dengan bentuk data yang sama ({status, result:[…]}):
+//   - TradingView Data API (GET /api/calendar/economic, dokumentasi tradingviewapi.com) — butuh kunci;
+//   - feed publik TradingView (economic-calendar.tradingview.com/events) — tanpa kunci, dipakai bila kunci kosong.
 package calendar
 
 import (
@@ -14,24 +17,67 @@ import (
 	"time"
 )
 
-const defaultBase = "https://api.tradingviewapi.com"
+const (
+	defaultBase = "https://api.tradingviewapi.com"
+	// PublicBase adalah feed kalender yang dipakai widget tradingview.com (tanpa kunci).
+	PublicBase = "https://economic-calendar.tradingview.com"
 
-// Client memanggil TradingView Data API (Console Bearer atau RapidAPI).
+	maxRange    = 40 * 24 * time.Hour
+	publicUA    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+	isoMillis   = "2006-01-02T15:04:05.000Z"
+	httpTimeout = 10 * time.Second
+)
+
+// Sumber kalender (TRADINGVIEW_CALENDAR_SOURCE).
+const (
+	SourceAuto   = "auto"   // kunci ada → Data API, kosong → feed publik
+	SourceAPI    = "api"    // hanya Data API (tanpa kunci → nonaktif)
+	SourcePublic = "public" // selalu feed publik
+	SourceOff    = "off"    // nonaktif (data seed/DB saja)
+)
+
+// Client memanggil Data API (Console Bearer atau RapidAPI) atau, tanpa kunci, feed publik.
 type Client struct {
-	Key     string
-	BaseURL string
-	HTTP    *http.Client
+	Key       string
+	BaseURL   string
+	PublicURL string
+	HTTP      *http.Client
 }
 
-// New membuat klien. base kosong → api.tradingviewapi.com.
+// New membuat klien. base kosong → api.tradingviewapi.com; key kosong → feed publik.
 func New(key, base string) *Client {
 	if base == "" {
 		base = defaultBase
 	}
-	return &Client{Key: key, BaseURL: strings.TrimRight(base, "/"), HTTP: &http.Client{Timeout: 20 * time.Second}}
+	return &Client{Key: key, BaseURL: strings.TrimRight(base, "/"), PublicURL: PublicBase, HTTP: &http.Client{Timeout: httpTimeout}}
 }
 
-// RawEvent adalah satu baris dari /api/calendar/economic.
+// FromSource membuat klien sesuai TRADINGVIEW_CALENDAR_SOURCE; nil = sync nonaktif.
+func FromSource(source, key, base string) *Client {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case SourceOff:
+		return nil
+	case SourceAPI:
+		if key == "" {
+			return nil
+		}
+		return New(key, base)
+	case SourcePublic:
+		return New("", base)
+	default:
+		return New(key, base)
+	}
+}
+
+// Mode: "api" (Data API berkunci) atau "public" (feed tanpa kunci).
+func (c *Client) Mode() string {
+	if c != nil && c.Key != "" {
+		return "api"
+	}
+	return "public"
+}
+
+// RawEvent adalah satu baris kalender (field sama di Data API dan feed publik).
 type RawEvent struct {
 	ID         string   `json:"id"`
 	Title      string   `json:"title"`
@@ -46,27 +92,63 @@ type RawEvent struct {
 	Currency   string   `json:"currency"`
 }
 
+type result struct {
+	Status string     `json:"status"`
+	Result []RawEvent `json:"result"`
+}
+
+// envelope: Data API membungkus hasil di "data"; feed publik mengirim {status, result} langsung.
 type envelope struct {
-	Success bool `json:"success"`
-	Data    struct {
-		Status string     `json:"status"`
-		Result []RawEvent `json:"result"`
-	} `json:"data"`
-	Msg string `json:"msg"`
+	Success bool    `json:"success"`
+	Data    *result `json:"data"`
+	Msg     string  `json:"msg"`
+	result
 }
 
 // Economic mengambil event dalam [from, to) untuk daftar market (kode TradingView, koma).
 // Rentang dibatasi 40 hari sesuai dokumentasi API.
 func (c *Client) Economic(ctx context.Context, from, to time.Time, markets string) ([]RawEvent, error) {
-	if c == nil || c.Key == "" {
-		return nil, fmt.Errorf("calendar: kunci API kosong")
+	if c == nil {
+		return nil, fmt.Errorf("calendar: klien nil")
 	}
 	if !to.After(from) {
 		return nil, fmt.Errorf("calendar: rentang waktu tidak valid")
 	}
-	if to.Sub(from) > 40*24*time.Hour {
-		to = from.Add(40 * 24 * time.Hour)
+	if to.Sub(from) > maxRange {
+		to = from.Add(maxRange)
 	}
+	var (
+		req *http.Request
+		err error
+	)
+	if c.Key != "" {
+		req, err = c.apiRequest(ctx, from, to, markets)
+	} else {
+		req, err = c.publicRequest(ctx, from, to, markets)
+	}
+	if err != nil {
+		return nil, err
+	}
+	hc := c.HTTP
+	if hc == nil {
+		hc = &http.Client{Timeout: httpTimeout}
+	}
+	res, err := hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode >= 400 {
+		return nil, fmt.Errorf("calendar(%s): HTTP %d: %s", c.Mode(), res.StatusCode, truncate(string(body), 200))
+	}
+	return decode(body)
+}
+
+func (c *Client) apiRequest(ctx context.Context, from, to time.Time, markets string) (*http.Request, error) {
 	q := url.Values{}
 	q.Set("from", strconv.FormatInt(from.UTC().Unix(), 10))
 	q.Set("to", strconv.FormatInt(to.UTC().Unix(), 10))
@@ -78,26 +160,79 @@ func (c *Client) Economic(ctx context.Context, from, to time.Time, markets strin
 		return nil, err
 	}
 	c.applyAuth(req)
-	res, err := c.HTTP.Do(req)
+	return req, nil
+}
+
+func (c *Client) publicRequest(ctx context.Context, from, to time.Time, markets string) (*http.Request, error) {
+	base := strings.TrimRight(c.PublicURL, "/")
+	if base == "" {
+		base = PublicBase
+	}
+	q := url.Values{}
+	q.Set("from", from.UTC().Format(isoMillis))
+	q.Set("to", to.UTC().Format(isoMillis))
+	if cc := Countries(markets); cc != "" {
+		q.Set("countries", cc)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/events?"+q.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
-	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode >= 400 {
-		return nil, fmt.Errorf("calendar: HTTP %d: %s", res.StatusCode, truncate(string(body), 200))
-	}
+	// Tanpa Origin/Referer tradingview.com feed menjawab 403.
+	req.Header.Set("Origin", "https://www.tradingview.com")
+	req.Header.Set("Referer", "https://www.tradingview.com/")
+	req.Header.Set("User-Agent", publicUA)
+	req.Header.Set("Accept", "application/json")
+	return req, nil
+}
+
+func decode(body []byte) ([]RawEvent, error) {
 	var env envelope
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, fmt.Errorf("calendar: JSON tidak valid: %w", err)
 	}
-	if !env.Success && env.Data.Status != "ok" && len(env.Data.Result) == 0 {
-		return nil, fmt.Errorf("calendar: %s", firstNonEmpty(env.Msg, env.Data.Status, "gagal"))
+	r := env.result
+	if env.Data != nil {
+		r = *env.Data
 	}
-	return env.Data.Result, nil
+	if !env.Success && r.Status != "ok" && len(r.Result) == 0 {
+		return nil, fmt.Errorf("calendar: %s", firstNonEmpty(env.Msg, r.Status, "gagal"))
+	}
+	return r.Result, nil
+}
+
+// marketCountry memetakan kode market Data API ke kode negara feed publik.
+var marketCountry = map[string]string{
+	"america": "US", "usa": "US", "us": "US",
+	"china": "CN", "indonesia": "ID",
+	"euro": "EU", "europe": "EU", "eurozone": "EU",
+	"japan": "JP", "uk": "GB", "united_kingdom": "GB",
+	"germany": "DE", "france": "FR", "italy": "IT", "spain": "ES",
+	"canada": "CA", "australia": "AU", "new_zealand": "NZ", "switzerland": "CH",
+	"india": "IN", "korea": "KR", "south_korea": "KR", "singapore": "SG",
+	"malaysia": "MY", "thailand": "TH", "philippines": "PH", "vietnam": "VN",
+	"hongkong": "HK", "hong_kong": "HK", "taiwan": "TW", "brazil": "BR", "mexico": "MX",
+}
+
+// Countries mengubah "america,china,indonesia" → "US,CN,ID" (kode 2 huruf diteruskan apa adanya).
+func Countries(markets string) string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, m := range strings.Split(markets, ",") {
+		m = strings.ToLower(strings.TrimSpace(m))
+		if m == "" {
+			continue
+		}
+		cc, ok := marketCountry[m]
+		if !ok && len(m) == 2 {
+			cc, ok = strings.ToUpper(m), true
+		}
+		if ok && !seen[cc] {
+			seen[cc] = true
+			out = append(out, cc)
+		}
+	}
+	return strings.Join(out, ",")
 }
 
 func (c *Client) applyAuth(req *http.Request) {

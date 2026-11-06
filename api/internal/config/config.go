@@ -38,11 +38,12 @@ type Config struct {
 	MidtransServerKey  string
 	MidtransProduction bool
 	APIPublicURL       string // untuk URL notifikasi pembayaran (webhook)
-	// TradingView Data API — kalender ekonomi (opsional; kosong = seed lokal).
+	// Kalender ekonomi TradingView: kunci Data API opsional (kosong = feed publik TradingView).
 	TradingViewAPIKey          string
 	TradingViewAPIBase         string
 	TradingViewCalendarTTL     time.Duration
 	TradingViewCalendarMarkets string
+	TradingViewCalendarSource  string // auto | api | public | off
 }
 
 // Load membaca dan memvalidasi konfigurasi.
@@ -80,6 +81,7 @@ func Load() (Config, error) {
 		TradingViewAPIBase:         strings.TrimRight(env("TRADINGVIEW_API_BASE", "https://api.tradingviewapi.com"), "/"),
 		TradingViewCalendarTTL:     dur("TRADINGVIEW_CALENDAR_TTL", 15*time.Minute),
 		TradingViewCalendarMarkets: env("TRADINGVIEW_CALENDAR_MARKETS", "america,china,indonesia"),
+		TradingViewCalendarSource:  strings.ToLower(env("TRADINGVIEW_CALENDAR_SOURCE", "auto")),
 	}
 	// Kunci sandbox Midtrans berawalan "SB-": selalu pakai endpoint sandbox walau MIDTRANS_PRODUCTION=true.
 	if strings.HasPrefix(c.MidtransServerKey, "SB-") {
