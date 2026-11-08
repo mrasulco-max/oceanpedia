@@ -19,7 +19,7 @@ type Writer interface {
 
 // Syncer menyinkronkan kalender ekonomi ke DB (on-demand, dengan TTL).
 type Syncer struct {
-	// Client: sumber utama (Finnhub atau TradingView). Nama field dipertahankan agar kompatibel.
+	// Client: sumber utama (Xoomar atau TradingView). Nama field dipertahankan agar kompatibel.
 	Client  Source
 	Store   Writer
 	KV      market.KV
@@ -46,8 +46,8 @@ func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
 		return
 	}
 	limit := maxRange
-	if s.Client.Mode() == "finnhub" {
-		limit = finnhubMaxRange
+	if s.Client.Mode() == "xoomar" {
+		limit = xoomarMaxRange
 	}
 	if to.Sub(from) > limit {
 		to = from.Add(limit)

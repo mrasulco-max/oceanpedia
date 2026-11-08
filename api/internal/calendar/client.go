@@ -1,7 +1,7 @@
 // Package calendar mengambil kalender ekonomi dari penyedia eksternal.
 //
 // Sumber (prioritas di NewSource):
-//   - Finnhub GET /calendar/economic (https://finnhub.io/docs/api/economic-calendar) — butuh FINNHUB_API_KEY;
+//   - XOOMAR GET /api/markets/calendar (https://xoomar.com/markets/api/calendar) — gratis AS, kunci opsional;
 //   - TradingView Data API (GET /api/calendar/economic) — butuh TRADINGVIEW_API_KEY;
 //   - feed publik TradingView (economic-calendar.tradingview.com/events) — tanpa kunci.
 package calendar
@@ -78,13 +78,13 @@ func (c *Client) Mode() string {
 	return "public"
 }
 
-// Source adalah penyedia kalender (Finnhub atau TradingView).
+// Source adalah penyedia kalender (Xoomar atau TradingView).
 type Source interface {
 	Economic(ctx context.Context, from, to time.Time, markets string) ([]RawEvent, error)
 	Mode() string
 }
 
-// RawEvent adalah bentuk normal internal (TV + Finnhub dipetakan ke sini).
+// RawEvent adalah bentuk normal internal (Xoomar + TV dipetakan ke sini).
 type RawEvent struct {
 	ID         string   `json:"id"`
 	Title      string   `json:"title"`
@@ -97,13 +97,23 @@ type RawEvent struct {
 	Unit       string   `json:"unit"`
 	Scale      string   `json:"scale"`
 	Currency   string   `json:"currency"`
-	Source     string   `json:"-"` // finnhub | tradingview
+	Source     string   `json:"-"` // xoomar | tradingview
 }
 
-// NewSource memilih penyedia: Finnhub (jika kunci ada) → TradingView (FromSource).
-func NewSource(finnhubKey, tvSource, tvKey, tvBase string) Source {
-	if strings.TrimSpace(finnhubKey) != "" {
-		return NewFinnhub(finnhubKey)
+// XoomarCalendar: XOOMAR_CALENDAR=auto|on|off (default auto/on → pakai Xoomar).
+const (
+	XoomarAuto = "auto"
+	XoomarOn   = "on"
+	XoomarOff  = "off"
+)
+
+// NewSource memilih penyedia: Xoomar (default) → TradingView (FromSource) bila XOOMAR_CALENDAR=off.
+func NewSource(xoomarKey, xoomarMode, tvSource, tvKey, tvBase string) Source {
+	switch strings.ToLower(strings.TrimSpace(xoomarMode)) {
+	case XoomarOff:
+		// jatuh ke TradingView
+	default: // auto | on | kosong
+		return NewXoomar(xoomarKey)
 	}
 	// Hindari interface non-nil berisi *Client(nil).
 	c := FromSource(tvSource, tvKey, tvBase)

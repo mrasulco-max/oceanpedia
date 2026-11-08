@@ -38,13 +38,14 @@ type Config struct {
 	MidtransServerKey  string
 	MidtransProduction bool
 	APIPublicURL       string // untuk URL notifikasi pembayaran (webhook)
-	// Kalender ekonomi: Finnhub diutamakan bila FINNHUB_API_KEY diisi; else TradingView.
-	FinnhubAPIKey              string
+	// Kalender ekonomi: Xoomar (default) → TradingView bila XOOMAR_CALENDAR=off.
+	XoomarAPIKey               string
+	XoomarCalendar             string // auto | on | off
 	TradingViewAPIKey          string
 	TradingViewAPIBase         string
 	TradingViewCalendarTTL     time.Duration
 	TradingViewCalendarMarkets string
-	TradingViewCalendarSource  string // auto | api | public | off (hanya jika Finnhub kosong)
+	TradingViewCalendarSource  string // auto | api | public | off (cadangan bila Xoomar off)
 }
 
 // Load membaca dan memvalidasi konfigurasi.
@@ -78,7 +79,8 @@ func Load() (Config, error) {
 		MidtransProduction: env("MIDTRANS_PRODUCTION", "false") == "true",
 		APIPublicURL:       strings.TrimRight(env("API_PUBLIC_URL", "https://oceanpedia-api.vercel.app"), "/"),
 
-		FinnhubAPIKey:              strings.TrimSpace(os.Getenv("FINNHUB_API_KEY")),
+		XoomarAPIKey:               strings.TrimSpace(os.Getenv("XOOMAR_API_KEY")),
+		XoomarCalendar:             strings.ToLower(env("XOOMAR_CALENDAR", "auto")),
 		TradingViewAPIKey:          strings.TrimSpace(os.Getenv("TRADINGVIEW_API_KEY")),
 		TradingViewAPIBase:         strings.TrimRight(env("TRADINGVIEW_API_BASE", "https://api.tradingviewapi.com"), "/"),
 		TradingViewCalendarTTL:     dur("TRADINGVIEW_CALENDAR_TTL", 15*time.Minute),
