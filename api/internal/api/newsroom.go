@@ -911,8 +911,8 @@ func calendarDetail(c *calendar.Syncer, ttl time.Duration, markets string) strin
 	}
 	src := "TradingView feed publik"
 	switch c.Client.Mode() {
-	case "finnhub":
-		src = "Finnhub /calendar/economic"
+	case "xoomar":
+		src = "Xoomar /api/markets/calendar"
 	case "api":
 		src = "TradingView Data API"
 	}
@@ -922,6 +922,7 @@ func calendarDetail(c *calendar.Syncer, ttl time.Duration, markets string) strin
 func (s *Server) adminSettings(w http.ResponseWriter, r *http.Request) error {
 	c := s.Cfg
 	set := func(v string) bool { return v != "" }
+	xoomarOn := strings.ToLower(c.XoomarCalendar) != "off"
 	w.Header().Set("Cache-Control", "private, no-store")
 	httpx.JSON(w, 200, map[string]any{
 		"env":      c.Env,
@@ -931,8 +932,8 @@ func (s *Server) adminSettings(w http.ResponseWriter, r *http.Request) error {
 		"integrations": []map[string]any{
 			{"key": "midtrans", "name": "Midtrans (pembayaran)", "ok": s.Pay.Enabled(), "detail": map[bool]string{true: "Produksi", false: "Sandbox"}[c.MidtransProduction], "notify_url": c.APIPublicURL + "/v1/billing/midtrans/notify"},
 			{"key": "twelvedata", "name": "Twelve Data (harga pasar)", "ok": set(c.TwelveDataKey), "detail": fmt.Sprintf("Cache harga %s · lewati %s", c.QuoteTTL, strings.Join(c.MarketSkip, ", "))},
-			{"key": "finnhub", "name": "Finnhub (kalender ekonomi)", "ok": set(c.FinnhubAPIKey), "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
-			{"key": "tradingview", "name": "TradingView (cadangan kalender)", "ok": s.Calendar != nil && c.FinnhubAPIKey == "", "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
+			{"key": "xoomar", "name": "XOOMAR (kalender ekonomi AS)", "ok": xoomarOn && s.Calendar != nil, "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
+			{"key": "tradingview", "name": "TradingView (cadangan kalender)", "ok": s.Calendar != nil && !xoomarOn, "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
 			{"key": "gemini", "name": "Gemini (analisis AI)", "ok": set(c.GeminiKey), "detail": strings.Join(c.GeminiModels, ", ")},
 			{"key": "email", "name": "Email transaksional (Bird)", "ok": s.Mail != nil, "detail": c.OTPEmailFrom},
 			{"key": "otp", "name": "OTP / verifikasi (Bird)", "ok": set(c.BirdKey), "detail": ""},
