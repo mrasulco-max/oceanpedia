@@ -72,7 +72,7 @@ func TestXoomarImportanceMed(t *testing.T) {
 	}
 	e, err := ToStore(RawEvent{
 		ID: "xm:test", Title: "CPI", Country: "US",
-		Date: time.Date(2026, 11, 10, 13, 30, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		Date:       time.Date(2026, 11, 10, 13, 30, 0, 0, time.UTC).Format(time.RFC3339Nano),
 		Importance: 0, Unit: "%", Source: "xoomar",
 	})
 	if err != nil {
