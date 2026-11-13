@@ -99,7 +99,26 @@ func ToStore(r RawEvent) (store.EconomicEventInput, error) {
 		Actual:         FormatValue(r.Actual, r.Unit, r.Scale),
 		Forecast:       FormatValue(r.Forecast, r.Unit, r.Scale),
 		Previous:       FormatValue(r.Previous, r.Unit, r.Scale),
-		RelatedSymbols: []string{},
+		RelatedSymbols: relatedFor(country),
 		Source:         src,
 	}, nil
+}
+
+// relatedByCountry: instrumen yang paling terpengaruh rilis data negara tersebut (kolom "Pengaruh").
+var relatedByCountry = map[string][]string{
+	"US": {"EURUSD", "USDJPY", "XAUUSD"},
+	"ID": {"USDIDR"},
+	"CN": {"AUDUSD", "XAUUSD"},
+	"EU": {"EURUSD"},
+	"DE": {"EURUSD"},
+	"GB": {"GBPUSD"},
+	"JP": {"USDJPY"},
+	"AU": {"AUDUSD"},
+}
+
+func relatedFor(country string) []string {
+	if l, ok := relatedByCountry[country]; ok {
+		return append([]string(nil), l...)
+	}
+	return []string{}
 }

@@ -113,14 +113,17 @@ func TestXoomarHTTP429(t *testing.T) {
 	}
 }
 
-func TestNewSourcePrefersXoomar(t *testing.T) {
+func TestNewSourcePrefersTradingView(t *testing.T) {
 	s := NewSource("", "auto", "auto", "", "")
-	if s == nil || s.Mode() != "xoomar" {
-		t.Fatalf("%v", s)
+	if f, ok := s.(*Fallback); !ok || s.Mode() != "public" || f.Secondary.Mode() != "xoomar" {
+		t.Fatalf("auto → TV publik + cadangan Xoomar, got %v", s)
 	}
 	s = NewSource("xm_key", "on", "public", "tv", "")
 	if s == nil || s.Mode() != "xoomar" {
-		t.Fatal("on → xoomar")
+		t.Fatal("on → xoomar utama")
+	}
+	if s := NewSource("", "auto", "off", "", ""); s == nil || s.Mode() != "xoomar" {
+		t.Fatal("TV off → xoomar saja")
 	}
 	s = NewSource("", "off", "public", "", "")
 	if s == nil || s.Mode() != "public" {
