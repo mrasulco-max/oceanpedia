@@ -52,8 +52,8 @@ type xmEvent struct {
 }
 
 type xmEnvelope struct {
-	Data []xmEvent `json:"data"`
-	Error string   `json:"error"`
+	Data  []xmEvent `json:"data"`
+	Error string    `json:"error"`
 }
 
 // Economic mengambil rilis makro AS dari XOOMAR untuk [from, to).
