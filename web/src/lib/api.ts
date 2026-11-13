@@ -45,6 +45,8 @@ async function aiGet(path: string, token: string | undefined, ms = 9000): Promis
   }
 }
 
+const QUOTE_CHUNK = 30;
+
 export const api = {
   search: (q: string) => get<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}&limit=6`, { revalidate: 30 }),
   articleAI: (slug: string, token?: string) => aiGet(`/v1/articles/${encodeURIComponent(slug)}/ai`, token),
@@ -61,14 +63,22 @@ export const api = {
   reactions: (slug: string) => get<Page<{ kind: string; count: number }>>(`/v1/articles/${encodeURIComponent(slug)}/reactions`, { revalidate: 0 }),
   related: (slug: string) => get<Page<ArticleCard>>(`/v1/articles/${encodeURIComponent(slug)}/related?limit=6`, { revalidate: 120 }),
   instruments: () => get<Page<Instrument>>("/v1/market/instruments", { revalidate: 300 }),
-  quotes: (symbols: string[]) => get<Page<QuoteItem>>(`/v1/market/quotes?symbols=${symbols.join(",")}`, { revalidate: 15 }),
+  quotes: async (symbols: string[]): Promise<Page<QuoteItem>> => {
+    // API membatasi jumlah simbol per permintaan; dipecah agar semua instrumen mendapat harga.
+    const chunks: string[][] = [];
+    for (let i = 0; i < symbols.length; i += QUOTE_CHUNK) chunks.push(symbols.slice(i, i + QUOTE_CHUNK));
+    const res = await Promise.allSettled(chunks.map((c) => get<Page<QuoteItem>>(`/v1/market/quotes?symbols=${c.map(encodeURIComponent).join(",")}`, { revalidate: 15 })));
+    const ok = res.filter((r): r is PromiseFulfilledResult<Page<QuoteItem>> => r.status === "fulfilled");
+    if (!ok.length && res[0]?.status === "rejected") throw res[0].reason;
+    return { data: ok.flatMap((r) => r.value.data) };
+  },
   instrument: (symbol: string) =>
     get<{ instrument: Instrument; quote: Quote | null; news: ArticleCard[]; error?: string }>(`/v1/market/instruments/${encodeURIComponent(symbol)}`, { revalidate: 15 }),
   candles: (symbol: string, interval: string, limit = 120) =>
     get<{ symbol: string; interval: string; data: Candle[] }>(`/v1/market/instruments/${encodeURIComponent(symbol)}/candles?interval=${interval}&limit=${limit}`, { revalidate: 30 }),
   author: (slug: string) => get<{ author: Author; articles: ArticleCard[] }>(`/v1/authors/${encodeURIComponent(slug)}`, { revalidate: 120 }),
   topic: (slug: string) => get<{ topic: TopicInfo; articles: ArticleCard[] }>(`/v1/topics/${encodeURIComponent(slug)}`, { revalidate: 120 }),
-  plans: () => get<{ data: { code: string; name: string; price_amount: number; currency: string; billing_period: "month" | "year"; min_seats: number; features: string[] }[]; tax_rate: number }>("/v1/plans", { revalidate: 300 }),
+  plans: () => get<{ data: { code: string; name: string; price_amount: number; currency: string; billing_period: "month" | "year"; min_seats: number; features: string[] }[]; tax_rate: number; providers?: { midtrans: boolean; doku: boolean } }>("/v1/plans", { revalidate: 300 }),
   live: () => get<import("@/dc/newsroom-bind").PublicLive>("/v1/live", { revalidate: 15 }),
   followStat: (kind: "category" | "author", slug: string, token?: string) => get<{ following: boolean; followers: number }>(`/v1/follows/${kind}/${encodeURIComponent(slug)}`, { revalidate: 0, token }),
   publicStats: () => get<{ articles: number; views: number; newsletter: number; readers: number }>("/v1/stats/public", { revalidate: 600 }),

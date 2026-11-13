@@ -87,6 +87,15 @@ export function bindArticleDetail(html: string, a: Article): string {
       const lastP = mid.lastIndexOf("</p>");
       if (lastP >= 0) mid = mid.slice(0, lastP + 4) + rest + mid.slice(lastP + 4);
     }
+    // Tag market terkait: ketuk untuk membuka halaman market-nya.
+    if (a.symbols?.length) {
+      const chips = a.symbols
+        .map((s) => `<a href="/market/${encodeURIComponent(s)}" data-art-sym style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; background: #E5ECFF; color: #1E40AF; font-size: 13px; font-weight: 500; text-decoration: none">#${esc(s)} <span aria-hidden="true">›</span></a>`)
+        .join("");
+      const row = `<div aria-label="Market terkait" style="display: flex; flex-direction: column; gap: 8px; margin: 8px 0 20px"><span style="font-size: 12px; letter-spacing: .06em; color: #5F6B7D">MARKET TERKAIT</span><div style="display: flex; flex-wrap: wrap; gap: 8px">${chips}</div></div>`;
+      const lastP = mid.lastIndexOf("</p>");
+      if (lastP >= 0) mid = mid.slice(0, lastP + 4) + row + mid.slice(lastP + 4);
+    }
     h = head + mid + tail;
   }
 

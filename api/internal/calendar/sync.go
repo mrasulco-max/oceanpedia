@@ -86,9 +86,12 @@ func (s *Syncer) EnsureSynced(ctx context.Context, from, to time.Time) {
 		s.fail(ctx, key, "kalender ekonomi upsert gagal", err, "n", len(in))
 		return
 	}
-	// Hapus contoh seed di jendela yang sama agar tidak bercampur dengan data nyata.
-	if err := s.Store.ClearSeedEconomicEvents(ctx, from, to); err != nil && s.Log != nil {
-		s.Log.Warn("kalender ekonomi bersihkan seed gagal", "err", err)
+	// Hapus contoh seed di jendela yang sama agar tidak bercampur dengan data nyata —
+	// hanya bila penyedia benar-benar mengirim data (respons kosong tidak menghapus cadangan).
+	if len(in) > 0 {
+		if err := s.Store.ClearSeedEconomicEvents(ctx, from, to); err != nil && s.Log != nil {
+			s.Log.Warn("kalender ekonomi bersihkan seed gagal", "err", err)
+		}
 	}
 	if s.KV != nil {
 		_ = s.KV.MarketCachePut(ctx, key, []byte(`{"ok":true}`), "")

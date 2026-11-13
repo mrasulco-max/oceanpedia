@@ -463,10 +463,30 @@ export interface CalData {
 }
 const ctry = (e: EconomicEvent) => COUNTRY[e.country] ?? [e.country, "#EFF0F2", "#374151"];
 
-export function bindCalendarApp(html: string, d: CalData): string {
+const NAV_BTN = "flex: none; width: 34px; height: 34px; border-radius: 999px; border: 1px solid #E3EAF4; color: #0B0B0F; display: flex; align-items: center; justify-content: center; font-size: 18px; text-decoration: none";
+
+/** Hitung mundur ke rilis berikutnya (diperbarui tiap detik oleh enhancer "reader"). */
+function nextRelease(events: EconomicEvent[], now = Date.now()): string {
+  const next = events.filter((e) => new Date(e.scheduled_at).getTime() > now).sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))[0];
+  if (!next) return "";
+  const t = WIBf(next.scheduled_at, { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":");
+  return `<a href="/kalender?d=${dayOf(next.scheduled_at)}" data-cal-next="${esc(next.scheduled_at)}" style="display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; padding: 12px 14px; border-radius: 16px; background: ${next.impact === "high" ? "#FFF1F1" : "#F6F8FC"}; border: 1px solid ${next.impact === "high" ? "#F8D0D0" : "#E3EAF4"}; color: #0B0B0F; text-decoration: none"><span class="live-dot" style="flex: none; width: 8px; height: 8px; border-radius: 999px; background: ${next.impact === "high" ? "#EF4444" : "#4285F4"}"></span><span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; font-weight: 700; letter-spacing: .04em; color: ${next.impact === "high" ? "#991B1B" : "#2F74EB"}">RILIS BERIKUTNYA · ${esc(t)} WIB</span><strong style="font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(next.country)} · ${esc(next.title)}</strong></span><span data-cal-cd role="timer" style="flex: none; font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; color: #B91C1C; font-variant-numeric: tabular-nums">—</span></a>`;
+}
+
+export function bindCalendarApp(html: string, d: CalData & { prevWeek?: string; nextWeek?: string }): string {
   let h = html;
   const mon = new Date(`${d.week[0]}T12:00:00+07:00`);
-  h = h.replace(/(<strong style="font-size: 15px; font-weight: 500">)[^<]*(<\/strong>)/, `$1${esc(WIBf(mon.toISOString(), { month: "long", year: "numeric" }))}$2`);
+  const q = d.country ? `&amp;negara=${d.country}` : "";
+  // Bulan + navigasi minggu + pilih tanggal (kalender native) — semuanya memuat data minggu terpilih dari API.
+  h = h.replace(
+    /<strong style="font-size: 15px; font-weight: 500">[^<]*<\/strong><span style="font-size: 12px; color: #5F6B7D">Waktu dalam WIB<\/span>/,
+    `<span style="display: flex; align-items: center; gap: 8px; min-width: 0">${d.prevWeek ? `<a href="/kalender?d=${d.prevWeek}${q}" aria-label="Minggu sebelumnya" style="${NAV_BTN}">‹</a>` : ""}<strong style="font-size: 15px; font-weight: 500; white-space: nowrap">${esc(WIBf(mon.toISOString(), { month: "long", year: "numeric" }))}</strong>${d.nextWeek ? `<a href="/kalender?d=${d.nextWeek}${q}" aria-label="Minggu berikutnya" style="${NAV_BTN}">›</a>` : ""}</span>` +
+      `<label style="position: relative; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #2F74EB; font-weight: 500">Pilih tanggal<input type="date" data-cal-date value="${d.selected}" aria-label="Pilih tanggal kalender" style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>`,
+  );
+  h = h.replace(
+    /(<div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0 10px">[\s\S]*?<\/div>)/,
+    `$1<span style="display: block; margin: -4px 0 8px; font-size: 11px; color: #8A94A6">Waktu dalam WIB</span>`,
+  );
   d.week.forEach((day, i) => {
     const has = d.events.some((e) => dayOf(e.scheduled_at) === day);
     h = h.replace(rx(`(<button onClick="\\{\\{ u1\\.m${i}\\.pick \\}\\}"[^>]*>\\s*<span style="font-size: 11px; opacity: .85">[^<]*</span>\\s*<strong style="font-size: 17px; font-weight: 700">)\\d+(</strong>\\s*)<span style=(?:height:5px|'[^']*')>(\\s*</span>)`), (_m, a: string, b: string, c: string) =>
@@ -498,14 +518,15 @@ export function bindCalendarApp(html: string, d: CalData): string {
         })
         .join("") + `<div data-cal-empty hidden>${emptyRow("Tidak ada rilis data di hari ini.")}</div>`
     : emptyRow("Belum ada jadwal rilis data minggu ini.");
-  return h.slice(0, rows[0]!.start) + built + h.slice(rows[rows.length - 1]!.end);
+  return h.slice(0, rows[0]!.start) + nextRelease(d.events) + built + h.slice(rows[rows.length - 1]!.end);
 }
 
 export function bindCalendarWeb(html: string, d: CalData & { prevWeek: string; nextWeek: string }): string {
   let h = html;
   const mon = new Date(`${d.week[0]}T12:00:00+07:00`);
   h = h.replace(/(<strong style="font-size: 17px; font-weight: 700">)[^<]*(<\/strong>)/, `$1${esc(WIBf(mon.toISOString(), { month: "long", year: "numeric" }))}$2`);
-  h = h.replace(/<a href="#"([^>]*)>Minggu lalu<\/a>/, `<a href="/kalender?d=${d.prevWeek}"$1>Minggu lalu</a>`).replace(/<a href="#"([^>]*)>Minggu depan<\/a>/, `<a href="/kalender?d=${d.nextWeek}"$1>Minggu depan</a>`);
+  const nq = d.country ? `&amp;negara=${d.country}` : "";
+  h = h.replace(/<a href="#"([^>]*)>Minggu lalu<\/a>/, `<a href="/kalender?d=${d.prevWeek}${nq}"$1>Minggu lalu</a>`).replace(/<a href="#"([^>]*)>Minggu depan<\/a>/, `<a href="/kalender?d=${d.nextWeek}${nq}"$1>Minggu depan</a>`);
   // Tombol hari → tautan.
   const grid = /(<div style="display: grid; grid-template-columns: repeat\(7, 1fr\); gap: 10px">)([\s\S]*?)(<\/div>\s*<\/div>)/.exec(h);
   if (grid) {
@@ -516,7 +537,7 @@ export function bindCalendarWeb(html: string, d: CalData & { prevWeek: string; n
       .map((day, i) => {
         const n = d.events.filter((e) => dayOf(e.scheduled_at) === day).length;
         return (day === d.selected ? on : off)
-          .replace("<button ", `<a href="/kalender?d=${day}" `)
+          .replace("<button ", `<a href="/kalender?d=${day}${d.country ? `&amp;negara=${d.country}` : ""}" `)
           .replace(/<\/button>$/, "</a>")
           .replace(/(<span style="font-size: 12px; opacity: .85">)[^<]*(<\/span>)/, `$1${["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"][i]}${n ? ` · ${n}` : ""}$2`)
           .replace(/(<strong style="font-size: 20px; font-weight: 700">)\d+(<\/strong>)/, `$1${Number(day.slice(8))}$2`);

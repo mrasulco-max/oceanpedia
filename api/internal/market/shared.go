@@ -182,6 +182,7 @@ func (s *Shared) Quote(ctx context.Context, ps string) (Quote, error) {
 // Quotes mengisi dari cache dulu; sisanya satu batch HTTP ke penyedia (bila BatchQuoter).
 func (s *Shared) Quotes(ctx context.Context, pss []string) (map[string]Quote, error) {
 	out := make(map[string]Quote, len(pss))
+	stale := map[string]Quote{}
 	var miss []string
 	for _, ps := range pss {
 		if ps == "" || (s.Skip != nil && s.Skip(ps)) {
@@ -193,11 +194,14 @@ func (s *Shared) Quotes(ctx context.Context, pss []string) (map[string]Quote, er
 		}
 		key := "q:" + ps
 		body, errText, at, found, err := s.KV.MarketCacheGet(ctx, key)
-		if err == nil && found && errText == "" && len(body) > 0 && s.now().Sub(at) < ttl && !fresh(ctx) {
+		if err == nil && found && errText == "" && len(body) > 0 {
 			var q Quote
 			if json.Unmarshal(body, &q) == nil {
-				out[ps] = q
-				continue
+				if s.now().Sub(at) < ttl && !fresh(ctx) {
+					out[ps] = q
+					continue
+				}
+				stale[ps] = q
 			}
 		}
 		if err == nil && found && errText != "" && s.now().Sub(at) < s.ErrTTL {
@@ -208,7 +212,15 @@ func (s *Shared) Quotes(ctx context.Context, pss []string) (map[string]Quote, er
 	if len(miss) == 0 {
 		return out, nil
 	}
+	useStale := func() {
+		for ps, q := range stale {
+			if _, ok := out[ps]; !ok {
+				out[ps] = q
+			}
+		}
+	}
 	if _, _, cAt, cFound, cErr := s.KV.MarketCacheGet(ctx, s.cooldownKey()); cErr == nil && cFound && s.now().Sub(cAt) < cooldown {
+		useStale()
 		return out, nil
 	}
 	fetched := map[string]Quote{}
@@ -243,7 +255,8 @@ func (s *Shared) Quotes(ctx context.Context, pss []string) (map[string]Quote, er
 		}
 		out[ps] = q
 	}
-	// Simbol yang diminta batch tapi tidak kembali → anggap sementara kosong (bukan permanent).
+	// Simbol yang diminta batch tapi tidak kembali → harga terakhir tersimpan (bila ada).
+	useStale()
 	return out, nil
 }
 

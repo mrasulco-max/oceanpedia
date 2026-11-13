@@ -107,20 +107,58 @@ const (
 	XoomarOff  = "off"
 )
 
-// NewSource memilih penyedia: Xoomar (default) → TradingView (FromSource) bila XOOMAR_CALENDAR=off.
+// NewSource memilih penyedia kalender:
+//   - XOOMAR_CALENDAR=auto (default): TradingView utama (ID, US, CN + perkiraan), Xoomar cadangan (AS saja);
+//   - XOOMAR_CALENDAR=on: Xoomar utama, TradingView cadangan;
+//   - XOOMAR_CALENDAR=off: TradingView saja.
 func NewSource(xoomarKey, xoomarMode, tvSource, tvKey, tvBase string) Source {
-	switch strings.ToLower(strings.TrimSpace(xoomarMode)) {
-	case XoomarOff:
-		// jatuh ke TradingView
-	default: // auto | on | kosong
-		return NewXoomar(xoomarKey)
-	}
+	var tv Source
 	// Hindari interface non-nil berisi *Client(nil).
-	c := FromSource(tvSource, tvKey, tvBase)
-	if c == nil {
-		return nil
+	if c := FromSource(tvSource, tvKey, tvBase); c != nil {
+		tv = c
 	}
-	return c
+	var xm Source
+	mode := strings.ToLower(strings.TrimSpace(xoomarMode))
+	if mode != XoomarOff {
+		xm = NewXoomar(xoomarKey)
+	}
+	switch {
+	case tv == nil:
+		return xm
+	case xm == nil:
+		return tv
+	case mode == XoomarOn:
+		return &Fallback{Primary: xm, Secondary: tv}
+	default:
+		return &Fallback{Primary: tv, Secondary: xm}
+	}
+}
+
+// Fallback memakai Primary; bila gagal atau kosong, Secondary dicoba.
+type Fallback struct {
+	Primary, Secondary Source
+}
+
+// Mode mengikuti penyedia utama (kunci cache sync & batas rentang).
+func (f *Fallback) Mode() string { return f.Primary.Mode() }
+
+func (f *Fallback) Economic(ctx context.Context, from, to time.Time, markets string) ([]RawEvent, error) {
+	out, err := f.Primary.Economic(ctx, from, to, markets)
+	if err == nil && len(out) > 0 {
+		return out, nil
+	}
+	sto := to
+	if f.Secondary.Mode() == "xoomar" && sto.Sub(from) > xoomarMaxRange {
+		sto = from.Add(xoomarMaxRange)
+	}
+	alt, aerr := f.Secondary.Economic(ctx, from, sto, markets)
+	if aerr == nil && len(alt) > 0 {
+		return alt, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return out, aerr
 }
 
 type result struct {

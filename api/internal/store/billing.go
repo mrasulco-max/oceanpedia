@@ -33,6 +33,7 @@ type Bill struct {
 	VANumber      string     `json:"va_number,omitempty"`
 	BillKey       string     `json:"bill_key,omitempty"`
 	BillerCode    string     `json:"biller_code,omitempty"`
+	Provider      string     `json:"provider"` // midtrans | doku | manual
 }
 
 // Subscription aktif pengguna.
@@ -79,7 +80,7 @@ func (p *PG) SetInvoiceSeats(ctx context.Context, invoiceID string, seats int) e
 const billCols = `i.id, i.number, s.plan_code, i.subtotal, i.discount, i.tax_rate::float8, i.tax_amount, i.total, i.currency, i.promo_code, i.status, i.issued_at,
   u.id, u.email, u.full_name, sp.name, sp.billing_period, s.seats, i.paid_at,
   coalesce(pm.id::text, ''), coalesce(pm.provider_ref, ''), coalesce(pm.method, ''), coalesce(pm.status, ''), coalesce(pm.raw->>'redirect_url', ''), pm.expires_at, s.current_period_end,
-  coalesce(pm.raw->>'va_bank', ''), coalesce(pm.raw->>'va_number', ''), coalesce(pm.raw->>'bill_key', ''), coalesce(pm.raw->>'biller_code', '')
+  coalesce(pm.raw->>'va_bank', ''), coalesce(pm.raw->>'va_number', ''), coalesce(pm.raw->>'bill_key', ''), coalesce(pm.raw->>'biller_code', ''), coalesce(pm.provider, '')
 FROM invoices i
 JOIN users u ON u.id = i.user_id
 JOIN subscriptions s ON s.id = i.subscription_id
@@ -91,7 +92,7 @@ func scanBill(s scanner) (Bill, error) {
 	err := s.Scan(&b.ID, &b.Number, &b.PlanCode, &b.Subtotal, &b.Discount, &b.TaxRate, &b.TaxAmount, &b.Total, &b.Currency, &b.PromoCode, &b.Status, &b.IssuedAt,
 		&b.UserID, &b.UserEmail, &b.UserName, &b.PlanName, &b.Period, &b.Seats, &b.PaidAt,
 		&b.PaymentID, &b.OrderID, &b.Method, &b.PaymentStatus, &b.PayURL, &b.PayExpiresAt, &b.PeriodEnd,
-		&b.VABank, &b.VANumber, &b.BillKey, &b.BillerCode)
+		&b.VABank, &b.VANumber, &b.BillKey, &b.BillerCode, &b.Provider)
 	return b, err
 }
 

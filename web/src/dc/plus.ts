@@ -11,7 +11,10 @@ type Cfg = {
   tax: number;
   promo: { code: string; first: number } | null;
   loggedIn: boolean;
+  doku?: boolean;
 };
+type Provider = "midtrans" | "doku";
+const PAY_HOST = /^https:\/\/(app\.midtrans\.com|app\.sandbox\.midtrans\.com|([a-z0-9-]+\.)*doku\.com)\//;
 type St = { period?: number; promo?: boolean; method?: number };
 const METHODS = ["qris", "va_bca", "va_mandiri", "va_bri", "gopay", "ovo", "dana", "card"];
 const NAMES = ["QRIS", "BCA Virtual Account", "Mandiri Virtual Account", "BRI Virtual Account", "GoPay", "OVO", "DANA", "Kartu kredit / debit"];
@@ -34,6 +37,22 @@ export function plus(host: HTMLElement, { router, ctx }: Env): Cleanup {
   const cfg: Cfg | null = ctx.plus ? (JSON.parse(ctx.plus) as Cfg) : null;
   let st: St = ctx.state ? (JSON.parse(ctx.state) as St) : {};
   let busy = false;
+  let chosen: Provider = "midtrans";
+  // GoPay hanya lewat Midtrans; OVO & DANA hanya lewat DOKU.
+  const provider = (): Provider => {
+    if (!cfg?.doku) return "midtrans";
+    const m = METHODS[st.method ?? 0];
+    return m === "gopay" ? "midtrans" : m === "ovo" || m === "dana" ? "doku" : chosen;
+  };
+  const paintProvider = () => {
+    const p = provider();
+    host.querySelectorAll<HTMLElement>("[data-pay-provider]").forEach((b) => {
+      const on = b.dataset.payProvider === p;
+      b.setAttribute("aria-checked", String(on));
+      b.style.borderColor = on ? "#2F74EB" : "#E3EAF4";
+      b.style.background = on ? "#EEF5FF" : "#FFFFFF";
+    });
+  };
 
   // ---------------------------------------------------------------- checkout: angka dari harga nyata
   const calc = () => {
@@ -61,7 +80,8 @@ export function plus(host: HTMLElement, { router, ctx }: Env): Cleanup {
     set("total", rp(c.total));
     set("renewTxt", `Aktif hingga ${dayFmt(end)}. Tanpa debit otomatis — perpanjang kapan saja dari halaman Plus.`);
     set("promoTxt", !cfg.promo ? "" : c.promoOn ? `Diterapkan · bulan pertama ${rp(cfg.promo.first)}` : c.yearly ? "Hanya untuk paket bulanan" : `Bulan pertama ${rp(cfg.promo.first)}`);
-    set("methodName", NAMES[st.method ?? 0] ?? "QRIS");
+    set("methodName", `${NAMES[st.method ?? 0] ?? "QRIS"}${cfg.doku ? ` · ${provider() === "doku" ? "DOKU" : "Midtrans"}` : ""}`);
+    paintProvider();
     // Baris diskon disembunyikan bila promo tidak berlaku.
     host.querySelectorAll<HTMLElement>('[data-ck="disc"]').forEach((el) => {
       const row = el.parentElement;
@@ -128,7 +148,7 @@ export function plus(host: HTMLElement, { router, ctx }: Env): Cleanup {
       pay.setAttribute("aria-busy", "true");
       void (async () => {
         try {
-          const r = await post("/api/v1/billing/checkout", { plan_code: c.code, seats: cfg.monthly.seats, promo_code: c.promoOn ? cfg.promo!.code : "", method: METHODS[st.method ?? 0] ?? "all" });
+          const r = await post("/api/v1/billing/checkout", { plan_code: c.code, seats: cfg.monthly.seats, promo_code: c.promoOn ? cfg.promo!.code : "", method: METHODS[st.method ?? 0] ?? "all", provider: provider() });
           if (r.status === 401) {
             router.push(`/masuk?next=${encodeURIComponent(location.pathname + location.search)}`);
             return;
@@ -139,8 +159,8 @@ export function plus(host: HTMLElement, { router, ctx }: Env): Cleanup {
           }
           const inv = (r.data.invoice as { id: string }).id;
           const url = r.data.pay_url as string | undefined;
-          if (url && /^https:\/\/(app\.midtrans\.com|app\.sandbox\.midtrans\.com)\//.test(url)) {
-            toast(host, "Mengarahkan ke halaman pembayaran aman Midtrans…", "ok");
+          if (url && PAY_HOST.test(url)) {
+            toast(host, `Mengarahkan ke halaman pembayaran aman ${r.data.provider === "doku" ? "DOKU" : "Midtrans"}…`, "ok");
             window.location.assign(url);
           } else {
             router.push(`/plus/menunggu-pembayaran?inv=${inv}`);
@@ -150,6 +170,19 @@ export function plus(host: HTMLElement, { router, ctx }: Env): Cleanup {
           pay.removeAttribute("aria-busy");
         }
       })();
+      return;
+    }
+    const pv = t.closest<HTMLElement>("[data-pay-provider]");
+    if (pv) {
+      stop();
+      const want = pv.dataset.payProvider as Provider;
+      const m = METHODS[st.method ?? 0];
+      if ((want === "midtrans" && (m === "ovo" || m === "dana")) || (want === "doku" && m === "gopay")) {
+        toast(host, want === "doku" ? "GoPay hanya tersedia lewat Midtrans." : `${NAMES[st.method ?? 0]} hanya tersedia lewat DOKU.`);
+        return;
+      }
+      chosen = want;
+      paint();
       return;
     }
     const chk = t.closest('[data-plus="check"]');

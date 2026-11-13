@@ -38,6 +38,10 @@ type Config struct {
 	MidtransServerKey  string
 	MidtransProduction bool
 	APIPublicURL       string // untuk URL notifikasi pembayaran (webhook)
+	// DOKU Checkout (penyedia kedua). DOKU_ENV=production memakai api.doku.com; selain itu sandbox.
+	DokuClientID   string
+	DokuSecretKey  string
+	DokuProduction bool
 	// Kalender ekonomi: Xoomar (default) → TradingView bila XOOMAR_CALENDAR=off.
 	XoomarAPIKey               string
 	XoomarCalendar             string // auto | on | off
@@ -78,6 +82,9 @@ func Load() (Config, error) {
 		MidtransServerKey:  strings.TrimSpace(os.Getenv("MIDTRANS_SERVER_KEY")),
 		MidtransProduction: env("MIDTRANS_PRODUCTION", "false") == "true",
 		APIPublicURL:       strings.TrimRight(env("API_PUBLIC_URL", "https://oceanpedia-api.vercel.app"), "/"),
+		DokuClientID:       strings.TrimSpace(os.Getenv("DOKU_CLIENT_ID")),
+		DokuSecretKey:      strings.TrimSpace(os.Getenv("DOKU_SECRET_KEY")),
+		DokuProduction:     strings.ToLower(env("DOKU_ENV", "sandbox")) == "production",
 
 		XoomarAPIKey:               strings.TrimSpace(os.Getenv("XOOMAR_API_KEY")),
 		XoomarCalendar:             strings.ToLower(env("XOOMAR_CALENDAR", "auto")),

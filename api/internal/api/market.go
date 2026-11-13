@@ -20,7 +20,7 @@ type QuoteItem struct {
 func symbolsParam(r *http.Request) []string {
 	var out []string
 	for _, s := range strings.Split(r.URL.Query().Get("symbols"), ",") {
-		if s = strings.ToUpper(strings.TrimSpace(s)); s != "" && len(out) < 30 {
+		if s = strings.ToUpper(strings.TrimSpace(s)); s != "" && len(out) < 100 {
 			out = append(out, s)
 		}
 	}

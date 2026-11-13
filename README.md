@@ -78,6 +78,7 @@ Produksi: web `https://oceanpedia-web.vercel.app` · API `https://oceanpedia-api
 | Google Gemini | Aurora AI (analisis berita/market, percakapan, analisis gambar chart) | `GEMINI_API_KEY`, `GEMINI_MODELS` | ✅ | Khusus pelanggan Plus & staf |
 | Bird | OTP email, email transaksional & newsletter | `BIRD_API_KEY`, `BIRD_EMAIL_KEY`, `BIRD_API_URL`, `OTP_EMAIL_FROM` | ⚠️ | Domain `mail.psi.id` belum terverifikasi (DKIM & return-path) → email bisa gagal/masuk spam |
 | Midtrans Snap | Pembayaran langganan (QRIS, GoPay, VA) | `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_PRODUCTION` | ⚠️ | Kode siap, tetapi Server Key ditolak (401) → perlu buat ulang di dashboard Midtrans |
+| DOKU Checkout | Pembayaran langganan alternatif (VA, QRIS, e-wallet, kartu) | `DOKU_CLIENT_ID`, `DOKU_SECRET_KEY`, `DOKU_ENV` (`sandbox`/`production`) | ⚠️ | Mode sandbox; atur Notification URL di dasbor DOKU ke `{API_PUBLIC_URL}/v1/billing/doku/notify` |
 | Vercel | Hosting web (Next.js) & API (Go) | — | ✅ | Deploy otomatis dari `main` |
 
 ### Fitur pembaca (web & app)
