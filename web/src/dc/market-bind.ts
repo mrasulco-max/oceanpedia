@@ -512,16 +512,65 @@ function badgeLabel(i: Instrument): string {
   if (i.asset_class === "crypto" || i.asset_class === "commodity") return i.symbol.replace(/(USDT|USD|IDR)$/, "") || i.symbol;
   return i.symbol;
 }
+/** Volume ringkas: 1.234 · 12,3 rb · 4,5 jt · 1,2 M · 3,4 T. */
+export function volShort(v: number): string {
+  const f = (x: number) => nf(x >= 100 ? 0 : 1).format(x);
+  if (v >= 1e12) return `${f(v / 1e12)} T`;
+  if (v >= 1e9) return `${f(v / 1e9)} M`;
+  if (v >= 1e6) return `${f(v / 1e6)} jt`;
+  if (v >= 1e4) return `${f(v / 1e3)} rb`;
+  return nf(0).format(v);
+}
+
+/** Grafik area kecil dari harga penutupan (kartu ringkas Market). */
+export function areaSpark(closes: number[], w: number, h: number): string {
+  if (closes.length < 2) return `<svg width="${w}" height="${h}" aria-hidden="true"></svg>`;
+  const min = Math.min(...closes), max = Math.max(...closes), span = max - min || 1;
+  const xy = closes.map((c, i) => `${((i / (closes.length - 1)) * w).toFixed(1)},${(h - 2 - ((c - min) / span) * (h - 6)).toFixed(1)}`);
+  const up = closes[closes.length - 1]! >= closes[0]!;
+  const [line, fill] = up ? ["#16A34A", "#DCF5E4"] : ["#E5484D", "#FDE2E2"];
+  const id = `g${Math.random().toString(36).slice(2, 8)}`;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true" style="display: block"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${fill}"/><stop offset="1" stop-color="${fill}" stop-opacity="0"/></linearGradient></defs><polygon points="0,${h} ${xy.join(" ")} ${w},${h}" fill="url(#${id})"/><polyline points="${xy.join(" ")}" fill="none" stroke="${line}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+const UP_C = "#15803D", DOWN_C = "#DC2626";
+const priceText = (i: Instrument, q: Quote) => (i.asset_class === "equity" && i.currency === "IDR" ? new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(q.price) : fmtPrice("1.234,56", q.price));
+
+/** Kartu horizontal ala "Hot": simbol, harga, perubahan %, dan grafik area mini. */
+export function marketCards(instruments: Instrument[], quotes: Map<string, Quote>, sparks: Map<string, number[]>): string {
+  const cards = instruments
+    .filter((i) => quotes.has(i.symbol))
+    .map((i) => {
+      const q = quotes.get(i.symbol)!;
+      const up = (q.change_percent ?? 0) >= 0;
+      const label = badgeLabel(i);
+      return `<a href="/market/${encodeURIComponent(i.symbol)}" style="flex: none; width: 168px; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; background: #F6F8FC; display: flex; flex-direction: column; gap: 8px; color: #0B0B0F"><span style="display: flex; align-items: center; gap: 8px"><span style="flex: none; width: 24px; height: 24px; border-radius: 999px; background: #E5ECFF; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 700">${esc(label)}</span><strong style="font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(displayName(i))}</strong></span><span style="font-family: 'Roboto Mono', monospace; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(priceText(i, q))}</span><span style="display: flex; align-items: flex-end; justify-content: space-between; gap: 6px"><span style="font-size: 12px; font-weight: 500; white-space: nowrap; color: ${up ? UP_C : DOWN_C}">${esc(fmtPct("+0,00%", q.change_percent ?? 0))}</span><span style="flex: none">${areaSpark(sparks.get(i.symbol) ?? [], 72, 28)}</span></span></a>`;
+    })
+    .join("");
+  if (!cards) return "";
+  return `<div data-mk-cards class="ob-scroll" style="display: flex; gap: 10px; overflow-x: auto; margin: 12px -20px 0; padding: 0 20px">${cards}</div>`;
+}
+
+function displayName(i: Instrument): string {
+  if (i.asset_class === "crypto" && /USD$/.test(i.symbol)) return `${i.symbol.replace(/USD$/, "")}/USDT`;
+  return i.symbol;
+}
+
 /**
  * Daftar Market aplikasi: semua instrumen dengan harga nyata, dikelompokkan per tab
  * (Saham AS · Crypto · Forex · Komoditas) dan diurutkan (top gainer/loser/teraktif) oleh enhancer "mkt".
+ * Baris: simbol + perubahan (% dan nilai) · kotak harga · kotak volume.
  */
-export function bindMarketApp(html: string, instruments: Instrument[], quotes: Map<string, Quote>): string {
+export function bindMarketApp(
+  html: string,
+  instruments: Instrument[],
+  quotes: Map<string, Quote>,
+  extra: { cards?: string; today?: { total: number; high: number } | null } = {},
+): string {
   const rowStart = '<a href="/market/BBCA" style="display: flex; align-items: center; gap: 12px; min-height: 64px';
   const first = html.indexOf(rowStart);
   const allLink = html.indexOf('<a href="/cari" style="display: flex; justify-content: center; padding: 12px 0;', first);
   if (first < 0 || allLink < 0) return html;
-  const tpl = html.slice(first, html.indexOf("</a>", first) + 4).replace(/; ">/, '; border-top: 1px solid #E3EAF4">');
   const rows = instruments
     .map((i) => {
       const q = quotes.get(i.symbol);
@@ -529,25 +578,29 @@ export function bindMarketApp(html: string, instruments: Instrument[], quotes: M
       const chg = q?.change_percent ?? 0;
       const up = chg >= 0;
       const label = badgeLabel(i);
-      let r = tpl
-        .replace('href="/market/BBCA"', `href="/market/${encodeURIComponent(i.symbol)}" data-mk-row data-mk-cls="${cls}" data-mk-chg="${q ? chg : ""}" data-mk-vol="${q?.volume ?? 0}"`)
-        .replace('style="display: flex; align-items: center; gap: 12px; min-height: 64px', `style="display: ${cls === 0 ? "flex" : "none"}; align-items: center; gap: 12px; min-height: 64px`)
-        .replace(/(font-size: 9px; font-weight: 700">)[^<]*(<\/span>)/, `$1${esc(label)}$2`)
-        .replace(/(<strong style="font-size: 15px; font-weight: 500">)[^<]*(<\/strong>)/, `$1${esc(label)}$2`)
-        .replace(/(text-overflow: ellipsis">)[^<]*(<\/span>)/, `$1${esc(i.name)}$2`)
-        .replace(/(font-size: 14px; font-weight: 500; color: #0B0B0F">)[^<]*(<\/span>)/, `$1${q ? esc(i.asset_class === "equity" && i.currency === "IDR" ? new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(q.price) : fmtPrice("1.234,56", q.price)) : "—"}$2`)
-        .replace(/(white-space: nowrap">)▲ \+2,15%(<\/span>)/, `$1${q ? esc(fmtPct("▲ +2,15%", chg)) : "—"}$2`);
-      if (!up) {
-        r = r.replace("color: #166534; background: #DCF5E4", "color: #991B1B; background: #FDE2E2").replace('stroke="#16A34A"', 'stroke="#DC2626"');
-        r = r.replace(/points="([^"]+)"/, (_m, pts: string) => `points="${pts.split(" ").map((p) => { const [x, y] = p.split(","); return `${x},${(28 - Number(y)).toFixed(1)}`; }).join(" ")}"`);
-      }
-      return r;
+      const color = !q ? "#5F6B7D" : up ? UP_C : DOWN_C;
+      const sub = q ? `${up ? "▲" : "▼"} ${fmtPct("+0,00%", chg).replace(/^[+−-]/, "")} ${fmtAbs("+0", q.change ?? 0, "1.234,56", q.price)}` : "Belum ada harga";
+      const priceBox = q
+        ? `<span style="flex: none; width: 104px; box-sizing: border-box; padding: 9px 8px; border-radius: 10px; background: ${up ? "#E7F6EC" : "#FDECEC"}; color: ${up ? UP_C : DOWN_C}; font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(priceText(i, q))}</span>`
+        : `<span style="flex: none; width: 104px; box-sizing: border-box; padding: 9px 8px; border-radius: 10px; background: #F2F4F7; color: #8A94A6; font-size: 14px; text-align: center">—</span>`;
+      const volBox = `<span style="flex: none; width: 64px; box-sizing: border-box; padding: 9px 4px; border-radius: 10px; background: #F2F4F7; color: #374151; font-family: 'Roboto Mono', monospace; font-size: 12px; text-align: center; white-space: nowrap">${q?.volume ? esc(volShort(q.volume)) : "—"}</span>`;
+      return `<a href="/market/${encodeURIComponent(i.symbol)}" data-mk-row data-mk-cls="${cls}" data-mk-chg="${q ? chg : ""}" data-mk-vol="${q?.volume ?? 0}" style="display: ${cls === 0 ? "flex" : "none"}; align-items: center; gap: 8px; min-height: 60px; padding: 8px 0; color: #0B0B0F"><span style="flex: none; width: 32px; height: 32px; border-radius: 999px; background: #E5ECFF; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700">${esc(label)}</span><span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px"><strong style="font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(displayName(i))}</strong><span style="font-size: 12px; font-weight: 500; color: ${color}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(sub)}</span></span>${priceBox}${volBox}</a>`;
     })
     .join("");
-  const list = `<div data-mk-list style="display: flex; flex-direction: column">${rows || '<p style="margin: 16px 0; font-size: 14px; color: #5F6B7D">Data pasar belum tersedia.</p>'}</div>`;
+  const head = `<div aria-hidden="true" style="display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 0 0 6px; font-size: 12px; color: #8A94A6"><span style="flex: 1">Simbol</span><span style="flex: none; width: 104px; text-align: center">Harga</span><span style="flex: none; width: 64px; text-align: center">Volume</span></div>`;
+  const list = `${head}<div data-mk-list style="display: flex; flex-direction: column">${rows || '<p style="margin: 16px 0; font-size: 14px; color: #5F6B7D">Data pasar belum tersedia.</p>'}</div>`;
   const link = html.slice(allLink, html.indexOf("</a>", allLink) + 4).replace('href="/cari"', 'href="/screener?urut=saham" data-mk-all');
   const end = html.indexOf("</a>", allLink) + 4;
-  return html.slice(0, first) + list + link + html.slice(end);
+  let h = html.slice(0, first) + list + link + html.slice(end);
+  // Kartu ringkas di awal area gulir (di atas pilihan Top gainer/loser).
+  if (extra.cards) h = h.replace(/(<div class="ob-scroll" style="position: absolute; top: 168px;[^"]*">)/, `$1${extra.cards}`);
+  // Ringkasan kalender ekonomi hari ini dari data nyata.
+  if (extra.today !== undefined) {
+    const t = extra.today;
+    const txt = !t || !t.total ? "Lihat jadwal rilis data ekonomi" : `${t.total} rilis hari ini${t.high ? ` · ${t.high} berdampak tinggi` : ""}`;
+    h = h.replace(">5 rilis hari ini · 2 berdampak tinggi<", `>${esc(txt)}<`);
+  }
+  return h;
 }
 
 /**

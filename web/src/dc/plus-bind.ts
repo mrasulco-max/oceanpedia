@@ -56,6 +56,7 @@ export interface BillInfo {
   va_number?: string;
   bill_key?: string;
   biller_code?: string;
+  provider?: string;
 }
 export interface SubInfo {
   plan_code: string;
@@ -84,6 +85,16 @@ export const METHOD_NAME: Record<string, string> = {
   card: "Kartu kredit / debit",
   credit_card: "Kartu kredit / debit",
   other_qris: "QRIS",
+  ovo: "OVO",
+  dana: "DANA",
+  emoney_ovo: "OVO",
+  emoney_dana: "DANA",
+  emoney_shopee_pay: "ShopeePay",
+  virtual_account_bca: "BCA Virtual Account",
+  virtual_account_bank_mandiri: "Mandiri Virtual Account",
+  virtual_account_bri: "BRI Virtual Account",
+  virtual_account_bni: "BNI Virtual Account",
+  virtual_account_bank_permata: "Permata Virtual Account",
   all: "Pilih di halaman pembayaran",
 };
 const periodLabel = (p: string) => (p === "year" ? "tahunan" : "bulanan");
@@ -120,7 +131,20 @@ export interface CheckoutCfg {
   tax: number;
   promo: { code: string; first: number } | null;
   loggedIn: boolean;
+  /** DOKU Checkout aktif di API → pilihan penyedia + OVO/DANA lewat DOKU. */
+  doku?: boolean;
 }
+
+const PROV_BTN = "flex: 1; min-height: 44px; border-radius: 12px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; transition: border-color .2s, background-color .2s";
+function providerPicker(): string {
+  const btn = (id: string, name: string, sub: string, on: boolean) =>
+    `<button type="button" role="radio" aria-checked="${on}" data-pay-provider="${id}" style="${PROV_BTN}; border: 1.5px solid ${on ? "#2F74EB" : "#E3EAF4"}; background: ${on ? "#EEF5FF" : "#FFFFFF"}; color: #0B0B0F">${name}<span style="font-size: 11px; font-weight: 400; color: #5F6B7D">${sub}</span></button>`;
+  return (
+    `<div data-pay-providers style="margin: 4px 0 12px"><span style="display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: #5F6B7D; margin-bottom: 6px">DIPROSES OLEH</span>` +
+    `<div role="radiogroup" aria-label="Penyedia pembayaran" style="display: flex; gap: 8px">${btn("midtrans", "Midtrans", "QRIS · GoPay · VA", true)}${btn("doku", "DOKU", "VA · OVO · DANA", false)}</div></div>`
+  );
+}
+
 export function bindCheckout(html: string, cfg: CheckoutCfg, me: { email: string; phone: string | null; features: string[] }): string {
   let h = html;
   const m = cfg.monthly;
@@ -134,8 +158,9 @@ export function bindCheckout(html: string, cfg: CheckoutCfg, me: { email: string
   } else {
     h = h.replace(/<button role="tab" aria-selected="\{\{ p\.i1\.pr \}\}"[\s\S]*?<\/button>/, "");
   }
-  // OVO & DANA tidak tersedia di Midtrans Snap → disembunyikan.
-  for (const i of [5, 6]) h = h.replace(rx(`<button[^>]*onClick="\\{\\{ m\\.i${i}\\.pick \\}\\}"(?:(?!</button>)[\\s\\S])*</button>`), "");
+  // OVO & DANA tidak tersedia di Midtrans Snap → hanya tampil bila DOKU aktif.
+  if (cfg.doku) h = h.replace('<button role="radio" aria-checked="{{ m.i0.pr }}"', (b) => providerPicker() + b);
+  else for (const i of [5, 6]) h = h.replace(rx(`<button[^>]*onClick="\\{\\{ m\\.i${i}\\.pick \\}\\}"(?:(?!</button>)[\\s\\S])*</button>`), "");
   if (!cfg.promo) h = h.replace(/<div[^>]*>(?:(?!<div)[\s\S])*?<strong style="font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500">PLUSBARU<\/strong>(?:(?!<\/button>)[\s\S])*?<\/button><\/div>/, "");
   // Angka dihitung ulang enhancer dari harga paket nyata (logika desain memakai harga contoh).
   for (const k of ["planLbl", "base", "disc", "subtotal", "tax", "total", "renewTxt", "promoTxt", "methodName"]) h = h.split(`{{ ${k} }}`).join(`<span data-ck="${k}">{{ ${k} }}</span>`);
@@ -164,7 +189,7 @@ export function bindWaiting(html: string, b: BillInfo): string {
   h = swapOnce(h, "Essential bulanan · promo PLUSBARU · termasuk PPN", `${b.plan_name} ${periodLabel(b.billing_period)}${b.promo_code ? ` · promo ${b.promo_code}` : ""} · termasuk PPN`);
   // Cara bayar khusus BCA hanya relevan untuk VA BCA.
   if (!(raw.va_bank === "bca" || b.method === "va_bca")) {
-    h = h.replace(/(<h2[^>]*>Cara bayar<\/h2>)[\s\S]*?(<p[^>]*>Setelah pembayaran diterima)/, (_m, head: string, tail: string) => `${head}<p style="margin: 8px 0 16px; font-size: 14px; line-height: 1.5; color: #5F6B7D">Ikuti instruksi di halaman pembayaran Midtrans untuk ${esc(method)}. Status di sini diperbarui otomatis setelah pembayaran diterima.</p>${tail}`);
+    h = h.replace(/(<h2[^>]*>Cara bayar<\/h2>)[\s\S]*?(<p[^>]*>Setelah pembayaran diterima)/, (_m, head: string, tail: string) => `${head}<p style="margin: 8px 0 16px; font-size: 14px; line-height: 1.5; color: #5F6B7D">Ikuti instruksi di halaman pembayaran ${b.provider === "doku" ? "DOKU" : "Midtrans"} untuk ${esc(method)}. Status di sini diperbarui otomatis setelah pembayaran diterima.</p>${tail}`);
   }
   h = h.replace('onClick="{{ copyVa }}"', `onClick="{{ copyVa }}" data-copy="${esc(va.replace(/\s/g, ""))}"`).replace('onClick="{{ copyAmt }}"', `onClick="{{ copyAmt }}" data-copy="${b.total}"`);
   h = h.replace(/<a href="\/plus\/berhasil"([^>]*)>([\s\S]*?)Cek status pembayaran<\/a>/, `<a href="#" data-plus="check" data-inv="${b.id}"$1>$2Cek status pembayaran</a>`);

@@ -19,12 +19,14 @@ import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArtic
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, bindHomeShorts, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
-import { bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
+import { bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, marketCards, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import { bindCoinLogos } from "./kit";
+import { bindAppNav } from "./app-nav";
+import { adPopup, inlineSlots, shortFeedAd } from "./ad-bind";
 import { bindContentExtras, bindDetailCards, bindLiveExtras, deAlur, requestsPanel } from "./admin-wire-bind";
 import { bindAds as bindAdsPage, bindAuthorExtras, bindCacheClear, bindCategoryExtras, bindHelp, bindMarketWebExtras, bindPrivacy, bindRetry, bindStudent } from "./wire-bind";
-import type { Candle, Quote } from "@/lib/types";
+import type { Candle, Instrument, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
 import { currentOrigin } from "@/lib/origin";
@@ -234,6 +236,17 @@ function bindSymbolLinks(html: string): string {
 /** Hanya tautan internal yang boleh dipakai sebagai tujuan setelah masuk (cegah open redirect). */
 export function safeNext(v: string | undefined): string {
   return v && v.startsWith("/") && !v.startsWith("//") && !v.startsWith("/\\") ? v : "/";
+}
+
+/** Kartu "Hot" Market app: instrumen andalan dulu, lalu pergerakan terbesar; maks. 8. */
+const HOT_FIRST = ["XAUUSD", "BTCUSD", "ETHUSD", "EURUSD", "NVDA", "AAPL", "SOLUSD", "USDJPY"];
+function pickHot(ins: Instrument[], quotes: Map<string, Quote>): Instrument[] {
+  const withQ = ins.filter((i) => quotes.has(i.symbol));
+  const rank = (i: (typeof withQ)[number]) => {
+    const k = HOT_FIRST.indexOf(i.symbol);
+    return k >= 0 ? k - 100 : -Math.abs(quotes.get(i.symbol)?.change_percent ?? 0);
+  };
+  return withQ.sort((a, b) => rank(a) - rank(b)).slice(0, 8);
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -455,6 +468,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       tax: plans.tax_rate,
       promo: monthly.code === "essential" ? { code: "PLUSBARU", first: 9900 } : null,
       loggedIn: !!user,
+      doku: !!plans.providers?.doku,
     };
     html = bindCheckout(html, cfg, { email: pr?.profile.email ?? user?.email ?? "", phone: pr?.profile.phone ?? null, features: monthly.features });
     ctx.plus = JSON.stringify(cfg);
@@ -586,12 +600,14 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const week = Array.from({ length: 7 }, (_, i) => wib(new Date(selDate.getTime() + (i - dow) * 86400000)));
     const [ev, rem] = await Promise.all([safe(api.eventsWeek(week[0]!), { data: [] }), user ? meGetJSON<{ data: string[] }>("/v1/me/reminders") : Promise.resolve(null)]);
     const d = { week, selected: sel, events: ev.data, reminders: new Set(rem?.data ?? []), loggedIn: !!user, country: ["ID", "US", "CN", "high"].includes(search.negara ?? "") ? search.negara! : "" };
+    const nav = { prevWeek: wib(new Date(selDate.getTime() - 7 * 86400000)), nextWeek: wib(new Date(selDate.getTime() + 7 * 86400000)) };
     if (board.kind === "app") {
-      html = bindCalendarApp(html, d);
+      html = bindCalendarApp(html, { ...d, ...nav });
       const idx = week.indexOf(sel);
-      ctx.state = JSON.stringify({ u: { u1: week.map((_, i) => i === idx) } });
+      const ci = Math.max(0, ["", "ID", "US", "CN"].indexOf(d.country === "high" ? "" : d.country));
+      ctx.state = JSON.stringify({ u: { u1: week.map((_, i) => i === idx), u2: [0, 1, 2, 3].map((i) => i === ci), u3: [d.country === "high"] } });
     } else {
-      html = bindCalendarWeb(html, { ...d, prevWeek: wib(new Date(selDate.getTime() - 7 * 86400000)), nextWeek: wib(new Date(selDate.getTime() + 7 * 86400000)) });
+      html = bindCalendarWeb(html, { ...d, ...nav });
     }
     enhance.push("reader");
     title = "Kalender Ekonomi";
@@ -600,7 +616,18 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   }
   if (path === "/market" && board.kind === "app") {
     const ins = await safe(api.instruments(), { data: [] });
-    html = bindMarketApp(html, ins.data, quotes);
+    const hot = pickHot(ins.data, quotes);
+    const wibDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
+    const [sparks, ev] = await Promise.all([
+      Promise.all(hot.map(async (i) => [i.symbol, (await safe(api.candles(i.symbol, "1day", 20), { symbol: i.symbol, interval: "1day", data: [] })).data.map((c) => c.c)] as [string, number[]])),
+      safe(api.events(), { data: [] }),
+    ]);
+    const todayKey = wibDay(new Date());
+    const todays = ev.data.filter((e) => wibDay(new Date(e.scheduled_at)) === todayKey);
+    html = bindMarketApp(html, ins.data, quotes, {
+      cards: marketCards(hot, quotes, new Map(sparks)),
+      today: { total: todays.length, high: todays.filter((e) => e.impact === "high").length },
+    });
     enhance.push("mkt");
   }
   // Harga dulu (contoh IDX diganti instrumen aktif), lalu tautan baris mengikuti label barunya.
@@ -614,11 +641,22 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     // Pelanggan Plus: tanpa iklan + tombol cepat Asisten AI.
     html = removeAdSlots(html);
     if (AI_FAB_PATHS.has(path)) html += aiFab(board.kind === "app");
-  } else if (board.kind !== "admin" && html.includes('role="complementary" aria-label="Iklan ')) {
-    const pageKey = path === "/" ? "home" : path.startsWith("/berita/") ? "article" : path.startsWith("/kategori/") ? "category" : path === "/legal" ? "legal" : "other";
-    const slots = await safe(api.ads(board.kind === "app" ? "app" : "web", pageKey), { data: [] });
-    html = bindAdSlots(html, slots.data);
-    if (html.includes("data-ad-imp") && !enhance.includes("reader")) enhance.push("reader");
+  } else if (board.kind !== "admin") {
+    const surface = board.kind === "app" ? "app" : "web";
+    const pageKey = path === "/" ? "home" : path.startsWith("/berita/") ? "article" : path.startsWith("/kategori/") ? "category" : path === "/legal" ? "legal" : path === "/short" ? "short" : "other";
+    // Halaman akun, pembayaran & masuk tidak menampilkan popup iklan.
+    const noPopup = /^\/(masuk|daftar|verifikasi|plus|akun|pengaturan|short|legal)/.test(path);
+    const slots = (await safe(api.ads(surface, pageKey), { data: [] })).data;
+    if (html.includes('role="complementary" aria-label="Iklan ')) {
+      html = bindAdSlots(html, inlineSlots(slots));
+      if (html.includes("data-ad-imp") && !enhance.includes("reader")) enhance.push("reader");
+    }
+    const pop = noPopup ? "" : adPopup(slots, board.kind === "app");
+    if (pop) {
+      html += pop;
+      enhance.push("adpopup");
+    }
+    if (path === "/short" && board.kind === "app") html += shortFeedAd(slots);
   }
 
   // Admin: sub-menu Konten mendapat tab "Ocean Short".
@@ -910,7 +948,10 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   }
 
   if (user && board.kind !== "admin") html = bindAccount(html, user);
-  if (board.kind === "app") html = hideFakeStatusBar(html);
+  if (board.kind === "app") {
+    html = hideFakeStatusBar(html);
+    html = bindAppNav(html, path, !!user?.permissions?.includes("content.write"));
+  }
   html = bindLogout(html, board.kind !== "admin");
   if (html.includes("data-logout")) enhance.push("logout");
 

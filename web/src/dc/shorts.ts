@@ -147,7 +147,62 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
   const metaNow = () => host.querySelector<HTMLElement>("[data-sh-meta]");
   const stage = () => host.querySelector<HTMLElement>(":scope > :not([data-sh-meta])");
   let navigating = false;
+  // Iklan sponsor ala TikTok: satu slide layar penuh setiap AD_EVERY geseran ke video berikutnya.
+  const AD_EVERY = 5;
+  const AD_N = "ob-sh-adn";
+  const adSlide = () => host.querySelector<HTMLElement>("[data-sh-ad]");
+  const adSeen = new Set<string>();
+  const swipes = (inc = 0) => {
+    try {
+      const n = Number(sessionStorage.getItem(AD_N) ?? 0) + inc;
+      if (inc) sessionStorage.setItem(AD_N, String(n));
+      return n;
+    } catch {
+      return 0;
+    }
+  };
+  const dragged = () => {
+    const ad = adSlide();
+    return ad && !ad.hidden ? ad : stage();
+  };
+  const showAd = (ad: HTMLElement) => {
+    vid()?.pause();
+    const st = stage();
+    if (st) {
+      st.style.transition = "transform .25s cubic-bezier(.2,.8,.2,1)";
+      st.style.transform = "translateY(0)";
+    }
+    ad.hidden = false;
+    ad.style.transition = "none";
+    ad.style.transform = "translateY(100%)";
+    void ad.offsetHeight;
+    ad.style.transition = "transform .3s cubic-bezier(.2,.8,.2,1)";
+    ad.style.transform = "translateY(0)";
+    ad.querySelectorAll("video").forEach((v) => void v.play().catch(() => undefined));
+    const id = ad.dataset.shAd ?? "";
+    if (id && !adSeen.has(id)) {
+      adSeen.add(id);
+      void api("POST", `/api/v1/ads/${encodeURIComponent(id)}/impression`, {});
+    }
+  };
+  const hideAd = (ad: HTMLElement, dir: "next" | "prev") => {
+    ad.style.transform = `translateY(${dir === "next" ? "-100%" : "100%"})`;
+    ad.querySelectorAll("video").forEach((v) => v.pause());
+    window.setTimeout(() => (ad.hidden = true), 300);
+  };
   const go = (dir: "next" | "prev") => {
+    const ad = adSlide();
+    if (ad && !ad.hidden) {
+      hideAd(ad, dir);
+      if (dir === "prev") {
+        void vid()?.play().catch(() => undefined);
+        return;
+      }
+    } else if (ad && dir === "next" && metaNow()?.dataset.next && swipes() >= AD_EVERY) {
+      swipes(-swipes());
+      showAd(ad);
+      return;
+    }
     const m = metaNow();
     const target = dir === "next" ? m?.dataset.next : m?.dataset.prev;
     const st = stage();
@@ -162,6 +217,7 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
     }
     if (navigating) return;
     navigating = true;
+    if (dir === "next") swipes(1);
     vid()?.pause();
     try {
       sessionStorage.setItem(SH_DIR, dir);
@@ -264,7 +320,7 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
     const m = metaNow();
     // Tanpa video di arah itu: tarikan diredam (efek karet).
     dy = (ddy < 0 && !m?.dataset.next) || (ddy > 0 && !m?.dataset.prev) ? ddy * 0.25 : ddy;
-    const st = stage();
+    const st = dragged();
     if (st) {
       st.style.transition = "none";
       st.style.transform = `translateY(${dy}px)`;
@@ -278,7 +334,7 @@ export function shorts(host: HTMLElement, { router }: Env): Cleanup {
     const far = Math.abs(dy) > window.innerHeight * 0.18 || (v > 0.5 && Math.abs(dy) > 40);
     if (far) go(dy < 0 ? "next" : "prev");
     else {
-      const st = stage();
+      const st = dragged();
       if (st) {
         st.style.transition = "transform .25s cubic-bezier(.2,.8,.2,1)";
         st.style.transform = "translateY(0)";

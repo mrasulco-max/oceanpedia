@@ -581,9 +581,31 @@ export function reader(host: HTMLElement, { router, ctx }: Env): Cleanup {
   // Ganti aset di halaman alert.
   const onChange = (e: Event) => {
     if (e.target instanceof HTMLSelectElement && e.target.matches('[data-al="symbol"]')) router.push(`/alert?symbol=${encodeURIComponent(e.target.value)}`);
+    // Kalender: pilih tanggal → muat minggu tanggal itu (filter negara dipertahankan).
+    if (e.target instanceof HTMLInputElement && e.target.matches("[data-cal-date]") && /^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) {
+      const negara = new URLSearchParams(location.search).get("negara");
+      router.push(`/kalender?d=${e.target.value}${negara ? `&negara=${encodeURIComponent(negara)}` : ""}`);
+    }
   };
   host.addEventListener("change", onChange);
   offs.push(() => host.removeEventListener("change", onChange));
+
+  // Kalender: hitung mundur rilis berikutnya.
+  const next = host.querySelector<HTMLElement>("[data-cal-next]");
+  const cd = next?.querySelector<HTMLElement>("[data-cal-cd]");
+  if (next && cd) {
+    const at = Date.parse(next.dataset.calNext ?? "");
+    const tick = () => {
+      const s = Math.max(0, Math.floor((at - Date.now()) / 1000));
+      const p = (n: number) => String(n).padStart(2, "0");
+      const d = Math.floor(s / 86400);
+      cd.textContent = s ? `${d ? `${d}h ` : ""}${p(Math.floor((s % 86400) / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}` : "Rilis";
+      cd.setAttribute("aria-label", s ? `Rilis dalam ${d} hari ${Math.floor((s % 86400) / 3600)} jam ${Math.floor((s % 3600) / 60)} menit` : "Sudah rilis");
+    };
+    tick();
+    const t = window.setInterval(tick, 1000);
+    offs.push(() => window.clearInterval(t));
+  }
 
   // Tekan lama baris watchlist (aplikasi) → mode ubah: tombol × muncul.
   let lp = 0;
