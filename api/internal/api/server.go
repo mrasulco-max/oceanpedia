@@ -30,6 +30,8 @@ type Server struct {
 	Mail Mailer
 	// Pay (opsional): Midtrans Snap; nil/tanpa kunci = mode manual (pengembangan).
 	Pay *pay.Midtrans
+	// Doku (opsional): DOKU Checkout sebagai penyedia kedua; nil/tanpa kunci = tidak ditawarkan.
+	Doku *pay.Doku
 	// Calendar (opsional): sync kalender ekonomi TradingView Data API.
 	Calendar *calendar.Syncer
 }
@@ -177,6 +179,7 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /v1/billing/subscription", s.subscription)
 	auth("POST /v1/billing/subscription/cancel", s.cancelSubscription)
 	h("POST /v1/billing/midtrans/notify", s.midtransNotify)
+	h("POST /v1/billing/doku/notify", s.dokuNotify)
 
 	// panel redaksi (penulis, editor, admin)
 	staff("GET /v1/admin/articles", s.adminArticles)

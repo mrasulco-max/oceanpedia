@@ -931,6 +931,7 @@ func (s *Server) adminSettings(w http.ResponseWriter, r *http.Request) error {
 		"tax_rate": c.TaxRate,
 		"integrations": []map[string]any{
 			{"key": "midtrans", "name": "Midtrans (pembayaran)", "ok": s.Pay.Enabled(), "detail": map[bool]string{true: "Produksi", false: "Sandbox"}[c.MidtransProduction], "notify_url": c.APIPublicURL + "/v1/billing/midtrans/notify"},
+			{"key": "doku", "name": "DOKU Checkout (pembayaran)", "ok": s.Doku.Enabled(), "detail": map[bool]string{true: "Produksi", false: "Sandbox"}[c.DokuProduction], "notify_url": c.APIPublicURL + "/v1/billing/doku/notify"},
 			{"key": "twelvedata", "name": "Twelve Data (harga pasar)", "ok": set(c.TwelveDataKey), "detail": fmt.Sprintf("Cache harga %s · lewati %s", c.QuoteTTL, strings.Join(c.MarketSkip, ", "))},
 			{"key": "xoomar", "name": "XOOMAR (kalender ekonomi AS)", "ok": xoomarOn && s.Calendar != nil, "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},
 			{"key": "tradingview", "name": "TradingView (cadangan kalender)", "ok": s.Calendar != nil && !xoomarOn, "detail": calendarDetail(s.Calendar, c.TradingViewCalendarTTL, c.TradingViewCalendarMarkets)},

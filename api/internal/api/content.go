@@ -225,9 +225,22 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) error {
 	if s.Calendar != nil {
 		s.Calendar.EnsureSynced(r.Context(), from, to)
 	}
+	country := strings.ToUpper(strings.TrimSpace(q.Get("country")))
+	if country != "" && len(country) != 2 {
+		return httpx.BadRequest("country harus kode negara 2 huruf, mis. ID, US, CN")
+	}
 	l, err := s.Store.Events(r.Context(), from, to, impact)
 	if err != nil {
 		return err
+	}
+	if country != "" {
+		kept := l[:0]
+		for _, e := range l {
+			if e.Country == country {
+				kept = append(kept, e)
+			}
+		}
+		l = kept
 	}
 	cacheFor(w, 60*time.Second)
 	httpx.JSON(w, 200, Page[store.EconomicEvent]{Data: l})
@@ -240,7 +253,8 @@ func (s *Server) plans(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	cacheFor(w, 10*time.Minute)
-	httpx.JSON(w, 200, map[string]any{"data": l, "tax_rate": s.Cfg.TaxRate, "prices_exclude_tax": true})
+	httpx.JSON(w, 200, map[string]any{"data": l, "tax_rate": s.Cfg.TaxRate, "prices_exclude_tax": true,
+		"providers": map[string]bool{"midtrans": s.Pay.Enabled(), "doku": s.Doku.Enabled()}})
 	return nil
 }
 

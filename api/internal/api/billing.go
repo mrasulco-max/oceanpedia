@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -66,6 +68,22 @@ var snapMethods = map[string][]string{
 	"card":       {"credit_card"},
 }
 
+// Metode bayar → payment_method_types DOKU Checkout (kosong = semua kanal aktif di akun DOKU).
+var dokuMethods = map[string][]string{
+	"":           nil,
+	"all":        nil,
+	"qris":       {"QRIS"},
+	"shopeepay":  {"EMONEY_SHOPEE_PAY"},
+	"va_bca":     {"VIRTUAL_ACCOUNT_BCA"},
+	"va_bni":     {"VIRTUAL_ACCOUNT_BNI"},
+	"va_bri":     {"VIRTUAL_ACCOUNT_BRI"},
+	"va_mandiri": {"VIRTUAL_ACCOUNT_BANK_MANDIRI"},
+	"va_permata": {"VIRTUAL_ACCOUNT_BANK_PERMATA"},
+	"card":       {"CREDIT_CARD"},
+	"ovo":        {"EMONEY_OVO"},
+	"dana":       {"EMONEY_DANA"},
+}
+
 const payWindow = 24 * time.Hour
 
 // orderID: nomor invoice tanpa "/" (Midtrans hanya menerima huruf, angka, "-", "_", ".", "~").
@@ -78,13 +96,28 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) error {
 		Seats     int    `json:"seats"`
 		PromoCode string `json:"promo_code"`
 		Method    string `json:"method"`
+		Provider  string `json:"provider"` // midtrans (bawaan) | doku
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
 	}
+	useDoku := in.Provider == "doku"
+	if in.Provider != "" && in.Provider != "midtrans" && !useDoku {
+		return httpx.Validation(map[string]string{"provider": "Penyedia pembayaran tidak dikenal."})
+	}
+	if useDoku && !s.Doku.Enabled() {
+		return httpx.Validation(map[string]string{"provider": "Pembayaran lewat DOKU belum tersedia."})
+	}
 	methods, ok := snapMethods[in.Method]
+	if useDoku {
+		methods, ok = dokuMethods[in.Method]
+	}
 	if !ok {
-		return httpx.Validation(map[string]string{"method": "Metode pembayaran tidak dikenal."})
+		msg := "Metode pembayaran tidak dikenal."
+		if useDoku && in.Method == "gopay" {
+			msg = "GoPay tersedia lewat Midtrans."
+		}
+		return httpx.Validation(map[string]string{"method": msg})
 	}
 	p, err := s.Store.PlanByCode(r.Context(), in.PlanCode)
 	if err != nil {
@@ -122,7 +155,10 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) error {
 	}
 	oid := orderID(out.Number)
 	provider := "midtrans"
-	if !s.Pay.Enabled() {
+	switch {
+	case useDoku:
+		provider = "doku"
+	case !s.Pay.Enabled():
 		provider = "manual" // lingkungan pengembangan/CI tanpa kunci Midtrans
 	}
 	method := in.Method
@@ -134,15 +170,35 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	resp := map[string]any{"invoice": out, "order_id": oid, "provider": provider, "status": "pending"}
-	if s.Pay.Enabled() {
-		phone := ""
-		if u.Phone != nil {
-			phone = *u.Phone
+	phone := ""
+	if u.Phone != nil {
+		phone = *u.Phone
+	}
+	name := "Ocean Pedia Plus " + p.Name
+	if len(name) > 50 {
+		name = name[:50]
+	}
+	finish := s.Cfg.SiteURL + "/plus/menunggu-pembayaran?inv=" + out.ID
+	if useDoku {
+		res, err := s.Doku.CreatePayment(r.Context(), pay.DokuRequest{
+			InvoiceNumber: oid,
+			Amount:        out.Total,
+			Items:         []pay.Item{{ID: p.Code, Price: out.Total, Quantity: 1, Name: name}},
+			Name:          u.FullName,
+			Email:         u.Email,
+			Phone:         phone,
+			Methods:       methods,
+			CallbackURL:   finish,
+			DueMinutes:    int(payWindow / time.Minute),
+		})
+		if err != nil {
+			s.Log.Error("doku checkout gagal", "order", oid, "err", err)
+			_, _ = s.Store.ApplyPayment(context.WithoutCancel(r.Context()), provider, oid, "failed", "", map[string]any{"error": err.Error()})
+			return &httpx.Problem{Type: "about:blank", Status: http.StatusBadGateway, Title: "Pembayaran belum dapat dibuat", Detail: "Gerbang pembayaran DOKU sedang bermasalah. Coba beberapa saat lagi."}
 		}
-		name := "Ocean Pedia Plus " + p.Name
-		if len(name) > 50 {
-			name = name[:50]
-		}
+		_ = s.Store.SetPaymentRaw(r.Context(), payID, map[string]any{"doku_token": res.TokenID, "redirect_url": res.URL})
+		resp["pay_url"] = res.URL
+	} else if s.Pay.Enabled() {
 		snap, err := s.Pay.CreateSnap(r.Context(), pay.SnapRequest{
 			OrderID:   oid,
 			Gross:     out.Total,
@@ -151,7 +207,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) error {
 			Email:     u.Email,
 			Phone:     phone,
 			Methods:   methods,
-			FinishURL: s.Cfg.SiteURL + "/plus/menunggu-pembayaran?inv=" + out.ID,
+			FinishURL: finish,
 			ExpiryMin: int(payWindow / time.Minute),
 		})
 		if err != nil {
@@ -196,6 +252,60 @@ func (s *Server) midtransNotify(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	httpx.JSON(w, 200, map[string]any{"ok": true})
+	return nil
+}
+
+// POST /v1/billing/doku/notify — notifikasi pembayaran DOKU (publik, diverifikasi HMAC header Signature).
+func (s *Server) dokuNotify(w http.ResponseWriter, r *http.Request) error {
+	if !s.Doku.Enabled() {
+		return &httpx.Problem{Type: "about:blank", Status: http.StatusServiceUnavailable, Title: "Pembayaran belum dikonfigurasi"}
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	// Request-Target = path Notification URL yang didaftarkan di DOKU (bisa berbeda dari path lokal di balik proxy).
+	if !s.Doku.VerifyNotification(r.Header, r.URL.Path, body) && !s.Doku.VerifyNotification(r.Header, "/v1/billing/doku/notify", body) {
+		s.Log.Warn("notifikasi doku ditolak: tanda tangan tidak sah", "request_id", r.Header.Get("Request-Id"))
+		return &httpx.Problem{Type: "about:blank", Status: http.StatusUnauthorized, Title: "Tanda tangan tidak sah"}
+	}
+	var n pay.DokuNotice
+	if err := json.Unmarshal(body, &n); err != nil || n.Order.InvoiceNumber == "" {
+		return httpx.Validation(map[string]string{"order": "Notifikasi tidak lengkap."})
+	}
+	b, err := s.Store.BillByOrder(r.Context(), n.Order.InvoiceNumber)
+	if err != nil {
+		if errors.Is(err, httpx.ErrNotFound) {
+			httpx.JSON(w, 200, map[string]any{"ok": true, "ignored": true})
+			return nil
+		}
+		return err
+	}
+	if int64(math.Round(n.Order.Amount)) != b.Total {
+		s.Log.Error("notifikasi doku: nominal tidak cocok", "order", n.Order.InvoiceNumber, "amount", n.Order.Amount, "total", b.Total)
+		return &httpx.Problem{Type: "about:blank", Status: http.StatusConflict, Title: "Nominal tidak cocok"}
+	}
+	if err := s.applyDoku(r.Context(), b, n); err != nil {
+		return err
+	}
+	httpx.JSON(w, 200, map[string]any{"ok": true})
+	return nil
+}
+
+func (s *Server) applyDoku(ctx context.Context, b store.Bill, n pay.DokuNotice) error {
+	outcome := n.Outcome()
+	raw := map[string]any{"transaction_status": n.Transaction.Status, "payment_type": n.Method(), "transaction_time": n.Transaction.Date}
+	if n.VirtualAccount.Number != "" {
+		raw["va_bank"], raw["va_number"] = strings.TrimPrefix(n.Method(), "virtual_account_"), n.VirtualAccount.Number
+	}
+	paid, err := s.Store.ApplyPayment(ctx, "doku", n.Order.InvoiceNumber, outcome, n.Method(), raw)
+	if err != nil {
+		return err
+	}
+	s.Log.Info("status pembayaran doku", "order", n.Order.InvoiceNumber, "status", n.Transaction.Status, "hasil", outcome)
+	if paid {
+		s.afterPaid(context.WithoutCancel(ctx), b.ID)
+	}
 	return nil
 }
 
@@ -323,7 +433,24 @@ func (s *Server) refreshInvoice(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if b.Status == "open" && b.OrderID != "" && s.Pay.Enabled() {
+	if b.Status == "open" && b.OrderID != "" && b.Provider == "doku" && s.Doku.Enabled() {
+		n, err := s.Doku.Status(r.Context(), b.OrderID)
+		switch {
+		case errors.Is(err, pay.ErrNotFound):
+		case err != nil:
+			s.Log.Warn("cek status doku gagal", "order", b.OrderID, "err", err)
+		default:
+			if n.Order.InvoiceNumber == "" {
+				n.Order.InvoiceNumber = b.OrderID
+			}
+			if err := s.applyDoku(r.Context(), b, n); err != nil {
+				return err
+			}
+			if b, err = s.Store.Bill(r.Context(), id, uid(r)); err != nil {
+				return err
+			}
+		}
+	} else if b.Status == "open" && b.OrderID != "" && b.Provider != "doku" && s.Pay.Enabled() {
 		st, err := s.Pay.GetStatus(r.Context(), b.OrderID)
 		switch {
 		case errors.Is(err, pay.ErrNotFound):

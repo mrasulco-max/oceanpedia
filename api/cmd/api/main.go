@@ -89,6 +89,7 @@ func run(log *slog.Logger) error {
 		log.Warn("kalender ekonomi nonaktif: memakai data seed lokal", "xoomar", cfg.XoomarCalendar, "tv_source", cfg.TradingViewCalendarSource)
 	}
 	srv.Pay = &pay.Midtrans{ServerKey: cfg.MidtransServerKey, Production: cfg.MidtransProduction, NotifyURL: cfg.APIPublicURL + "/v1/billing/midtrans/notify"}
+	srv.Doku = &pay.Doku{ClientID: cfg.DokuClientID, SecretKey: cfg.DokuSecretKey, Production: cfg.DokuProduction}
 	if cfg.BirdKey != "" {
 		srv.OTP = otp.NewBird(cfg.BirdKey, cfg.BirdURL)
 	}
