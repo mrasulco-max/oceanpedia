@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ROUTES, type RouteDef } from "@/boards/gen/routes";
 import { loadBoard, type BoardId, type LoadedBoard } from "@/boards/gen/registry";
 import { api, ApiError, safe } from "@/lib/api";
-import type { Article, ArticleCard, Layout } from "@/lib/types";
+import type { Article, ArticleCard, Category, Layout } from "@/lib/types";
 import { bindArticleCards, bindArticleDetail, bindLogin, bindLogout, esc, replaceText } from "./bind";
 import type { EnhancerId } from "./enhancers";
 import { bindContent, bindEditor, bindStaffHeader, type Staff } from "./admin-bind";
@@ -21,7 +21,7 @@ import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type B
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
 import { bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, bindMarketWeb, bindMarketWebSide, marketCards, marketWebList, WEB_TABS, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
-import { bindCoinLogos } from "./kit";
+import { bindCoinLogos, closeOf } from "./kit";
 import { bindAppNav } from "./app-nav";
 import { adPopup, inlineSlots, shortFeedAd } from "./ad-bind";
 import { bindContentExtras, bindDetailCards, bindLiveExtras, deAlur, requestsPanel } from "./admin-wire-bind";
@@ -147,6 +147,37 @@ export function bindFooter(html: string): string {
     return to ? `<a${p1}href="${to}"${p2}>${lab}</a>` : x;
   });
   return html.slice(0, fs2) + f;
+}
+
+/**
+ * Menu "Kategori" di header web: tiap item menuju kategorinya sendiri (desain menautkan semua ke Saham);
+ * deskripsi & jumlah artikel dari data nyata. Kategori yang tidak aktif disembunyikan.
+ */
+export function bindCategoryMenu(html: string, cats: Category[]): string {
+  const at = html.indexOf('<div class="dd-panel" role="menu"');
+  if (at < 0) return html;
+  const end = closeOf(html, at);
+  const bySlug = new Map(cats.map((c) => [c.slug, c]));
+  const COUNT = /<span style="font-size: 11px; color: #5F6B7D; background: #F6F8FC;[^"]*">[^<]*<\/span>/;
+  let p = html.slice(at, end).replace(/<a href="[^"]*" class="ddi"([^>]*)>([\s\S]*?)<\/a>/g, (m, attrs: string, inner: string) => {
+    const label = /<strong[^>]*>([^<]*)<\/strong>/.exec(inner)?.[1] ?? "";
+    const slug = FOOT_CAT[label]?.replace("/kategori/", "") ?? cats.find((c) => c.name === label)?.slug;
+    if (!slug) return m;
+    const c = bySlug.get(slug);
+    if (cats.length && !c) return "";
+    const body = c
+      ? inner
+          .replace(/(<span style="font-size: 12px; color: #5F6B7D">)[^<]*(<\/span>)/, (x, a: string, b: string) => (c.description ? `${a}${esc(c.description)}${b}` : x))
+          .replace(COUNT, (x) => x.replace(/>[^<]*</, `>${new Intl.NumberFormat("id-ID").format(c.article_count)}<`))
+      : inner.replace(COUNT, "");
+    return `<a href="/kategori/${encodeURIComponent(slug)}" class="ddi"${attrs}>${body}</a>`;
+  });
+  // Baris bawah: tagar topik → pencarian; desain menautkan seluruh baris ke Saham.
+  p = p.replace(/<a href="[^"]*"( style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;[^"]*")>[\s\S]*?Semua kategori →<\/span><\/a>/, (_m, style: string) => {
+    const tag = (q: string, label: string) => `<a href="/cari?q=${encodeURIComponent(q)}" style="color: inherit">${label}</a>`;
+    return `<div${style}><span>Topik populer: <b style="color: #0B0B0F; font-weight: 500">${tag("Saham AS", "#SahamAS")} · ${tag("The Fed", "#TheFed")} · ${tag("Bitcoin", "#Bitcoin")}</b></span><a href="/cari" style="color: #2F74EB; font-weight: 500">Cari topik lain →</a></div>`;
+  });
+  return html.slice(0, at) + p + html.slice(end);
 }
 
 /** Lembar bagikan & tombol bagikan: kanal nyata + tautan halaman ini (ditangani enhancer "share"). */
@@ -696,7 +727,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   if (path === "/") html = html.replace(/<a href="#" role="tab" aria-selected="true"/, '<a href="/" role="tab" aria-selected="true"');
   if (path === "/watchlist") html = html.replace(/<a class="wl" href="#"([^>]*)>Lihat semua/, '<a class="wl" href="/market"$1>Lihat semua');
   if (/data-(follow|wl-sym|reload|faq-|adq|student|privacy|cache-clear)/.test(html)) enhance.push("wire");
-  if (board.kind === "web") html = bindFooter(html);
+  if (board.kind === "web") html = bindCategoryMenu(bindFooter(html), (await safe(api.categories(), { data: [] })).data);
 
   // Bagikan: tautan kanonis halaman ini (halaman Plus membagikan artikel/aset publiknya).
   if (/data-share|>WhatsApp<\/button>|aria-label="Bagikan"|\{\{ share \}\}/.test(html)) {
