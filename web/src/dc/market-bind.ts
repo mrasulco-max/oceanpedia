@@ -1,6 +1,7 @@
 import "server-only";
 import type { Candle, Instrument, Quote } from "@/lib/types";
 import { esc } from "./bind";
+import { blocks, closeOf } from "./kit";
 
 /**
  * Binder data pasar: mengganti angka contoh di artboard dengan harga live dari API (Twelve Data),
@@ -626,4 +627,269 @@ export function bindLiveMarket(html: string): string {
       );
     },
   );
+}
+
+// ======================================================================= Market web: tab kelas aset
+/** Tab Market web: kunci URL (?kelas=), label, kelas aset. */
+export const WEB_TABS: [string, string, Instrument["asset_class"][]][] = [
+  ["saham", "Saham AS", ["equity"]],
+  ["crypto", "Crypto", ["crypto"]],
+  ["forex", "Forex", ["forex"]],
+  ["komoditas", "Komoditas", ["commodity"]],
+  ["indeks", "Indeks global", ["index"]],
+];
+const WEB_FIRST = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "BTCUSD", "ETHUSD", "SOLUSD", "BNBUSD", "XRPUSD", "DOGEUSD", "USDIDR", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "EURIDR", "SGDIDR", "XAUUSD", "XBRUSD", "WTIUSD", "XAGUSD", "NI1"];
+
+/** Instrumen satu tab yang punya harga, urutan unggulan dulu. */
+export function marketWebList(instruments: Instrument[], quotes: Map<string, Quote>, tab: string): Instrument[] {
+  return pricedOf(instruments, quotes, WEB_TABS.find(([k]) => k === tab)?.[2] ?? []);
+}
+function pricedOf(instruments: Instrument[], quotes: Map<string, Quote>, cls: Instrument["asset_class"][]): Instrument[] {
+  const rank = (s: string) => (WEB_FIRST.includes(s) ? WEB_FIRST.indexOf(s) : WEB_FIRST.length);
+  return instruments.filter((i) => cls.includes(i.asset_class) && quotes.has(i.symbol)).sort((a, b) => rank(a.symbol) - rank(b.symbol) || a.symbol.localeCompare(b.symbol));
+}
+
+const webPrice = (v: number) => nf(Math.abs(v) < 10 ? 4 : Math.abs(v) < 1000 ? 2 : 0).format(v);
+function linePoints(closes: number[], w: number, h: number): string {
+  const min = Math.min(...closes), max = Math.max(...closes), span = max - min || 1;
+  return closes.map((c, i) => `${((i / (closes.length - 1)) * w).toFixed(1)},${(h - 2 - ((c - min) / span) * (h - 4)).toFixed(1)}`).join(" ");
+}
+function webSpark(closes: number[], w: number, h: number, area: boolean): string {
+  if (closes.length < 2) return `<svg width="${w}" height="${h}" aria-hidden="true" style="flex: none; display: block"></svg>`;
+  const up = closes[closes.length - 1]! >= closes[0]!;
+  const pts = linePoints(closes, w, h);
+  const fill = area ? `<polygon points="0,${h} ${pts} ${w},${h}" fill="${up ? "#E7F7EC" : "#FDECEC"}"/>` : "";
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true" style="flex: none; display: block">${fill}<polyline points="${pts}" fill="none" stroke="${up ? "#16A34A" : "#E5484D"}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+/** Ganti elemen seimbang yang diawali `start` (dicari mulai `from`); h tetap bila tidak ditemukan. */
+function swapBlock(h: string, start: string, from: number, fn: (block: string) => string): string {
+  const i = from < 0 ? -1 : h.indexOf(start, from);
+  if (i < 0) return h;
+  const end = closeOf(h, i);
+  return h.slice(0, i) + fn(h.slice(i, end)) + h.slice(end);
+}
+const TABLIST = '<div role="tablist" class="ob-scroll" style="display: flex; gap: 8px; overflow-x: auto">';
+const tabButtons = (block: string) => block.match(/<button[\s\S]*?<\/button>/g) ?? [];
+const asTab = (btn: string, on: boolean, label: string, attrs: string) =>
+  btn.replace(/aria-selected="(true|false)"/, `aria-selected="${on}"`).replace(/>[^<]*<\/button>$/, `>${esc(label)}</button>`).replace("<button ", `<button type="button" ${attrs} `);
+const emptyNote = (text: string, extra = "") => `<p style="margin: 0; padding: 18px; border-radius: 20px; border: 1px solid #E3EAF4; font-size: 14px; color: #5F6B7D${extra}">${esc(text)}</p>`;
+
+export interface MarketWebData {
+  tab: string;
+  /** Tab yang ditampilkan (punya data, ditambah tab terpilih). */
+  tabs: string[];
+  list: Instrument[];
+  quotes: Map<string, Quote>;
+  sparks: Map<string, number[]>;
+}
+
+/**
+ * Market web: tab kelas aset (tautan ?kelas=) mengganti kartu ringkasan, grafik (Lightweight Charts,
+ * enhancer "lwchart"), dan tabel Penggerak pasar (urutan gainer/loser/teraktif oleh enhancer "mktweb").
+ */
+export function bindMarketWeb(html: string, d: MarketWebData): string {
+  let h = html;
+  const top = h.indexOf(">Market</h1>");
+  if (top < 0) return h;
+
+  // Tab kelas aset → tautan.
+  h = swapBlock(h, TABLIST, top, (block) => {
+    const btns = tabButtons(block);
+    const on = btns.find((b) => b.includes('aria-selected="true"')) ?? btns[0];
+    const off = btns.find((b) => b.includes('aria-selected="false"')) ?? on;
+    if (!on || !off) return block;
+    const links = WEB_TABS.filter(([k]) => d.tabs.includes(k)).map(([k, label]) =>
+      (k === d.tab ? on : off)
+        .replace("<button ", `<a href="/market?kelas=${k}" data-keep-scroll `)
+        .replace(/>[^<]*<\/button>$/, `>${esc(label)}</a>`)
+        .replace(/aria-selected="(true|false)"/, `aria-selected="${k === d.tab}"`),
+    );
+    return TABLIST + links.join("") + "</div>";
+  });
+
+  // Kartu ringkasan: 4 instrumen pertama tab ini.
+  const cardsAt = h.indexOf('<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px">', top);
+  h = swapBlock(h, '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px">', cardsAt, (block) => {
+    const open = block.slice(0, block.indexOf(">") + 1);
+    const cards = d.list.slice(0, 4).map((i) => {
+      const q = d.quotes.get(i.symbol)!;
+      const up = q.change_percent >= 0;
+      return (
+        `<a href="/market/${encodeURIComponent(i.symbol)}" style="padding: 16px; border-radius: 20px; border: 1px solid #E3EAF4; display: flex; flex-direction: column; gap: 8px; min-width: 0">` +
+        `<span style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><strong style="font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(badgeLabel(i))}</strong><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 500; color: ${up ? "#166534" : "#991B1B"}; background: ${up ? "#DCF5E4" : "#FDE2E2"}; padding: 4px 9px; border-radius: 999px; white-space: nowrap">${esc(fmtPct("▲ +0,00%", q.change_percent))}</span></span>` +
+        `<span style="font-family: 'Roboto Mono', monospace; font-size: 20px; font-weight: 500; color: #0B0B0F">${esc(webPrice(q.price))}</span>` +
+        `<span style="font-size: 12px; color: #5F6B7D; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(i.name)}</span>` +
+        `${webSpark(d.sparks.get(i.symbol) ?? [], 190, 34, true).replace('width="190"', 'width="100%"')}</a>`
+      );
+    });
+    return cards.length ? open + cards.join("") + "</div>" : emptyNote("Data harga untuk kategori ini belum tersedia.");
+  });
+
+  // Grafik: instrumen pertama tab ini, data nyata lewat Lightweight Charts.
+  const chartAt = h.indexOf('<div style="border-radius: 22px; border: 1px solid #E3EAF4; padding: 18px; ">', top);
+  h = swapBlock(h, '<div style="border-radius: 22px; border: 1px solid #E3EAF4; padding: 18px; ">', chartAt, (block) => {
+    const inst = d.list[0];
+    if (!inst) return emptyNote("Grafik akan tampil setelah data harga tersedia.");
+    const q = d.quotes.get(inst.symbol);
+    const price = q?.price ?? 0;
+    const dec = price === 0 ? 2 : price < 10 ? 4 : price < 1000 ? 2 : 0;
+    const lw = [
+      `data-lw="${esc(inst.symbol)}"`,
+      BINANCE_PAIR[inst.symbol] ? `data-lw-binance="${BINANCE_PAIR[inst.symbol]}"` : "",
+      `data-lw-dec="${dec}"`,
+      q?.previous_close ? `data-lw-prev="${q.previous_close}"` : "",
+      `data-lw-exch="${esc(inst.exchange)}"`,
+    ].filter(Boolean).join(" ");
+    const TF: Record<string, string> = { "1J": 'data-tf="1J"', "1D": 'data-tf="1D"', "1W": 'data-tf="1W"', "1M": 'data-tf="1M"', "1T": 'data-range="12M"' };
+    return block
+      .replace(/(<span style="flex: none; width: 40px; height: 40px;[^"]*">)[^<]*(<\/span>)/, `$1${esc(badgeLabel(inst))}$2`)
+      .replace(/(<strong style="font-size: 17px; font-weight: 700">)[^<]*(<\/strong>)/, `$1${esc(badgeLabel(inst))}$2`)
+      .replace(/(<span style="font-size: 12px; color: #5F6B7D">)[^<]*· 1D · Supercharts(<\/span>)/, `$1${esc(`${inst.name} · ${inst.exchange}`)}$2`)
+      .replace(TABLIST, TABLIST.replace("<div ", '<div data-mw-tabs aria-label="Timeframe grafik" '))
+      .replace(/<button role="tab"([^>]*)>(1J|1D|1W|1M|1T)<\/button>/g, (_m, attrs: string, k: string) => `<button type="button" role="tab" ${TF[k]}${attrs}>${k}</button>`)
+      .replace(/<svg viewBox="0 0 850 336"[\s\S]*?<\/svg>/, `<div ${lw} data-dc-keep style="position: relative; height: 336px"><span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #8A94A6">Memuat grafik ${esc(badgeLabel(inst))}…</span></div>`);
+  });
+
+  // Penggerak pasar: urutan gainer/loser/teraktif; "Asing net buy" khusus bursa IDX → dihapus.
+  const movAt = h.indexOf("Penggerak pasar</h2>", top);
+  h = swapBlock(h, TABLIST, movAt, (block) => {
+    const btns = tabButtons(block);
+    const keys: [string, string][] = [["gainer", "Top gainer"], ["loser", "Top loser"], ["active", "Teraktif"]];
+    if (btns.length < 3) return block;
+    return TABLIST.replace("<div ", '<div data-mw-tabs aria-label="Urutan penggerak pasar" ') + keys.map(([k, l], i) => asTab(btns[i]!, i === 0, l, `data-mw-sort="${k}"`)).join("") + "</div>";
+  });
+  const tableStart = '<div style="border-radius: 20px; border: 1px solid #E3EAF4; overflow: hidden">';
+  const tableAt = movAt < 0 ? -1 : h.indexOf(tableStart, movAt);
+  h = swapBlock(h, tableStart, tableAt, (table) => {
+    const rows = blocks(table, '<div style="display: grid; grid-template-columns: 110px 1.6fr 90px 100px 90px 80px 40px; gap: 12px; align-items: center;');
+    if (!rows.length) return table;
+    const wl = /<a href="#" aria-label="Tambah [^"]+ ke watchlist"([^>]*)>([\s\S]*?)<\/a>/.exec(rows[0]!.html);
+    const grid = rows[0]!.html.slice(0, rows[0]!.html.indexOf(">") + 1);
+    const list = d.list.slice().sort((a, b) => d.quotes.get(b.symbol)!.change_percent - d.quotes.get(a.symbol)!.change_percent).slice(0, 8);
+    const built = list.length
+      ? list
+          .map((i) => {
+            const q = d.quotes.get(i.symbol)!;
+            const up = q.change_percent >= 0;
+            const label = badgeLabel(i);
+            const cell = (inner: string) => `<span style="display: flex; justify-content: flex-end; align-items: center">${inner}</span>`;
+            return (
+              grid.replace("<div ", `<div data-mw-row data-mw-chg="${q.change_percent}" data-mw-vol="${q.volume || 0}" `) +
+              `<span style="display: flex; align-items: center; gap: 10px; min-width: 0"><span style="flex: none; width: 30px; height: 30px; border-radius: 999px; background: #E5ECFF; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700">${esc(label)}</span><a href="/market/${encodeURIComponent(i.symbol)}" style="font-weight: 700; color: #0B0B0F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(label)}</a></span>` +
+              `<span style="color: #5F6B7D; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(i.name)}</span>` +
+              cell(`<span style="font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; color: #0B0B0F">${esc(webPrice(q.price))}</span>`) +
+              cell(`<span style="font-weight: 700; color: ${up ? UP_C : DOWN_C}">${esc(fmtPct("+0,00%", q.change_percent))}</span>`) +
+              cell(`<span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: #5F6B7D">${q.volume ? esc(volShort(q.volume)) : "—"}</span>`) +
+              cell(webSpark((d.sparks.get(i.symbol) ?? []).slice(-7), 70, 22, false)) +
+              cell(wl ? `<a href="#" aria-label="Tambah ${esc(i.symbol)} ke watchlist"${wl[1]}>${wl[2]}</a>` : "") +
+              "</div>"
+            );
+          })
+          .join("")
+      : `<div style="padding: 24px 18px; border-top: 1px solid #E3EAF4; font-size: 14px; color: #5F6B7D">Belum ada instrumen dengan harga di kategori ini.</div>`;
+    return table.slice(0, table.indexOf(">") + 1).replace("<div ", "<div data-mw-list ") + table.slice(table.indexOf(">") + 1, rows[0]!.start) + built + table.slice(rows[rows.length - 1]!.end);
+  });
+  return h;
+}
+
+/** "USD/IDR", "XAU/USD" untuk pasangan; simbol lain mengikuti lencana. */
+const pairLabel = (i: Instrument) => (/^[A-Z]{6}$/.test(i.symbol) && (i.asset_class === "forex" || i.symbol.startsWith("XA")) ? `${i.symbol.slice(0, 3)}/${i.symbol.slice(3)}` : badgeLabel(i));
+const pctColor = (v: number) => (v >= 0 ? UP_C : DOWN_C);
+const usdShort = (v: number) => (v >= 1e12 ? `$${nf(2).format(v / 1e12)} T` : v >= 1e9 ? `$${nf(2).format(v / 1e9)} M` : v >= 1e6 ? `$${nf(2).format(v / 1e6)} jt` : `$${nf(0).format(v)}`);
+
+/**
+ * Market web, bagian bawah: Peta sektor (rata-rata perubahan saham per sektor; tanpa data sektor →
+ * "Peta pasar" berisi instrumen yang paling bergerak), tabel Crypto, dan Forex & emas dari harga nyata.
+ */
+export function bindMarketWebSide(html: string, instruments: Instrument[], quotes: Map<string, Quote>): string {
+  let h = html;
+  const priced = (cls: Instrument["asset_class"]) => pricedOf(instruments, quotes, [cls]);
+  const chg = (i: Instrument) => quotes.get(i.symbol)!.change_percent;
+
+  // Peta sektor / pasar.
+  const mapAt = h.indexOf("Peta sektor</h2>");
+  if (mapAt >= 0) {
+    const bySector = new Map<string, number[]>();
+    for (const i of priced("equity")) if (i.sector) bySector.set(i.sector, [...(bySector.get(i.sector) ?? []), chg(i)]);
+    const sectors = [...bySector].map(([name, v]) => ({ name, value: v.reduce((a, b) => a + b, 0) / v.length, href: "/screener?urut=saham" }));
+    const tiles =
+      sectors.length >= 3
+        ? sectors
+        : [...instruments.filter((i) => quotes.has(i.symbol))]
+            .sort((a, b) => Math.abs(chg(b)) - Math.abs(chg(a)))
+            .map((i) => ({ name: pairLabel(i), value: chg(i), href: `/market/${encodeURIComponent(i.symbol)}` }));
+    const pick = tiles.slice(0, 7).sort((a, b) => b.value - a.value);
+    if (sectors.length < 3) h = h.slice(0, mapAt) + "Peta pasar</h2>" + h.slice(mapAt + "Peta sektor</h2>".length);
+    const max = Math.max(...pick.map((t) => Math.abs(t.value)), 0.0001);
+    const span = ["span 2; grid-row: span 2", "span 2; grid-row: span 1", "span 2; grid-row: span 1", "span 1; grid-row: span 1", "span 1; grid-row: span 1", "span 1; grid-row: span 1", "span 1; grid-row: span 1"];
+    const built = pick
+      .map((t, k) => {
+        const a = (0.45 + 0.55 * Math.min(1, Math.abs(t.value) / max)).toFixed(2);
+        const bg = t.value >= 0 ? `rgba(22,163,74,${a})` : `rgba(220,38,38,${a})`;
+        return `<a href="${t.href}" style="grid-column: ${span[k]}; border-radius: 16px; background: ${bg}; color: #FFFFFF; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0"><span style="font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(t.name)}</span><strong style="font-size: ${k < 3 ? 22 : 16}px; font-weight: 700">${t.value > 0 ? "+" : t.value < 0 ? "−" : ""}${nf(1).format(Math.abs(t.value))}%</strong></a>`;
+      })
+      .join("");
+    const gridStart = '<div style="display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 70px; gap: 8px">';
+    h = swapBlock(h, gridStart, mapAt, () => (built ? gridStart + built + "</div>" : emptyNote("Data pergerakan pasar belum tersedia.")));
+  }
+
+  const ROW = 'style="display: grid; grid-template-columns: ';
+  const rebuild = (title: string, cols: string, rowsHtml: string, all: string) => {
+    const at = h.indexOf(`${title}</h2>`);
+    if (at < 0) return;
+    h = h.slice(0, at) + h.slice(at).replace(/<a class="wl" href="#"/, `<a class="wl" href="${all}"`);
+    const tableStart = '<div style="border-radius: 20px; border: 1px solid #E3EAF4; overflow: hidden">';
+    h = swapBlock(h, tableStart, at, (table) => {
+      const rows = blocks(table, `<div ${ROW}${cols}; gap: 12px; align-items: center;`);
+      if (!rows.length) return table;
+      return table.slice(0, rows[0]!.start) + (rowsHtml || `<div style="padding: 20px 18px; border-top: 1px solid #E3EAF4; font-size: 14px; color: #5F6B7D">Data harga belum tersedia.</div>`) + table.slice(rows[rows.length - 1]!.end);
+    });
+  };
+  const cell = (inner: string) => `<span style="display: flex; justify-content: flex-end; align-items: center">${inner}</span>`;
+  const rowA = (i: Instrument, cols: string, inner: string) => `<a href="/market/${encodeURIComponent(i.symbol)}" ${ROW}${cols}; gap: 12px; align-items: center; padding: 12px 18px; border-top: 1px solid #E3EAF4; font-size: 14px; color: #0B0B0F">${inner}</a>`;
+
+  // Crypto: harga, perubahan 24 jam, volume 24 jam (USD).
+  const crypto = priced("crypto").slice(0, 5);
+  h = h.replace(">KAP. PASAR<", ">VOL. 24 JAM<");
+  rebuild(
+    "Crypto",
+    "1.2fr 1fr 1fr 1fr",
+    crypto
+      .map((i) => {
+        const q = quotes.get(i.symbol)!;
+        const label = badgeLabel(i);
+        return rowA(
+          i,
+          "1.2fr 1fr 1fr 1fr",
+          `<span style="display: flex; align-items: center; gap: 10px; min-width: 0"><span style="flex: none; width: 30px; height: 30px; border-radius: 999px; background: #E5ECFF; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">${esc(label)}</span><strong style="font-weight: 700">${esc(label)}</strong></span>` +
+            cell(`<span style="font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; color: #0B0B0F">$${esc(webPrice(q.price))}</span>`) +
+            cell(`<span style="font-weight: 700; color: ${pctColor(q.change_percent)}">${esc(fmtPct("+0,00%", q.change_percent))}</span>`) +
+            cell(`<span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: #5F6B7D">${q.volume ? esc(usdShort(q.volume * q.price)) : "—"}</span>`),
+        );
+      })
+      .join(""),
+    "/screener?urut=crypto",
+  );
+
+  // Forex & emas: pasangan valas berharga (maks. 4) + emas.
+  const fx = [...priced("forex").slice(0, 4), ...instruments.filter((i) => i.symbol === "XAUUSD" && quotes.has(i.symbol))];
+  rebuild(
+    "Forex & emas",
+    "1.2fr 1fr 1fr",
+    fx
+      .map((i) => {
+        const q = quotes.get(i.symbol)!;
+        return rowA(
+          i,
+          "1.2fr 1fr 1fr",
+          `<strong style="font-weight: 700">${esc(pairLabel(i))}</strong>` +
+            cell(`<span style="font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; color: #0B0B0F">${esc(webPrice(q.price))}</span>`) +
+            cell(`<span style="font-weight: 700; color: ${pctColor(q.change_percent)}">${esc(fmtPct("+0,00%", q.change_percent))}</span>`),
+        );
+      })
+      .join(""),
+    "/screener?urut=forex",
+  );
+  return h;
 }

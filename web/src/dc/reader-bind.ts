@@ -2,8 +2,8 @@ import "server-only";
 import type { AdSlot, ArticleCard, EconomicEvent, Instrument, Quote } from "@/lib/types";
 import type { UserAlert, UserNotification, WatchItem } from "@/lib/me";
 import { esc as esc0 } from "./bind";
-import { avatarColors, ago, blocks, closeOf, emptyRow, recolorAvatar, rx, SVG, threaded } from "./kit";
-import { initials } from "./bind";
+import { avatarColors, ago, blocks, closeOf, compact, emptyRow, recolorAvatar, rx, SVG, threaded } from "./kit";
+import { bindArticleCards, initials } from "./bind";
 
 /**
  * Binder fitur pembaca: Watchlist (web & app), Price alert, Tersimpan, Notifikasi,
@@ -582,6 +582,158 @@ export function bindCalendarWeb(html: string, d: CalData & { prevWeek: string; n
         .join("")
     : emptyRow("Tidak ada rilis data yang cocok di hari ini.");
   return h.slice(0, rows[0]!.start) + built + h.slice(rows[rows.length - 1]!.end);
+}
+
+// ======================================================================= sorotan beranda (slider hero)
+const HERO_APP = '<a href="/berita/ihsg-menguat-ditopang-saham-perbankan" style="position: relative; display: block; height: 400px; border-radius: 28px; overflow: hidden; margin-top: 22px">';
+const HERO_WEB = '<a href="/berita/ihsg-menguat-ditopang-saham-perbankan" style="position: relative; display: block; height: 420px; border-radius: 24px; overflow: hidden">';
+const HERO_DOTS_APP = /<div style="display: flex; justify-content: center; gap: 6px; margin-top: 12px" aria-label="Sorotan 1 dari 4">[\s\S]*?<\/div>/;
+const wibTime = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+const DOT_ON = "width: 22px; height: 6px; border-radius: 999px; background: linear-gradient(110deg, #2563EB 0%, #4285F4 35%, #63A4FA 55%, #4285F4 75%, #2563EB 100%)";
+
+/**
+ * Hero beranda → slider beberapa sorotan (artikel teratas), digeser otomatis oleh enhancer "hero".
+ * Kategori, penulis, jam, waktu baca & jumlah pembaca tiap slide diambil dari artikelnya.
+ * Mengembalikan jumlah artikel yang dipakai (0 bila hero tidak ditemukan / artikel < 2).
+ */
+export function bindHomeHero(html: string, articles: ArticleCard[], app: boolean): { html: string; used: number } {
+  const start = html.indexOf(app ? HERO_APP : HERO_WEB);
+  const list = articles.slice(0, 4);
+  if (start < 0 || list.length < 2) return { html, used: 0 };
+  const end = html.indexOf("</a>", start) + 4;
+  const tpl = html.slice(start, end);
+  const n = list.length;
+  const slides = list
+    .map((a, k) => {
+      const author = a.author_name || "Redaksi";
+      const views = a.view_count > 0 ? compact(a.view_count) : "";
+      let s = bindArticleCards(tpl, [a]);
+      s = s.replace(/^<a ([^>]*?)style="([^"]*)"/, (_m, pre: string, st: string) => `<a ${pre}data-hero-slide style="${st.replace(/; margin-top: 22px$/, "")}; flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always"`);
+      if (app) {
+        s = s.replace(">SAHAM · ANALISIS<", `>${esc(a.category.name.toUpperCase())}<`);
+        if (k > 0) s = s.replace(/<\/svg>TOP STORY</, "</svg>SOROTAN<");
+        s = views ? s.replace(/<\/svg>8,2 rb membaca</, `</svg>${views} membaca<`) : s.replace(/<span style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba\(11,11,15,\.5\)[^"]*">[\s\S]*?8,2 rb membaca<\/span>/, "");
+        s = s.replace(/>ML<\/span>Maya Lestari · 16:20 WIB · 5 mnt baca</, `>${esc(initials(author))}</span>${esc(author)} · ${wibTime(a.published_at)} WIB · ${a.reading_minutes || 1} mnt baca<`);
+      } else {
+        s = s.replace(/<\/svg>5 mnt baca</, `</svg>${a.reading_minutes || 1} mnt baca<`);
+        s = views ? s.replace(/<\/svg>8,2 rb</, `</svg>${views}<`) : s.replace(/<span style="display: flex; align-items: center; gap: 5px; font-size: 12px"><svg(?:(?!<\/span>)[\s\S])*?<\/svg>8,2 rb<\/span>/, "");
+        s = s.replace(">Maya Lestari · 16:20 WIB<", `>${esc(author)} · ${wibTime(a.published_at)} WIB<`);
+      }
+      return s;
+    })
+    .join("");
+  const radius = app ? 28 : 24;
+  const dotOff = `width: 6px; height: 6px; border-radius: 999px; background: ${app ? "#D6DEEA" : "rgba(255,255,255,.55)"}`;
+  const dots = list
+    .map((_, k) => `<button type="button" data-hero-dot="${k}" aria-label="Sorotan ${k + 1}"${k === 0 ? ' aria-current="true"' : ""} style="flex: none; border: 0; background: transparent; padding: 8px 2px; margin: 0; display: flex; align-items: center; cursor: pointer"><span${k === 0 ? ' class="ob-anim"' : ""} style="display: block; transition: width .3s; ${k === 0 ? DOT_ON : dotOff}"></span></button>`)
+    .join("");
+  const dotsBox = app
+    ? `<div data-hero-dots data-dc-keep data-off="${dotOff}" style="display: flex; justify-content: center; gap: 2px; margin-top: 4px">${dots}</div>`
+    : `<div data-hero-dots data-dc-keep data-off="${dotOff}" style="position: absolute; top: 14px; right: 18px; display: flex; gap: 2px; padding: 0 8px; border-radius: 999px; background: rgba(11,11,15,.35)">${dots}</div>`;
+  const track = `<div data-hero-track class="ob-scroll" style="display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; border-radius: ${radius}px">${slides}</div>`;
+  const box = `<div data-hero aria-roledescription="carousel" aria-label="Sorotan" style="position: relative; min-width: 0${app ? "; margin-top: 22px" : ""}">${track}${dotsBox}</div>`;
+  let out = html.slice(0, start) + box + html.slice(end);
+  if (app) out = out.replace(HERO_DOTS_APP, "");
+  return { html: out, used: n };
+}
+
+// ======================================================================= agenda ekonomi beranda
+/**
+ * Kartu utama: rilis berdampak tinggi terdekat (walau beberapa hari lagi); tanpa dampak tinggi → rilis terdekat.
+ * Daftar: rilis lain pada hari terdekat yang masih punya jadwal (biasanya hari ini), urut jam, maks. 3.
+ */
+export function pickHomeAgenda(events: EconomicEvent[], now = Date.now()): { hero: EconomicEvent | null; day: string | null; list: EconomicEvent[] } {
+  const up = events.filter((e) => Date.parse(e.scheduled_at) > now).sort((a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at));
+  const hero = up.find((e) => e.impact === "high") ?? up[0] ?? null;
+  const rest = up.filter((e) => e !== hero);
+  const day = rest[0] ? dayOf(rest[0].scheduled_at) : null;
+  return { hero, day, list: rest.filter((e) => dayOf(e.scheduled_at) === day).slice(0, 3) };
+}
+
+const hhmm = (iso: string) => WIBf(iso, { hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":");
+/** "Hari ini" · "Besok" · "Sab, 21 Nov". */
+function dayLabel(day: string, now: number): string {
+  if (day === dayOf(new Date(now).toISOString())) return "Hari ini";
+  if (day === dayOf(new Date(now + 86400000).toISOString())) return "Besok";
+  return WIBf(`${day}T12:00:00+07:00`, { weekday: "short", day: "numeric", month: "short" });
+}
+const IMPACT_PILL: Record<EconomicEvent["impact"], [string, string, string]> = { high: ["Tinggi", "#991B1B", "#FDE2E2"], medium: ["Sedang", "#9A3412", "#FFE4D2"], low: ["Rendah", "#854D0E", "#FEF3C7"] };
+function impactPill(impact: EconomicEvent["impact"]): string {
+  const [t, c, b] = IMPACT_PILL[impact] ?? IMPACT_PILL.low;
+  return `<span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 500; color: ${c}; background: ${b}; padding: 4px 9px; border-radius: 999px; white-space: nowrap">${t}</span>`;
+}
+/** Sisa waktu awal (dirender server); enhancer "reader" memperbaruinya di peramban. */
+function remaining(iso: string, now: number) {
+  const ms = Math.max(0, Date.parse(iso) - now);
+  return { d: Math.floor(ms / 86400000), h: Math.floor(ms / 3600000) % 24, m: Math.floor(ms / 60000) % 60, s: Math.floor(ms / 1000) % 60 };
+}
+const p2 = (n: number) => String(n).padStart(2, "0");
+const cdLabel = (t: ReturnType<typeof remaining>) => `Hitung mundur rilis ${t.d} hari ${t.h} jam ${t.m} menit`;
+
+export function bindHomeAgenda(html: string, events: EconomicEvent[], app: boolean, now = Date.now()): string {
+  return app ? homeAgendaApp(html, events, now) : homeAgendaWeb(html, events, now);
+}
+
+function homeAgendaWeb(html: string, events: EconomicEvent[], now: number): string {
+  const head = "Agenda ekonomi</h3>";
+  const a = html.indexOf(head);
+  const end = a < 0 ? -1 : html.indexOf("</section>", a);
+  if (end < 0) return html;
+  const { hero, day, list } = pickHomeAgenda(events, now);
+  if (!hero) {
+    return html.slice(0, a + head.length) + `<p style="margin: 0; padding: 14px; border-radius: 16px; background: #F6F8FC; font-size: 14px; color: #5F6B7D">Belum ada jadwal rilis data dalam 7 hari ke depan.</p><a href="/kalender" style="display: block; margin-top: 12px; font-size: 13px; font-weight: 500; color: #2F74EB">Lihat kalender →</a>` + html.slice(end);
+  }
+  const hi = hero.impact === "high";
+  const c = hi
+    ? { bg: "#FFF1F1", bd: "#F8D0D0", tx: "#B91C1C", dot: "#EF4444", box: "#F3C7C7", unit: "#9A6B6B", sep: "#E3A3A3" }
+    : { bg: "#F6F8FC", bd: "#E3EAF4", tx: "#2F74EB", dot: "#4285F4", box: "#DCE3EE", unit: "#5F6B7D", sep: "#9AA6B8" };
+  const heroDay = dayOf(hero.scheduled_at);
+  const t = remaining(hero.scheduled_at, now);
+  const box = (k: string, v: string, unit: string) =>
+    `<span style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px"><span data-cd="${k}" style="width: 100%; height: 32px; box-sizing: border-box; padding: 0; border-radius: 9px; background: #FFFFFF; border: 1px solid ${c.box}; display: flex; align-items: center; justify-content: center; font-family: Roboto Mono, monospace; font-size: 13px; font-weight: 500; color: ${c.tx}; font-variant-numeric: tabular-nums">${v}</span><span style="font-size: 9px; letter-spacing: .06em; color: ${c.unit}">${unit}</span></span>`;
+  const sep = `<span style="font-family: Roboto Mono, monospace; flex: none; font-size: 12px; color: ${c.sep}; line-height: 32px">:</span>`;
+  const heroHtml =
+    `<a href="/kalender?d=${heroDay}" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: ${c.bg}; border: 1px solid ${c.bd}">` +
+    `<span style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: ${c.tx}"><span class="live-dot" style="flex: none; width: 7px; height: 7px; border-radius: 999px; background: ${c.dot}"></span>${hi ? "DAMPAK TINGGI" : "RILIS BERIKUTNYA"} · ${esc(dayLabel(heroDay, now).toUpperCase())} · ${hhmm(hero.scheduled_at)} WIB</span>` +
+    `<strong style="font-size: 15px; font-weight: 500">${esc(hero.title)}</strong>` +
+    `<span role="timer" data-home-cd="${esc(hero.scheduled_at)}" aria-label="${cdLabel(t)}" style="width: 100%; display: flex; align-items: flex-start; gap: 2px">` +
+    [box("d", p2(t.d), "HARI"), box("h", p2(t.h), "JAM"), box("m", p2(t.m), "MENIT"), box("s", p2(t.s), "DETIK"), box("ms", "000", "MS")].join(sep) +
+    `</span></a>`;
+  const rows = list
+    .map((e) => `<a href="/kalender?d=${day}" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #E3EAF4"><span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: #0B0B0F">${hhmm(e.scheduled_at)}</span><span style="flex: 1; min-width: 0; font-size: 14px">${esc(e.title)}</span>${impactPill(e.impact)}</a>`)
+    .join("");
+  const dayHead = day ? `<span style="display: block; padding: 6px 0 8px; font-size: 12px; font-weight: 500; color: #5F6B7D">${esc(dayLabel(day, now))} · ${esc(WIBf(`${day}T12:00:00+07:00`, { weekday: "long", day: "numeric", month: "short" }))}</span>` : "";
+  const more = `<a href="/kalender?d=${day ?? heroDay}" style="display: block; padding-top: 12px; border-top: 1px solid #E3EAF4; font-size: 13px; font-weight: 500; color: #2F74EB">Lihat kalender →</a>`;
+  const listHtml = `<div style="margin-top: 8px">${list.length ? dayHead + rows : `<span style="display: block; padding: 10px 0 12px; font-size: 13px; color: #5F6B7D">Tidak ada rilis lain dalam 7 hari ke depan.</span>`}${more}</div>`;
+  return html.slice(0, a + head.length) + heroHtml + listHtml + html.slice(end);
+}
+
+function homeAgendaApp(html: string, events: EconomicEvent[], now: number): string {
+  const a = html.indexOf("Agenda ekonomi</h2>");
+  const i = a < 0 ? -1 : html.indexOf('<div class="ob-scroll"', a);
+  if (i < 0) return html;
+  const end = closeOf(html, i);
+  const open = html.slice(i, html.indexOf(">", i) + 1);
+  const { hero, list } = pickHomeAgenda(events, now);
+  const card = (e: EconomicEvent, main: boolean) => {
+    const hi = main && e.impact === "high";
+    const day = dayOf(e.scheduled_at);
+    const sub = [dayLabel(day, now), e.country === "US" ? "AS" : e.country, e.forecast ? `Perk. ${e.forecast}` : ""].filter(Boolean).join(" · ");
+    const t = remaining(e.scheduled_at, now);
+    const timer = main
+      ? `<span role="timer" data-home-cd="${esc(e.scheduled_at)}" aria-label="${cdLabel(t)}" style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: ${hi ? "#B91C1C" : "#2F74EB"}; font-variant-numeric: tabular-nums"><span data-cd="t">${t.d ? `${t.d}h ` : ""}${p2(t.h)}:${p2(t.m)}:${p2(t.s)}</span></span>`
+      : "";
+    return (
+      `<a href="/kalender?d=${day}" style="flex: none; width: 190px; box-sizing: border-box; padding: 14px; border-radius: 20px; border: 1px solid ${hi ? "#F8D0D0" : "#E3EAF4"}; background: ${hi ? "#FFF1F1" : "#FFFFFF"}; display: flex; flex-direction: column; gap: 8px">` +
+      `<span style="display: flex; justify-content: space-between; align-items: center"><span style="font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; color: #0B0B0F">${hhmm(e.scheduled_at)}</span><span style="flex: none">${impactPill(e.impact)}</span></span>` +
+      `<strong style="font-size: 14px; line-height: 1.35; font-weight: 500">${esc(e.title)}</strong>` +
+      `<span style="font-size: 11px; color: #5F6B7D">${esc(sub)}</span>${timer}</a>`
+    );
+  };
+  const cards = hero
+    ? [card(hero, true), ...list.map((e) => card(e, false))].join("")
+    : `<p style="margin: 0; font-size: 13px; color: #5F6B7D">Belum ada jadwal rilis data dalam 7 hari ke depan.</p>`;
+  return html.slice(0, i) + open + cards + "</div>" + html.slice(end);
 }
 
 // ======================================================================= komentar & reaksi artikel

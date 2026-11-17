@@ -108,7 +108,7 @@ export default function DCBoard({ Logic, tpl, css, kind, enhance, ctx }: BoardPr
       }
       if (href.startsWith("/") && !href.startsWith("//") && a.target !== "_blank") {
         e.preventDefault();
-        router.push(href);
+        router.push(href, { scroll: !a.hasAttribute("data-keep-scroll") });
       }
     };
 

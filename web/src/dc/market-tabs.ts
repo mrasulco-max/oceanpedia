@@ -58,3 +58,43 @@ export function mkt(host: HTMLElement, { ctx }: Env): Cleanup {
   apply();
   return () => host.removeEventListener("dc:state", onState);
 }
+
+/**
+ * Enhancer Market web ("mktweb"): tombol pilihan [data-mw-tabs] (timeframe grafik, urutan Penggerak pasar)
+ * berpindah tampilan terpilih, dan baris [data-mw-row] diurutkan top gainer · top loser · teraktif.
+ * Pergantian kelas aset memakai tautan ?kelas= (dirender ulang server).
+ */
+export function mktweb(host: HTMLElement): Cleanup {
+  const look = new Map<Element, { on: string; off: string }>();
+  for (const tl of host.querySelectorAll("[data-mw-tabs]")) {
+    const btns = [...tl.querySelectorAll('[role="tab"]')];
+    const on = btns.find((b) => b.getAttribute("aria-selected") === "true");
+    const off = btns.find((b) => b.getAttribute("aria-selected") !== "true");
+    if (on && off) look.set(tl, { on: on.getAttribute("style") ?? "", off: off.getAttribute("style") ?? "" });
+  }
+  const sortRows = (key: string) => {
+    const list = host.querySelector<HTMLElement>("[data-mw-list]");
+    if (!list) return;
+    const val = (r: HTMLElement) => {
+      const c = Number(r.dataset.mwChg);
+      if (key === "active") return -(Number(r.dataset.mwVol) || Math.abs(c) || 0);
+      return key === "loser" ? c : -c;
+    };
+    [...list.querySelectorAll<HTMLElement>("[data-mw-row]")].sort((a, b) => val(a) - val(b)).forEach((r) => list.appendChild(r));
+  };
+  const onClick = (e: MouseEvent) => {
+    const btn = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-mw-tabs] [role="tab"]') : null;
+    const tl = btn?.closest("[data-mw-tabs]");
+    const l = tl && look.get(tl);
+    if (!btn || !l || !host.contains(btn)) return;
+    for (const b of tl.querySelectorAll('[role="tab"]')) {
+      const sel = b === btn;
+      b.setAttribute("aria-selected", String(sel));
+      b.setAttribute("style", sel ? l.on : l.off);
+      b.classList.toggle("ob-anim", sel);
+    }
+    if (btn.dataset.mwSort) sortRows(btn.dataset.mwSort);
+  };
+  host.addEventListener("click", onClick);
+  return () => host.removeEventListener("click", onClick);
+}
