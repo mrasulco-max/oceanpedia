@@ -19,7 +19,7 @@ import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArtic
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, bindHomeShorts, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
-import { bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, marketCards, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
+import { bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, bindMarketWeb, marketCards, marketWebList, WEB_TABS, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import { bindCoinLogos } from "./kit";
 import { bindAppNav } from "./app-nav";
@@ -629,6 +629,19 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
       today: { total: todays.length, high: todays.filter((e) => e.impact === "high").length },
     });
     enhance.push("mkt");
+  }
+  if (path === "/market" && board.kind === "web") {
+    const ins = await safe(api.instruments(), { data: [] });
+    const has = WEB_TABS.filter(([k]) => marketWebList(ins.data, quotes, k).length).map(([k]) => k);
+    const tab = WEB_TABS.some(([k]) => k === search.kelas) ? search.kelas! : has.includes("saham") ? "saham" : (has[0] ?? "saham");
+    const list = marketWebList(ins.data, quotes, tab);
+    // Grafik mini: 4 kartu + 8 baris Penggerak pasar (urutan top gainer, sama dengan bindMarketWeb).
+    const movers = list.slice().sort((a, b) => quotes.get(b.symbol)!.change_percent - quotes.get(a.symbol)!.change_percent).slice(0, 8);
+    const need = [...new Set([...list.slice(0, 4), ...movers].map((i) => i.symbol))];
+    const sparks = new Map(await Promise.all(need.map(async (s) => [s, (await safe(api.candles(s, "1day", 20), { symbol: s, interval: "1day", data: [] })).data.map((c) => c.c)] as [string, number[]])));
+    html = bindMarketWeb(html, { tab, tabs: has.includes(tab) ? has : [...has, tab], list, quotes, sparks });
+    if (list.length) enhance.push("lwchart");
+    enhance.push("mktweb");
   }
   // Harga dulu (contoh IDX diganti instrumen aktif), lalu tautan baris mengikuti label barunya.
   html = bindQuotes(html, quotes);
