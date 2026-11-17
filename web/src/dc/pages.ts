@@ -15,7 +15,7 @@ import { bindAccount, bindStaffExpired, bindStaffForgot, bindStaffReset, bindLog
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
 import { getAlerts, getBookmarks, getNotifications, getUnread, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
-import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindHomeAgenda, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
+import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindHomeAgenda, bindHomeHero, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, bindHomeShorts, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
@@ -643,7 +643,16 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     enhance.push("reader");
     title = "Kalender Ekonomi";
   } else {
-    html = bindArticleCards(html, all);
+    let rest = all;
+    if (path === "/") {
+      const hero = bindHomeHero(html, all, board.kind === "app");
+      if (hero.used) {
+        html = hero.html;
+        rest = all.slice(1);
+        enhance.push("hero");
+      }
+    }
+    html = bindArticleCards(html, rest);
   }
   if (path === "/market" && board.kind === "app") {
     const ins = await safe(api.instruments(), { data: [] });

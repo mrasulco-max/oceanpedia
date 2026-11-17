@@ -2,8 +2,8 @@ import "server-only";
 import type { AdSlot, ArticleCard, EconomicEvent, Instrument, Quote } from "@/lib/types";
 import type { UserAlert, UserNotification, WatchItem } from "@/lib/me";
 import { esc as esc0 } from "./bind";
-import { avatarColors, ago, blocks, closeOf, emptyRow, recolorAvatar, rx, SVG, threaded } from "./kit";
-import { initials } from "./bind";
+import { avatarColors, ago, blocks, closeOf, compact, emptyRow, recolorAvatar, rx, SVG, threaded } from "./kit";
+import { bindArticleCards, initials } from "./bind";
 
 /**
  * Binder fitur pembaca: Watchlist (web & app), Price alert, Tersimpan, Notifikasi,
@@ -582,6 +582,59 @@ export function bindCalendarWeb(html: string, d: CalData & { prevWeek: string; n
         .join("")
     : emptyRow("Tidak ada rilis data yang cocok di hari ini.");
   return h.slice(0, rows[0]!.start) + built + h.slice(rows[rows.length - 1]!.end);
+}
+
+// ======================================================================= sorotan beranda (slider hero)
+const HERO_APP = '<a href="/berita/ihsg-menguat-ditopang-saham-perbankan" style="position: relative; display: block; height: 400px; border-radius: 28px; overflow: hidden; margin-top: 22px">';
+const HERO_WEB = '<a href="/berita/ihsg-menguat-ditopang-saham-perbankan" style="position: relative; display: block; height: 420px; border-radius: 24px; overflow: hidden">';
+const HERO_DOTS_APP = /<div style="display: flex; justify-content: center; gap: 6px; margin-top: 12px" aria-label="Sorotan 1 dari 4">[\s\S]*?<\/div>/;
+const wibTime = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+const DOT_ON = "width: 22px; height: 6px; border-radius: 999px; background: linear-gradient(110deg, #2563EB 0%, #4285F4 35%, #63A4FA 55%, #4285F4 75%, #2563EB 100%)";
+
+/**
+ * Hero beranda → slider beberapa sorotan (artikel teratas), digeser otomatis oleh enhancer "hero".
+ * Kategori, penulis, jam, waktu baca & jumlah pembaca tiap slide diambil dari artikelnya.
+ * Mengembalikan jumlah artikel yang dipakai (0 bila hero tidak ditemukan / artikel < 2).
+ */
+export function bindHomeHero(html: string, articles: ArticleCard[], app: boolean): { html: string; used: number } {
+  const start = html.indexOf(app ? HERO_APP : HERO_WEB);
+  const list = articles.slice(0, 4);
+  if (start < 0 || list.length < 2) return { html, used: 0 };
+  const end = html.indexOf("</a>", start) + 4;
+  const tpl = html.slice(start, end);
+  const n = list.length;
+  const slides = list
+    .map((a, k) => {
+      const author = a.author_name || "Redaksi";
+      const views = a.view_count > 0 ? compact(a.view_count) : "";
+      let s = bindArticleCards(tpl, [a]);
+      s = s.replace(/^<a ([^>]*?)style="([^"]*)"/, (_m, pre: string, st: string) => `<a ${pre}data-hero-slide style="${st.replace(/; margin-top: 22px$/, "")}; flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always"`);
+      if (app) {
+        s = s.replace(">SAHAM · ANALISIS<", `>${esc(a.category.name.toUpperCase())}<`);
+        if (k > 0) s = s.replace(/<\/svg>TOP STORY</, "</svg>SOROTAN<");
+        s = views ? s.replace(/<\/svg>8,2 rb membaca</, `</svg>${views} membaca<`) : s.replace(/<span style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba\(11,11,15,\.5\)[^"]*">[\s\S]*?8,2 rb membaca<\/span>/, "");
+        s = s.replace(/>ML<\/span>Maya Lestari · 16:20 WIB · 5 mnt baca</, `>${esc(initials(author))}</span>${esc(author)} · ${wibTime(a.published_at)} WIB · ${a.reading_minutes || 1} mnt baca<`);
+      } else {
+        s = s.replace(/<\/svg>5 mnt baca</, `</svg>${a.reading_minutes || 1} mnt baca<`);
+        s = views ? s.replace(/<\/svg>8,2 rb</, `</svg>${views}<`) : s.replace(/<span style="display: flex; align-items: center; gap: 5px; font-size: 12px"><svg(?:(?!<\/span>)[\s\S])*?<\/svg>8,2 rb<\/span>/, "");
+        s = s.replace(">Maya Lestari · 16:20 WIB<", `>${esc(author)} · ${wibTime(a.published_at)} WIB<`);
+      }
+      return s;
+    })
+    .join("");
+  const radius = app ? 28 : 24;
+  const dotOff = `width: 6px; height: 6px; border-radius: 999px; background: ${app ? "#D6DEEA" : "rgba(255,255,255,.55)"}`;
+  const dots = list
+    .map((_, k) => `<button type="button" data-hero-dot="${k}" aria-label="Sorotan ${k + 1}"${k === 0 ? ' aria-current="true"' : ""} style="flex: none; border: 0; background: transparent; padding: 8px 2px; margin: 0; display: flex; align-items: center; cursor: pointer"><span${k === 0 ? ' class="ob-anim"' : ""} style="display: block; transition: width .3s; ${k === 0 ? DOT_ON : dotOff}"></span></button>`)
+    .join("");
+  const dotsBox = app
+    ? `<div data-hero-dots data-dc-keep data-off="${dotOff}" style="display: flex; justify-content: center; gap: 2px; margin-top: 4px">${dots}</div>`
+    : `<div data-hero-dots data-dc-keep data-off="${dotOff}" style="position: absolute; top: 14px; right: 18px; display: flex; gap: 2px; padding: 0 8px; border-radius: 999px; background: rgba(11,11,15,.35)">${dots}</div>`;
+  const track = `<div data-hero-track class="ob-scroll" style="display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; border-radius: ${radius}px">${slides}</div>`;
+  const box = `<div data-hero aria-roledescription="carousel" aria-label="Sorotan" style="position: relative; min-width: 0${app ? "; margin-top: 22px" : ""}">${track}${dotsBox}</div>`;
+  let out = html.slice(0, start) + box + html.slice(end);
+  if (app) out = out.replace(HERO_DOTS_APP, "");
+  return { html: out, used: n };
 }
 
 // ======================================================================= agenda ekonomi beranda
