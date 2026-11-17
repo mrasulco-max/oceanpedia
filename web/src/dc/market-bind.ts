@@ -893,3 +893,69 @@ export function bindMarketWebSide(html: string, instruments: Instrument[], quote
   );
   return h;
 }
+
+// ======================================================================= Halaman kategori: market terkait
+/** Kelas aset yang relevan untuk tiap kategori (kategori lain: semua kelas). */
+const CATEGORY_CLASS: Record<string, Instrument["asset_class"][]> = { saham: ["equity", "index"], crypto: ["crypto"], forex: ["forex"], komoditas: ["commodity"] };
+
+/**
+ * Instrumen untuk halaman kategori: kartu utama (unggulan kelasnya, atau simbol yang paling sering
+ * disebut artikel kategori) dan daftar "Paling aktif hari ini" (simbol yang disebut artikel dulu,
+ * lalu instrumen kelasnya yang paling bergerak), diurutkan dari perubahan terbesar.
+ */
+export function pickCategoryMarket(slug: string, instruments: Instrument[], quotes: Map<string, Quote>, mentions: string[], max: number): { head: Instrument | null; active: Instrument[] } {
+  const cls = CATEGORY_CLASS[slug];
+  const priced = pricedOf(instruments, quotes, cls ?? ["equity", "index", "crypto", "forex", "commodity"]);
+  const bySym = new Map(priced.map((i) => [i.symbol, i]));
+  const freq = new Map<string, number>();
+  for (const s of mentions) if (bySym.has(s)) freq.set(s, (freq.get(s) ?? 0) + 1);
+  const mentioned = [...freq].sort((a, b) => b[1] - a[1]).map(([s]) => bySym.get(s)!);
+  const chg = (i: Instrument) => Math.abs(quotes.get(i.symbol)!.change_percent);
+  const moving = priced.slice().sort((a, b) => chg(b) - chg(a));
+  const active = [...new Set([...mentioned, ...moving])].slice(0, max).sort((a, b) => chg(b) - chg(a));
+  const head = cls ? (priced[0] ?? null) : (mentioned[0] ?? bySym.get("USDIDR") ?? priced[0] ?? null);
+  return { head, active };
+}
+
+/** Kartu harga di kepala kategori + daftar "Paling aktif hari ini" (web & aplikasi). */
+export function bindCategoryMarket(html: string, d: { app: boolean; head: Instrument | null; active: Instrument[]; quotes: Map<string, Quote>; sparks: Map<string, number[]> }): string {
+  let h = html;
+  const sub = (i: Instrument) => (i.asset_class === "crypto" ? "24 jam" : i.asset_class === "forex" ? "Forex" : i.asset_class === "commodity" ? "Spot" : i.exchange);
+  const href = (i: Instrument) => `/market/${encodeURIComponent(i.symbol)}`;
+
+  // Kartu utama di kepala kategori (desain: IHSG · tutup).
+  const headStart = d.app ? '<a href="/market/BBCA" style="flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: rgba(255,255,255,.12)">' : '<a href="/market/BBCA" style="position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 18px; background: rgba(255,255,255,.12)">';
+  const hs = h.indexOf(headStart);
+  if (hs >= 0) {
+    const he = h.indexOf("</a>", hs) + 4;
+    const i = d.head;
+    const q = i ? d.quotes.get(i.symbol) : undefined;
+    let card = "";
+    if (i && q) {
+      const up = q.change_percent >= 0;
+      const pct = `${up ? "▲" : "▼"} ${nf(2).format(Math.abs(q.change_percent))}%`;
+      const label = `${esc(pairLabel(i))} · ${esc(sub(i))}`;
+      card = d.app
+        ? `<a href="${href(i)}" style="flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: rgba(255,255,255,.12)"><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; opacity: .8">${label}</span><span style="font-family: 'Roboto Mono', monospace; font-size: 16px; font-weight: 500; color: #FFFFFF">${esc(webPrice(q.price))}</span></span><span style="margin-left: auto; padding: 4px 9px; border-radius: 999px; background: ${up ? "rgba(110,231,160,.18)" : "rgba(252,165,165,.18)"}; color: ${up ? "#6EE7A0" : "#FCA5A5"}; font-size: 12px; font-weight: 700">${pct}</span></a>`
+        : `<a href="${href(i)}" style="position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 18px; background: rgba(255,255,255,.12)"><span style="font-size: 13px; opacity: .85">${label}</span><span style="font-family: 'Roboto Mono', monospace; font-size: 20px; font-weight: 500; color: #FFFFFF">${esc(webPrice(q.price))}</span><span style="font-size: 13px; font-weight: 700; color: ${up ? "#6EE7A0" : "#FCA5A5"}">${up ? "▲ +" : "▼ −"}${esc(nf(Math.abs(q.price) < 10 ? 4 : Math.abs(q.price) < 1000 ? 2 : 0).format(Math.abs(q.change ?? 0)))} (${nf(2).format(Math.abs(q.change_percent))}%)</span><span style="margin-left: auto; font-size: 13px; opacity: .85">Lihat market →</span></a>`;
+    }
+    h = h.slice(0, hs) + card + h.slice(he);
+  }
+
+  // Paling aktif hari ini.
+  const at = h.indexOf("Paling aktif hari ini</h2>");
+  if (at < 0) return h;
+  const listStart = d.app ? '<div class="ob-scroll" style="display: flex; gap: 10px; overflow-x: auto; margin: 0 -20px; padding: 0 20px">' : '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px">';
+  const badge = (i: Instrument) => `<span style="flex: none; width: 34px; height: 34px; border-radius: 999px; background: #E5ECFF; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700">${esc(badgeLabel(i))}</span>`;
+  const cards = d.active
+    .map((i) => {
+      const q = d.quotes.get(i.symbol)!;
+      const pct = `<span style="font-size: ${d.app ? 11 : 12}px; font-weight: ${d.app ? 500 : 700}; color: ${q.change_percent >= 0 ? UP_C : DOWN_C}">${esc(fmtPct("+0,00%", q.change_percent))}</span>`;
+      const spark = webSpark(d.sparks.get(i.symbol) ?? [], d.app ? 44 : 60, d.app ? 18 : 20, false);
+      return d.app
+        ? `<a href="${href(i)}" style="flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 16px; border: 1px solid #E3EAF4">${badge(i)}<span style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 13px; font-weight: 700">${esc(pairLabel(i))}</strong>${pct}</span>${spark}</a>`
+        : `<a href="${href(i)}" style="display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 18px; border: 1px solid #E3EAF4">${badge(i)}<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 14px; font-weight: 700">${esc(pairLabel(i))}</strong><span style="font-family: 'Roboto Mono', monospace; font-size: 12px; font-weight: 500; color: #5F6B7D">${esc(webPrice(q.price))}</span></span><span style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px">${spark}${pct}</span></a>`;
+    })
+    .join("");
+  return swapBlock(h, listStart, at, () => (cards ? listStart + cards + "</div>" : `<p style="margin: 0; font-size: 14px; color: #5F6B7D">Data harga belum tersedia.</p>`));
+}

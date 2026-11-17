@@ -19,13 +19,13 @@ import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArtic
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, bindHomeShorts, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
-import { bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, bindMarketWeb, bindMarketWebSide, marketCards, marketWebList, WEB_TABS, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
+import { bindCategoryMarket, bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, bindMarketWeb, pickCategoryMarket, bindMarketWebSide, marketCards, marketWebList, WEB_TABS, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import { bindCoinLogos, closeOf } from "./kit";
 import { bindAppNav } from "./app-nav";
 import { adPopup, inlineSlots, shortFeedAd } from "./ad-bind";
 import { bindContentExtras, bindDetailCards, bindLiveExtras, deAlur, requestsPanel } from "./admin-wire-bind";
-import { bindAds as bindAdsPage, bindAuthorExtras, bindCacheClear, bindCategoryExtras, bindHelp, bindMarketWebExtras, bindPrivacy, bindRetry, bindStudent } from "./wire-bind";
+import { bindAds as bindAdsPage, bindAuthorExtras, bindCacheClear, bindCategoryExtras, bindCategoryPage, bindHelp, type CategoryCardMeta, type CategoryTopic, bindMarketWebExtras, bindPrivacy, bindRetry, bindStudent } from "./wire-bind";
 import type { Candle, Instrument, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
@@ -390,16 +390,46 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const cat = cats.data.find((c) => c.slug === m.params.slug);
     if (!cat) notFound();
     const cursor = search.sebelum && !Number.isNaN(Date.parse(search.sebelum)) ? search.sebelum : "";
-    const [list, fst] = await Promise.all([
-      safe(api.articles({ category: cat.slug, limit: 30, cursor }), { data: [], next_cursor: null }),
+    const topic = /^[a-z0-9-]{1,80}$/.test(search.topik ?? "") ? search.topik! : "";
+    const sort = search.urut === "populer" ? "populer" : "";
+    const app = board.kind === "app";
+    const [list, base, fst, ins, picks] = await Promise.all([
+      safe(api.articles({ category: cat.slug, limit: 30, cursor, tag: topic || undefined }), { data: [], next_cursor: null }),
+      topic || cursor ? safe(api.articles({ category: cat.slug, limit: 30 }), { data: [], next_cursor: null }) : null,
       safe(api.followStat("category", cat.slug, token), { following: false, followers: 0 }),
+      safe(api.instruments(), { data: [] }),
+      safe(api.articles({ category: "analisis", limit: 4 }), { data: [], next_cursor: null }),
     ]);
+    // Tag & simbol per artikel (detail artikel; tidak menambah hitungan baca).
+    const pool = dedupe([...(base ?? list).data, ...list.data]);
+    const details = new Map((await Promise.all(pool.map((a) => safe(api.article(a.slug), null)))).filter((x): x is Article => !!x).map((x) => [x.slug, x]));
+    const tagCount = new Map<string, CategoryTopic>();
+    for (const a of (base ?? list).data) for (const t of details.get(a.slug)?.tags ?? []) tagCount.set(t.slug, { slug: t.slug, name: t.name, count: (tagCount.get(t.slug)?.count ?? 0) + 1 });
+    const topics = [...tagCount.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 6);
+    if (topic && !topics.some((t) => t.slug === topic)) {
+      const name = [...details.values()].flatMap((x) => x.tags).find((t) => t.slug === topic)?.name;
+      if (name) topics.push({ slug: topic, name, count: list.data.length });
+    }
+    const arts = sort === "populer" ? list.data.slice().sort((a, b) => b.view_count - a.view_count) : list.data;
     html = html.replace(/(<h1\b[^>]*>)\s*Saham\s*(<\/h1>)/, (_x, o: string, c: string) => `${o}${esc(cat.name)}${c}`);
-    html = replaceText(html, "Terbaru di Saham", `Terbaru di ${cat.name}`);
+    html = replaceText(html, "Terbaru di Saham", `${sort === "populer" ? "Terpopuler" : "Terbaru"} di ${cat.name}`);
     const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
-    html = bindCategoryExtras(html, { slug: cat.slug, followers: fst.followers, following: fst.following, loggedIn: !!user, total: cat.article_count, today: list.data.filter((a) => new Date(new Date(a.published_at).getTime() + 7 * 3600_000).toISOString().slice(0, 10) === today).length, nextCursor: list.next_cursor ?? null, cursor: cursor || null, app: board.kind === "app" });
-    if (board.kind === "app") ctx.state = JSON.stringify({ u: { u3: [fst.following] } });
-    html = bindArticleCards(html, list.data.length ? list.data : all);
+    const query = [topic && `&topik=${encodeURIComponent(topic)}`, sort && `&urut=${sort}`].filter(Boolean).join("");
+    html = bindCategoryExtras(html, { slug: cat.slug, followers: fst.followers, following: fst.following, loggedIn: !!user, total: cat.article_count, today: list.data.filter((a) => new Date(new Date(a.published_at).getTime() + 7 * 3600_000).toISOString().slice(0, 10) === today).length, nextCursor: list.next_cursor ?? null, cursor: cursor || null, app, query });
+    if (app) ctx.state = JSON.stringify({ u: { u3: [fst.following] } });
+    html = bindArticleCards(html, arts.length ? arts : all);
+    const cards = new Map(
+      (arts.length ? arts : all).map((a) => {
+        const tag = details.get(a.slug)?.tags.find((t) => t.slug === topic) ?? details.get(a.slug)?.tags[0];
+        return [a.slug, { label: tag?.name ?? a.category.name, tag: !!tag, author: a.author_name || "Redaksi", views: a.view_count, minutes: a.reading_minutes, published: a.published_at }] as [string, CategoryCardMeta];
+      }),
+    );
+    html = bindCategoryPage(html, { slug: cat.slug, app, total: cat.article_count, topics, topic, sort, cards, picks: picks.data.map((p) => ({ slug: p.slug, title: p.title, author: p.author_name || "Redaksi" })) });
+    // Market terkait kategori: kartu kepala + "Paling aktif hari ini".
+    const mentions = [...details.values()].flatMap((x) => x.symbols ?? []);
+    const mk = pickCategoryMarket(cat.slug, ins.data, quotes, mentions, app ? 4 : 6);
+    const sparks = new Map(await Promise.all(mk.active.map(async (i) => [i.symbol, (await safe(api.candles(i.symbol, "1day", 20), { symbol: i.symbol, interval: "1day", data: [] })).data.map((c) => c.c)] as [string, number[]])));
+    html = bindCategoryMarket(html, { app, head: mk.head, active: mk.active, quotes, sparks });
     title = cat.name;
     description = cat.description;
   } else if (path === "/market/[symbol]") {
