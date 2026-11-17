@@ -642,7 +642,9 @@ const WEB_FIRST = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "BTC
 
 /** Instrumen satu tab yang punya harga, urutan unggulan dulu. */
 export function marketWebList(instruments: Instrument[], quotes: Map<string, Quote>, tab: string): Instrument[] {
-  const cls = WEB_TABS.find(([k]) => k === tab)?.[2] ?? [];
+  return pricedOf(instruments, quotes, WEB_TABS.find(([k]) => k === tab)?.[2] ?? []);
+}
+function pricedOf(instruments: Instrument[], quotes: Map<string, Quote>, cls: Instrument["asset_class"][]): Instrument[] {
   const rank = (s: string) => (WEB_FIRST.includes(s) ? WEB_FIRST.indexOf(s) : WEB_FIRST.length);
   return instruments.filter((i) => cls.includes(i.asset_class) && quotes.has(i.symbol)).sort((a, b) => rank(a.symbol) - rank(b.symbol) || a.symbol.localeCompare(b.symbol));
 }
@@ -788,5 +790,106 @@ export function bindMarketWeb(html: string, d: MarketWebData): string {
       : `<div style="padding: 24px 18px; border-top: 1px solid #E3EAF4; font-size: 14px; color: #5F6B7D">Belum ada instrumen dengan harga di kategori ini.</div>`;
     return table.slice(0, table.indexOf(">") + 1).replace("<div ", "<div data-mw-list ") + table.slice(table.indexOf(">") + 1, rows[0]!.start) + built + table.slice(rows[rows.length - 1]!.end);
   });
+  return h;
+}
+
+/** "USD/IDR", "XAU/USD" untuk pasangan; simbol lain mengikuti lencana. */
+const pairLabel = (i: Instrument) => (/^[A-Z]{6}$/.test(i.symbol) && (i.asset_class === "forex" || i.symbol.startsWith("XA")) ? `${i.symbol.slice(0, 3)}/${i.symbol.slice(3)}` : badgeLabel(i));
+const pctColor = (v: number) => (v >= 0 ? UP_C : DOWN_C);
+const usdShort = (v: number) => (v >= 1e12 ? `$${nf(2).format(v / 1e12)} T` : v >= 1e9 ? `$${nf(2).format(v / 1e9)} M` : v >= 1e6 ? `$${nf(2).format(v / 1e6)} jt` : `$${nf(0).format(v)}`);
+
+/**
+ * Market web, bagian bawah: Peta sektor (rata-rata perubahan saham per sektor; tanpa data sektor →
+ * "Peta pasar" berisi instrumen yang paling bergerak), tabel Crypto, dan Forex & emas dari harga nyata.
+ */
+export function bindMarketWebSide(html: string, instruments: Instrument[], quotes: Map<string, Quote>): string {
+  let h = html;
+  const priced = (cls: Instrument["asset_class"]) => pricedOf(instruments, quotes, [cls]);
+  const chg = (i: Instrument) => quotes.get(i.symbol)!.change_percent;
+
+  // Peta sektor / pasar.
+  const mapAt = h.indexOf("Peta sektor</h2>");
+  if (mapAt >= 0) {
+    const bySector = new Map<string, number[]>();
+    for (const i of priced("equity")) if (i.sector) bySector.set(i.sector, [...(bySector.get(i.sector) ?? []), chg(i)]);
+    const sectors = [...bySector].map(([name, v]) => ({ name, value: v.reduce((a, b) => a + b, 0) / v.length, href: "/screener?urut=saham" }));
+    const tiles =
+      sectors.length >= 3
+        ? sectors
+        : [...instruments.filter((i) => quotes.has(i.symbol))]
+            .sort((a, b) => Math.abs(chg(b)) - Math.abs(chg(a)))
+            .map((i) => ({ name: pairLabel(i), value: chg(i), href: `/market/${encodeURIComponent(i.symbol)}` }));
+    const pick = tiles.slice(0, 7).sort((a, b) => b.value - a.value);
+    if (sectors.length < 3) h = h.slice(0, mapAt) + "Peta pasar</h2>" + h.slice(mapAt + "Peta sektor</h2>".length);
+    const max = Math.max(...pick.map((t) => Math.abs(t.value)), 0.0001);
+    const span = ["span 2; grid-row: span 2", "span 2; grid-row: span 1", "span 2; grid-row: span 1", "span 1; grid-row: span 1", "span 1; grid-row: span 1", "span 1; grid-row: span 1", "span 1; grid-row: span 1"];
+    const built = pick
+      .map((t, k) => {
+        const a = (0.45 + 0.55 * Math.min(1, Math.abs(t.value) / max)).toFixed(2);
+        const bg = t.value >= 0 ? `rgba(22,163,74,${a})` : `rgba(220,38,38,${a})`;
+        return `<a href="${t.href}" style="grid-column: ${span[k]}; border-radius: 16px; background: ${bg}; color: #FFFFFF; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0"><span style="font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${esc(t.name)}</span><strong style="font-size: ${k < 3 ? 22 : 16}px; font-weight: 700">${t.value > 0 ? "+" : t.value < 0 ? "−" : ""}${nf(1).format(Math.abs(t.value))}%</strong></a>`;
+      })
+      .join("");
+    const gridStart = '<div style="display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 70px; gap: 8px">';
+    h = swapBlock(h, gridStart, mapAt, () => (built ? gridStart + built + "</div>" : emptyNote("Data pergerakan pasar belum tersedia.")));
+  }
+
+  const ROW = 'style="display: grid; grid-template-columns: ';
+  const rebuild = (title: string, cols: string, rowsHtml: string, all: string) => {
+    const at = h.indexOf(`${title}</h2>`);
+    if (at < 0) return;
+    h = h.slice(0, at) + h.slice(at).replace(/<a class="wl" href="#"/, `<a class="wl" href="${all}"`);
+    const tableStart = '<div style="border-radius: 20px; border: 1px solid #E3EAF4; overflow: hidden">';
+    h = swapBlock(h, tableStart, at, (table) => {
+      const rows = blocks(table, `<div ${ROW}${cols}; gap: 12px; align-items: center;`);
+      if (!rows.length) return table;
+      return table.slice(0, rows[0]!.start) + (rowsHtml || `<div style="padding: 20px 18px; border-top: 1px solid #E3EAF4; font-size: 14px; color: #5F6B7D">Data harga belum tersedia.</div>`) + table.slice(rows[rows.length - 1]!.end);
+    });
+  };
+  const cell = (inner: string) => `<span style="display: flex; justify-content: flex-end; align-items: center">${inner}</span>`;
+  const rowA = (i: Instrument, cols: string, inner: string) => `<a href="/market/${encodeURIComponent(i.symbol)}" ${ROW}${cols}; gap: 12px; align-items: center; padding: 12px 18px; border-top: 1px solid #E3EAF4; font-size: 14px; color: #0B0B0F">${inner}</a>`;
+
+  // Crypto: harga, perubahan 24 jam, volume 24 jam (USD).
+  const crypto = priced("crypto").slice(0, 5);
+  h = h.replace(">KAP. PASAR<", ">VOL. 24 JAM<");
+  rebuild(
+    "Crypto",
+    "1.2fr 1fr 1fr 1fr",
+    crypto
+      .map((i) => {
+        const q = quotes.get(i.symbol)!;
+        const label = badgeLabel(i);
+        return rowA(
+          i,
+          "1.2fr 1fr 1fr 1fr",
+          `<span style="display: flex; align-items: center; gap: 10px; min-width: 0"><span style="flex: none; width: 30px; height: 30px; border-radius: 999px; background: #E5ECFF; color: #1E40AF; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">${esc(label)}</span><strong style="font-weight: 700">${esc(label)}</strong></span>` +
+            cell(`<span style="font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; color: #0B0B0F">$${esc(webPrice(q.price))}</span>`) +
+            cell(`<span style="font-weight: 700; color: ${pctColor(q.change_percent)}">${esc(fmtPct("+0,00%", q.change_percent))}</span>`) +
+            cell(`<span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: #5F6B7D">${q.volume ? esc(usdShort(q.volume * q.price)) : "—"}</span>`),
+        );
+      })
+      .join(""),
+    "/screener?urut=crypto",
+  );
+
+  // Forex & emas: pasangan valas berharga (maks. 4) + emas.
+  const fx = [...priced("forex").slice(0, 4), ...instruments.filter((i) => i.symbol === "XAUUSD" && quotes.has(i.symbol))];
+  rebuild(
+    "Forex & emas",
+    "1.2fr 1fr 1fr",
+    fx
+      .map((i) => {
+        const q = quotes.get(i.symbol)!;
+        return rowA(
+          i,
+          "1.2fr 1fr 1fr",
+          `<strong style="font-weight: 700">${esc(pairLabel(i))}</strong>` +
+            cell(`<span style="font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; color: #0B0B0F">${esc(webPrice(q.price))}</span>`) +
+            cell(`<span style="font-weight: 700; color: ${pctColor(q.change_percent)}">${esc(fmtPct("+0,00%", q.change_percent))}</span>`),
+        );
+      })
+      .join(""),
+    "/screener?urut=forex",
+  );
   return h;
 }
