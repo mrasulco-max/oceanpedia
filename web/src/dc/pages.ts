@@ -19,13 +19,13 @@ import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArtic
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, bindHomeShorts, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
-import { bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, bindMarketWeb, bindMarketWebSide, marketCards, marketWebList, WEB_TABS, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
+import { bindCategoryMarket, bindCryptoVolume, bindDataCredits, bindLiveMarket, bindMarketApp, bindMarketWeb, pickCategoryMarket, bindMarketWebSide, marketCards, marketWebList, WEB_TABS, bindLiveChart, bindMarketDetail, bindQuotes, bindTradingView, LIVE_CHART, TV_SYMBOL, tvSymbolFor } from "./market-bind";
 import { bindDetail, hideFakeStatusBar } from "./detail-bind";
 import { bindCoinLogos, closeOf } from "./kit";
 import { bindAppNav } from "./app-nav";
 import { adPopup, inlineSlots, shortFeedAd } from "./ad-bind";
 import { bindContentExtras, bindDetailCards, bindLiveExtras, deAlur, requestsPanel } from "./admin-wire-bind";
-import { bindAds as bindAdsPage, bindAuthorExtras, bindCacheClear, bindCategoryExtras, bindHelp, bindMarketWebExtras, bindPrivacy, bindRetry, bindStudent } from "./wire-bind";
+import { bindAds as bindAdsPage, bindAuthorExtras, bindCacheClear, bindCategoryExtras, bindCategoryPage, bindHelp, CATEGORY_SORTS, CATEGORY_TIMES, type CategoryCardMeta, type CategoryTopic, bindMarketWebExtras, bindPrivacy, bindRetry, bindStudent } from "./wire-bind";
 import type { Candle, Instrument, Quote } from "@/lib/types";
 import { adminApi, type AdminArticle } from "@/lib/admin";
 import { hasPlus, sessionToken, type SessionUser } from "@/lib/session";
@@ -390,16 +390,58 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     const cat = cats.data.find((c) => c.slug === m.params.slug);
     if (!cat) notFound();
     const cursor = search.sebelum && !Number.isNaN(Date.parse(search.sebelum)) ? search.sebelum : "";
-    const [list, fst] = await Promise.all([
-      safe(api.articles({ category: cat.slug, limit: 30, cursor }), { data: [], next_cursor: null }),
+    const topic = /^[a-z0-9-]{1,80}$/.test(search.topik ?? "") ? search.topik! : "";
+    const sort = CATEGORY_SORTS.find((k) => k && k === search.urut) ?? "";
+    const time = CATEGORY_TIMES.find((k) => k && k === search.waktu) ?? "";
+    const app = board.kind === "app";
+    const [list, base, fst, ins, picks] = await Promise.all([
+      safe(api.articles({ category: cat.slug, limit: 30, cursor, tag: topic || undefined }), { data: [], next_cursor: null }),
+      topic || cursor ? safe(api.articles({ category: cat.slug, limit: 30 }), { data: [], next_cursor: null }) : null,
       safe(api.followStat("category", cat.slug, token), { following: false, followers: 0 }),
+      safe(api.instruments(), { data: [] }),
+      safe(api.articles({ category: "analisis", limit: 4 }), { data: [], next_cursor: null }),
     ]);
+    // Tag & simbol per artikel (detail artikel; tidak menambah hitungan baca).
+    const pool = dedupe([...(base ?? list).data, ...list.data]);
+    const details = new Map((await Promise.all(pool.map((a) => safe(api.article(a.slug), null)))).filter((x): x is Article => !!x).map((x) => [x.slug, x]));
+    const tagCount = new Map<string, CategoryTopic>();
+    for (const a of (base ?? list).data) for (const t of details.get(a.slug)?.tags ?? []) tagCount.set(t.slug, { slug: t.slug, name: t.name, count: (tagCount.get(t.slug)?.count ?? 0) + 1 });
+    const topics = [...tagCount.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 6);
+    if (topic && !topics.some((t) => t.slug === topic)) {
+      const name = [...details.values()].flatMap((x) => x.tags).find((t) => t.slug === topic)?.name;
+      if (name) topics.push({ slug: topic, name, count: list.data.length });
+    }
+    // Filter waktu: dari awal hari ini (WIB) atau N hari terakhir; daftar berurut terbaru → bila artikel
+    // terlama di halaman ini sudah di luar rentang, tidak ada halaman berikutnya.
+    const since = time === "hari" ? Date.parse(`${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date())}T00:00:00+07:00`) : time ? Date.now() - Number(time) * 86400_000 : 0;
+    let arts = since ? list.data.filter((a) => Date.parse(a.published_at) >= since) : list.data;
+    const last = list.data[list.data.length - 1];
+    const next = list.next_cursor && !(since && last && Date.parse(last.published_at) < since) ? list.next_cursor : null;
+    if (sort === "populer") arts = arts.slice().sort((a, b) => b.view_count - a.view_count);
+    if (sort === "dibahas") {
+      const n = new Map(await Promise.all(arts.map(async (a) => [a.slug, (await safe(api.comments(a.slug), { data: [] })).data.length] as [string, number])));
+      arts = arts.slice().sort((a, b) => n.get(b.slug)! - n.get(a.slug)! || Date.parse(b.published_at) - Date.parse(a.published_at));
+    }
     html = html.replace(/(<h1\b[^>]*>)\s*Saham\s*(<\/h1>)/, (_x, o: string, c: string) => `${o}${esc(cat.name)}${c}`);
-    html = replaceText(html, "Terbaru di Saham", `Terbaru di ${cat.name}`);
+    html = replaceText(html, "Terbaru di Saham", `${sort === "populer" ? "Terpopuler" : sort === "dibahas" ? "Paling dibahas" : "Terbaru"} di ${cat.name}`);
     const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
-    html = bindCategoryExtras(html, { slug: cat.slug, followers: fst.followers, following: fst.following, loggedIn: !!user, total: cat.article_count, today: list.data.filter((a) => new Date(new Date(a.published_at).getTime() + 7 * 3600_000).toISOString().slice(0, 10) === today).length, nextCursor: list.next_cursor ?? null, cursor: cursor || null, app: board.kind === "app" });
-    if (board.kind === "app") ctx.state = JSON.stringify({ u: { u3: [fst.following] } });
-    html = bindArticleCards(html, list.data.length ? list.data : all);
+    const query = [topic && `&topik=${encodeURIComponent(topic)}`, sort && `&urut=${sort}`, time && `&waktu=${time}`].filter(Boolean).join("");
+    html = bindCategoryExtras(html, { slug: cat.slug, followers: fst.followers, following: fst.following, loggedIn: !!user, total: cat.article_count, today: list.data.filter((a) => new Date(new Date(a.published_at).getTime() + 7 * 3600_000).toISOString().slice(0, 10) === today).length, nextCursor: next, cursor: cursor || null, app, query });
+    if (app) ctx.state = JSON.stringify({ u: { u3: [fst.following] }, o: { filter: [CATEGORY_TIMES.indexOf(time)], sort: [CATEGORY_SORTS.indexOf(sort)] } });
+    const shown = arts.length || topic || since ? arts : all;
+    html = bindArticleCards(html, shown);
+    const cards = new Map(
+      shown.map((a) => {
+        const tag = details.get(a.slug)?.tags.find((t) => t.slug === topic) ?? details.get(a.slug)?.tags[0];
+        return [a.slug, { label: tag?.name ?? a.category.name, tag: !!tag, author: a.author_name || "Redaksi", views: a.view_count, minutes: a.reading_minutes, published: a.published_at }] as [string, CategoryCardMeta];
+      }),
+    );
+    html = bindCategoryPage(html, { slug: cat.slug, app, total: cat.article_count, topics, topic, sort, time, next, cards, picks: picks.data.map((p) => ({ slug: p.slug, title: p.title, author: p.author_name || "Redaksi" })) });
+    // Market terkait kategori: kartu kepala + "Paling aktif hari ini".
+    const mentions = [...details.values()].flatMap((x) => x.symbols ?? []);
+    const mk = pickCategoryMarket(cat.slug, ins.data, quotes, mentions, app ? 4 : 6);
+    const sparks = new Map(await Promise.all(mk.active.map(async (i) => [i.symbol, (await safe(api.candles(i.symbol, "1day", 20), { symbol: i.symbol, interval: "1day", data: [] })).data.map((c) => c.c)] as [string, number[]])));
+    html = bindCategoryMarket(html, { app, head: mk.head, active: mk.active, quotes, sparks });
     title = cat.name;
     description = cat.description;
   } else if (path === "/market/[symbol]") {
@@ -735,7 +777,7 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   if (path === "/pengaturan") html = bindCacheClear(html);
   if (path === "/") html = html.replace(/<a href="#" role="tab" aria-selected="true"/, '<a href="/" role="tab" aria-selected="true"');
   if (path === "/watchlist") html = html.replace(/<a class="wl" href="#"([^>]*)>Lihat semua/, '<a class="wl" href="/market"$1>Lihat semua');
-  if (/data-(follow|wl-sym|reload|faq-|adq|student|privacy|cache-clear)/.test(html)) enhance.push("wire");
+  if (/data-(follow|wl-sym|reload|faq-|adq|student|privacy|cache-clear|nav)/.test(html)) enhance.push("wire");
   if (board.kind === "web") html = bindCategoryMenu(bindFooter(html), (await safe(api.categories(), { data: [] })).data);
 
   // Bagikan: tautan kanonis halaman ini (halaman Plus membagikan artikel/aset publiknya).
