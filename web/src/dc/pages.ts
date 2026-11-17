@@ -15,7 +15,7 @@ import { bindAccount, bindStaffExpired, bindStaffForgot, bindStaffReset, bindLog
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
 import { getAlerts, getBookmarks, getNotifications, getUnread, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
-import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
+import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindHomeAgenda, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, bindHomeShorts, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
@@ -986,6 +986,12 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
   if (boardId === "app-05") html = removeHomeExtras(html);
   // Beranda: bagian Ocean Short memakai video nyata dari dashboard redaksi.
   if (boardId === "app-05" || boardId === "web-home") html = bindHomeShorts(html, (await safe(api.shorts(token), { data: [] })).data, boardId === "app-05");
+  // Beranda: "Agenda ekonomi" dari kalender (7 hari mulai hari ini, WIB).
+  if (boardId === "app-05" || boardId === "web-home") {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+    html = bindHomeAgenda(html, (await safe(api.eventsWeek(today), { data: [] })).data, boardId === "app-05");
+    if (!enhance.includes("reader")) enhance.push("reader");
+  }
   // Market app: kartu ringkasan IHSG (nilai transaksi, naik/turun, asing) khusus IDX — tidak ditampilkan.
   if (boardId === "app-08") html = html.replace(/<a [^>]*>(?:(?!<\/a>)[\s\S])*?IHSG · Indeks Harga Saham Gabungan(?:(?!<\/a>)[\s\S])*?<\/a>\s*/, "");
   html = focusText(auroraText(html));

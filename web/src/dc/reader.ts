@@ -607,6 +607,50 @@ export function reader(host: HTMLElement, { router, ctx }: Env): Cleanup {
     offs.push(() => window.clearInterval(t));
   }
 
+  // Beranda: hitung mundur "Agenda ekonomi" (web: kotak hari…milidetik; app: teks ringkas).
+  if (host.querySelector("[data-home-cd]")) {
+    const slow = matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduce";
+    // Per frame hanya bila ada kotak milidetik (web); selain itu cukup beberapa kali per detik.
+    const smooth = !slow && !!host.querySelector('[data-cd="ms"]');
+    const p = (n: number, w = 2) => String(n).padStart(w, "0");
+    const put = (el: Element | null, v: string) => {
+      if (el && el.textContent !== v) el.textContent = v;
+    };
+    let raf = 0;
+    let refreshed = false;
+    // Hanya rilis yang masih di depan saat halaman dibuka yang memicu muat ulang (jam perangkat bisa lebih cepat dari server).
+    const armed = new Set([...host.querySelectorAll<HTMLElement>("[data-home-cd]")].map((el) => el.dataset.homeCd ?? "").filter((iso) => Date.parse(iso) > Date.now()));
+    const tick = () => {
+      // Dicari ulang tiap tick: render ulang board (morph) bisa mengembalikan nilai awal server.
+      for (const el of host.querySelectorAll<HTMLElement>("[data-home-cd]")) {
+        const at = Date.parse(el.dataset.homeCd ?? "");
+        if (Number.isNaN(at)) continue;
+        const ms = Math.max(0, at - Date.now());
+        const d = Math.floor(ms / 86400000), h = Math.floor(ms / 3600000) % 24, m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60;
+        put(el.querySelector('[data-cd="d"]'), p(d));
+        put(el.querySelector('[data-cd="h"]'), p(h));
+        put(el.querySelector('[data-cd="m"]'), p(m));
+        put(el.querySelector('[data-cd="s"]'), p(s));
+        put(el.querySelector('[data-cd="ms"]'), slow ? "000" : p(ms % 1000, 3));
+        put(el.querySelector('[data-cd="t"]'), ms ? `${d ? `${d}h ` : ""}${p(h)}:${p(m)}:${p(s)}` : "Rilis");
+        const label = ms ? `Hitung mundur rilis ${d} hari ${h} jam ${m} menit` : "Sudah rilis";
+        if (el.getAttribute("aria-label") !== label) el.setAttribute("aria-label", label);
+        // Sudah rilis: muat ulang agar kartu pindah ke agenda berikutnya.
+        if (!ms && !refreshed && armed.has(el.dataset.homeCd ?? "")) {
+          refreshed = true;
+          window.setTimeout(() => router.refresh(), 1500);
+        }
+      }
+      if (smooth) raf = requestAnimationFrame(tick);
+    };
+    tick();
+    const iv = smooth ? 0 : window.setInterval(tick, slow ? 1000 : 250);
+    offs.push(() => {
+      cancelAnimationFrame(raf);
+      window.clearInterval(iv);
+    });
+  }
+
   // Tekan lama baris watchlist (aplikasi) → mode ubah: tombol × muncul.
   let lp = 0;
   const onDown = (e: PointerEvent) => {
