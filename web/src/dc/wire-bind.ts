@@ -55,6 +55,14 @@ export interface CategoryPick {
   author: string;
 }
 
+export type CategorySort = "" | "populer" | "dibahas";
+export type CategoryTime = "" | "hari" | "7" | "30";
+/** Urutan sesuai pilihan lembar desain (Terbaru, Terpopuler, Paling banyak dibahas). */
+export const CATEGORY_SORTS: CategorySort[] = ["", "populer", "dibahas"];
+/** Urutan sesuai pilihan lembar desain (Semua waktu, Hari ini, 7 hari, 30 hari). */
+export const CATEGORY_TIMES: CategoryTime[] = ["", "hari", "7", "30"];
+const SORT_LABEL: Record<CategorySort, string> = { "": "Terbaru", populer: "Terpopuler", dibahas: "Paling dibahas" };
+
 const GRAD = "linear-gradient(110deg, #2563EB 0%, #4285F4 35%, #63A4FA 55%, #4285F4 75%, #2563EB 100%)";
 const ago = (iso: string, now = Date.now()) => {
   const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000));
@@ -73,12 +81,13 @@ const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 
  */
 export function bindCategoryPage(
   html: string,
-  d: { slug: string; app: boolean; total: number; topics: CategoryTopic[]; topic: string; sort: "" | "populer"; cards: Map<string, CategoryCardMeta>; picks: CategoryPick[] },
+  d: { slug: string; app: boolean; total: number; topics: CategoryTopic[]; topic: string; sort: CategorySort; time: CategoryTime; next: string | null; cards: Map<string, CategoryCardMeta>; picks: CategoryPick[] },
 ): string {
   let h = html;
   const base = `/kategori/${encodeURIComponent(d.slug)}`;
-  const url = (topic: string, sort: string) => {
-    const q = [topic && `topik=${encodeURIComponent(topic)}`, sort && `urut=${sort}`].filter(Boolean).join("&");
+  const url = (o: { topic?: string; sort?: string; time?: string; before?: string } = {}) => {
+    const topic = o.topic ?? d.topic, sort = o.sort ?? d.sort, time = o.time ?? d.time;
+    const q = [topic && `topik=${encodeURIComponent(topic)}`, sort && `urut=${sort}`, time && `waktu=${time}`, o.before && `sebelum=${encodeURIComponent(o.before)}`].filter(Boolean).join("&");
     return q ? `${base}?${q}` : base;
   };
   const num = (n: number) => new Intl.NumberFormat("id-ID").format(n);
@@ -90,7 +99,7 @@ export function bindCategoryPage(
     const size = d.app ? "height: 38px; padding: 0 12px; border-radius: 12px; font-size: 13px" : "height: 42px; padding: 0 14px; border-radius: 14px; font-size: 14px";
     const chip = (label: string, count: number, href: string, on: boolean) =>
       `<a href="${href}" data-keep-scroll${on ? ' aria-current="page" class="ob-anim"' : ""} style="flex: none; ${size}; display: flex; align-items: center; gap: 8px; box-sizing: border-box; font-weight: 500; white-space: nowrap; ${on ? `border: 0; background: ${GRAD}; color: #FFFFFF` : "border: 1px solid #E3EAF4; background: #FFFFFF; color: #0B0B0F"}">${label}<span style="font-size: ${d.app ? 11 : 12}px; padding: 2px 7px; border-radius: 999px; ${on ? "background: rgba(255,255,255,.22); color: #FFFFFF" : "background: #F6F8FC; color: #5F6B7D"}">${num(count)}</span></a>`;
-    const chips = [chip("Semua", d.total, url("", d.sort), !d.topic), ...d.topics.map((t) => chip(`#${esc(t.name)}`, t.count, url(t.slug, d.sort), t.slug === d.topic))].join("");
+    const chips = [chip("Semua", d.total, url({ topic: "" }), !d.topic), ...d.topics.map((t) => chip(`#${esc(t.name)}`, t.count, url({ topic: t.slug }), t.slug === d.topic))].join("");
     const box = tabStart.replace('role="tablist" ', 'aria-label="Topik" ');
     h = h.slice(0, ts) + box + chips + "</div>" + h.slice(closeOf(h, ts));
   }
@@ -99,8 +108,16 @@ export function bindCategoryPage(
   if (!d.app) {
     h = h.replace(/<button style="(flex: none; height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 14px; border: 1px solid #E3EAF4; background: #FFFFFF; font-size: 14px; font-weight: 500; color: #0B0B0F)">(<svg[\s\S]*?<\/svg>)Terbaru<\/button>/, (_m, st: string, icon: string) => {
       const next = d.sort === "populer" ? "" : "populer";
-      return `<a href="${url(d.topic, next)}" data-keep-scroll title="Urutkan: ${next ? "Terpopuler" : "Terbaru"}" style="${st}">${icon}${d.sort === "populer" ? "Terpopuler" : "Terbaru"}</a>`;
+      return `<a href="${url({ sort: next })}" data-keep-scroll title="Urutkan: ${next ? "Terpopuler" : "Terbaru"}" style="${st}">${icon}${SORT_LABEL[d.sort]}</a>`;
     });
+  } else {
+    // Lembar "Urutkan berita" & "Filter waktu": pilihan desain tetap menutup lembar, lalu halaman berpindah (enhancer "wire").
+    CATEGORY_SORTS.forEach((k, i) => (h = h.replace(`onClick="{{ op_sort.i${i}.pick }}"`, `onClick="{{ op_sort.i${i}.pick }}" data-nav="${url({ sort: k })}"`)));
+    CATEGORY_TIMES.forEach((k, i) => (h = h.replace(`onClick="{{ op_filter.i${i}.pick }}"`, `onClick="{{ op_filter.i${i}.pick }}" data-nav="${url({ time: k })}"`)));
+    // "Muat lebih banyak" → halaman berikutnya (berita lebih lama); tanpa berikutnya → disembunyikan.
+    h = h.replace(/<a tabindex="0" role="button" onClick="\{\{ t4 \}\}"([^>]*)>Muat lebih banyak((?:(?!<\/a>)[\s\S])*)<\/a>/, (_m, attrs: string, icon: string) =>
+      d.next ? `<a href="${url({ before: d.next })}"${attrs}>Muat berita sebelumnya${icon}</a>` : "",
+    );
   }
 
   // Label & info kartu artikel (setelah bindArticleCards: tautan sudah menuju artikel nyata).
@@ -133,6 +150,12 @@ export function bindCategoryPage(
     }
     return `<a href="/berita/${slug}"${attrs}>${b}</a>`;
   });
+
+  // Filter tanpa hasil: kartu contoh desain dibuang, pesan kosong di bawah judul daftar.
+  h = h.replace(/<a href="\/berita\/ihsg-menguat-ditopang-saham-perbankan"[^>]*>[\s\S]*?<\/a>/g, "");
+  if (!d.cards.size) {
+    h = h.replace(/(<h2\b[^>]*>(?:(?!<\/h2>)[\s\S])*?(?:Terbaru|Terpopuler|Paling dibahas) di [^<]*<\/h2>(?:(?!<\/div>)[\s\S])*<\/div>)/, `$1<p style="margin: 8px 0 0; padding: 16px; border-radius: 16px; background: #F6F8FC; font-size: 14px; color: #5F6B7D">Belum ada berita untuk filter ini.</p>`);
+  }
 
   // Analisis pilihan: artikel terbaru kategori Analisis.
   const ap = h.indexOf("Analisis pilihan</h2>");

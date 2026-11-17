@@ -98,6 +98,13 @@ export function wire(host: HTMLElement, { router }: Env): Cleanup {
       return;
     }
 
+    // Pilihan lembar desain yang juga berpindah halaman (aksi desain tetap jalan: tutup lembar, toast).
+    const nav = el("[data-nav]");
+    if (nav?.dataset.nav?.startsWith("/")) {
+      router.push(nav.dataset.nav, { scroll: false });
+      return;
+    }
+
     if (el("[data-reload]")) {
       stop();
       location.reload();
