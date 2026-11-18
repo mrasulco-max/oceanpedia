@@ -15,7 +15,7 @@ import { bindAccount, bindStaffExpired, bindStaffForgot, bindStaffReset, bindLog
 import { bindSearchApp, bindSearchWeb } from "./search-bind";
 import { bindProfileApp, bindProfileWeb, bindSettingsApp, settingsState } from "./profile-bind";
 import { getAlerts, getBookmarks, getNotifications, getUnread, getProfile, getSessions, getWatchlist, meGetJSON } from "@/lib/me";
-import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindHomeAgenda, bindHomeHero, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
+import { bindAdSlots, removeAdSlots, bindAlert, bindAuthor, bindTopic, REACTION_KINDS, bindArticleSocialApp, bindArticleSocialWeb, bindCalendarApp, bindCalendarWeb, bindHomeAgenda, bindHomeHero, bindNotifications, bindSaved, bindWatchlistApp, bindWatchlistWeb } from "./reader-bind";
 import { bindDashboard, bindScreener, bindLivePublic, bindNewsletterPublic, bindShorts, bindLiveAdmin, bindVersions, feedPanel, newsletterPanel, replaceBody, reportsPanel, searchPanel, settingsPanel, shortsAdminPanel, bindHomeShorts, type ShortRow } from "./newsroom-bind";
 import { bindCheckout, bindPaid, bindPlusPlans, bindReceipt, bindWaiting, type BillInfo, type CheckoutCfg, type SubInfo } from "./plus-bind";
 import { bindAnalysisPage, bindArticleAI, bindMarketAICard, bindPlusReadAI } from "./ai-bind";
@@ -325,14 +325,19 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
     {
       const [cm, rx, bms] = await Promise.all([
         safe(api.comments(a.slug), { data: [] }),
-        safe(api.reactions(a.slug), { data: [] }),
+        safe(api.reactions(a.slug, token), { data: [] }),
         user ? getBookmarks() : Promise.resolve(null),
       ]);
       const reactions: Record<string, number> = {};
       for (const r of rx.data) reactions[r.kind] = r.count;
-      const social = { loggedIn: !!user, me: user ? { name: user.full_name, email: user.email } : null, comments: cm.data, reactions, bookmarked: !!bms?.some((b) => b.slug === a.slug), slug: a.slug };
+      const social = { loggedIn: !!user, me: user ? { name: user.full_name, email: user.email } : null, comments: cm.data, reactions, mine: rx.mine || "", bookmarked: !!bms?.some((b) => b.slug === a.slug), slug: a.slug };
       html = board.kind === "app" ? bindArticleSocialApp(html, social) : bindArticleSocialWeb(html, social);
-      if (board.kind === "app" && social.bookmarked) ctx.state = JSON.stringify({ u: { u1: [true] } });
+      if (board.kind === "app") {
+        const react = REACTION_KINDS.indexOf(social.mine);
+        ctx.state = JSON.stringify({ ...(social.bookmarked ? { u: { u1: [true] } } : {}), react: react < 0 ? null : react });
+      }
+      ctx.slug = a.slug;
+      ctx.react = social.mine;
       enhance.push("reader");
     }
     // Ukuran teks artikel ("Aa") mengikuti preferensi; perubahan disimpan oleh enhancer "reader".
@@ -589,10 +594,10 @@ export async function prepare(m: Match, layout: Layout, search: Record<string, s
         if (path === "/plus/baca") {
           html = bindPlusReadAI(html, a, ai);
           html = bindArticleDetail(html, a);
-          const [cm, rx, bms] = await Promise.all([safe(api.comments(a.slug), { data: [] }), safe(api.reactions(a.slug), { data: [] }), user ? getBookmarks() : Promise.resolve(null)]);
+          const [cm, rx, bms] = await Promise.all([safe(api.comments(a.slug), { data: [] }), safe(api.reactions(a.slug, token), { data: [] }), user ? getBookmarks() : Promise.resolve(null)]);
           const reactions: Record<string, number> = {};
           for (const r of rx.data) reactions[r.kind] = r.count;
-          const social = { loggedIn: !!user, me: user ? { name: user.full_name, email: user.email } : null, comments: cm.data, reactions, bookmarked: !!bms?.some((b) => b.slug === a.slug), slug: a.slug };
+          const social = { loggedIn: !!user, me: user ? { name: user.full_name, email: user.email } : null, comments: cm.data, reactions, mine: rx.mine || "", bookmarked: !!bms?.some((b) => b.slug === a.slug), slug: a.slug };
           html = bindArticleSocialApp(html, social);
           enhance.push("reader");
         } else {

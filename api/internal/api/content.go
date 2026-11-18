@@ -163,11 +163,22 @@ func (s *Server) related(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) reactions(w http.ResponseWriter, r *http.Request) error {
-	l, err := s.Store.Reactions(r.Context(), r.PathValue("slug"))
+	slug := r.PathValue("slug")
+	l, err := s.Store.Reactions(r.Context(), slug)
 	if err != nil {
 		return err
 	}
-	httpx.JSON(w, 200, Page[store.ReactionCount]{Data: l})
+	// mine: reaksi pembaca yang masuk ("" bila belum/anonim).
+	mine := ""
+	if id := uid(r); id != "" {
+		if mine, err = s.Store.MyReaction(r.Context(), id, slug); err != nil {
+			return err
+		}
+	}
+	httpx.JSON(w, 200, struct {
+		Page[store.ReactionCount]
+		Mine string `json:"mine"`
+	}{Page[store.ReactionCount]{Data: l}, mine})
 	return nil
 }
 

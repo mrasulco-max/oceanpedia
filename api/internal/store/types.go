@@ -256,6 +256,8 @@ type Store interface {
 	SetBookmark(ctx context.Context, userID, slug string, on bool) error
 	Bookmarks(ctx context.Context, userID string) ([]ArticleCard, error)
 	React(ctx context.Context, userID, slug, kind string) error
+	Unreact(ctx context.Context, userID, slug string) error
+	MyReaction(ctx context.Context, userID, slug string) (string, error)
 	Reactions(ctx context.Context, slug string) ([]ReactionCount, error)
 	Comments(ctx context.Context, slug string, limit int) ([]Comment, error)
 	AddComment(ctx context.Context, userID, slug, body, status, reason, parentID string) (Comment, error)
