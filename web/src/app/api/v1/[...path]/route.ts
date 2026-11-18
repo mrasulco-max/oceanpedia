@@ -8,6 +8,7 @@ import { API_BASE } from "@/lib/auth-session";
  */
 const ALLOW: [string, RegExp][] = [
   ["PUT", /^articles\/[a-z0-9-]+\/reaction$/],
+  ["DELETE", /^articles\/[a-z0-9-]+\/reaction$/],
   ["POST", /^articles\/[a-z0-9-]+\/comments$/],
   ["GET", /^articles\/[a-z0-9-]+\/(comments|reactions)$/],
   ["POST", /^comments\/[0-9a-f-]{36}\/report$/],

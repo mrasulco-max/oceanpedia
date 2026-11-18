@@ -742,8 +742,29 @@ export interface Social {
   me: { name: string; email: string } | null;
   comments: { id: string; user_name: string; body: string; created_at: string; parent_id?: string }[];
   reactions: Record<string, number>; // bullish, bearish, informative, favorite
+  /** Reaksi pembaca sendiri ("" bila belum). */
+  mine?: string;
   bookmarked: boolean;
   slug: string;
+}
+export const REACTION_KINDS = ["bullish", "bearish", "informative", "favorite"];
+const loginNext = (slug: string) => `/masuk?next=${encodeURIComponent(`/berita/${slug}`)}`;
+/** Atribut tombol reaksi: tamu diarahkan ke halaman masuk oleh enhancer "reader". */
+const reactAttrs = (k: string, s: Social) => `data-art-react="${k}" data-slug="${esc(s.slug)}"${s.loggedIn ? "" : ` data-login="${loginNext(s.slug)}"`}`;
+
+const REACT_UI: [string, string, string, string, string][] = [
+  ["bullish", "Bullish", "#E7F6EC", "#15803D", '<path d="M3.5 17l5.5-5.5 4 4 7.5-7.5"/><path d="M15 8h5.5v5.5"/>'],
+  ["bearish", "Bearish", "#FDE2E2", "#B91C1C", '<path d="M3.5 7l5.5 5.5 4-4 7.5 7.5"/><path d="M15 16h5.5v-5.5"/>'],
+  ["informative", "Informatif", "#E3EEFF", "#2F74EB", '<path d="M13.4 2.8L5.6 12.6a.5.5 0 0 0 .4.8h5.5l-1.2 7.8 8.1-10.2a.5.5 0 0 0-.4-.8h-5.6z"/>'],
+  ["favorite", "Favorit", "#FFF3E0", "#B45309", '<path d="M11.1 3.9a1 1 0 0 1 1.8 0l2 4.1 4.5.7a1 1 0 0 1 .6 1.7l-3.3 3.2.8 4.5a1 1 0 0 1-1.5 1.1L12 17.1l-4 2.1a1 1 0 0 1-1.5-1.1l.8-4.5L4 10.4a1 1 0 0 1 .6-1.7l4.5-.7z"/>'],
+];
+function reactionBarWeb(s: Social): string {
+  const total = REACTION_KINDS.reduce((a, k) => a + (s.reactions[k] ?? 0), 0);
+  const btns = REACT_UI.map(([k, label, bg, fg, icon]) => {
+    const on = s.mine === k;
+    return `<button type="button" ${reactAttrs(k, s)} aria-pressed="${on}" style="flex: 1; min-width: 0; height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 14px; border: ${on ? "2px solid #2F74EB" : "1px solid #E3EAF4"}; background: #FFFFFF; color: #0B0B0F; font-size: 14px; font-weight: 500; cursor: pointer"><span style="flex: none; width: 28px; height: 28px; border-radius: 999px; background: ${bg}; color: ${fg}; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg></span>${label}<span data-rx-count="${k}" style="font-family: 'Roboto Mono', monospace; font-size: 13px; color: #5F6B7D">${s.reactions[k] ?? 0}</span></button>`;
+  }).join("");
+  return `<section aria-label="Reaksi" style="border-radius: 22px; border: 1px solid #E3EAF4; padding: 20px"><h3 style="margin: 0 0 4px; font-size: 17px; font-weight: 700">Reaksi <span data-rx-total style="font-weight: 500; color: #5F6B7D">${total}</span></h3><p style="margin: 0 0 14px; font-size: 13px; color: #5F6B7D">Bagaimana pandanganmu terhadap berita ini?</p><div style="display: flex; gap: 10px">${btns}</div></section>`;
 }
 const avatar36 = (name: string, style: string) => {
   const [bg, fg] = avatarColors(name);
@@ -780,18 +801,23 @@ export function bindArticleSocialWeb(html: string, s: Social): string {
     ? `<form data-art="comment-form" data-slug="${esc(s.slug)}" style="display: flex; gap: 8px; margin-top: 8px"><input data-art="comment" maxlength="1000" required placeholder="Tulis komentar sebagai ${esc(s.me?.name ?? "kamu")}…" style="flex: 1; height: 46px; padding: 0 16px; border-radius: 14px; border: 1px solid #E3EAF4; font-size: 14px"><button type="submit" style="height: 46px; padding: 0 18px; border-radius: 14px; border: 0; background: #2F74EB; color: #FFFFFF; font-size: 14px; font-weight: 500">Kirim</button></form>`
     : `<a href="/masuk?next=${encodeURIComponent(`/berita/${s.slug}`)}" style="display: flex; align-items: center; height: 46px; margin-top: 8px; padding: 0 16px; border-radius: 14px; border: 1px solid #E3EAF4; color: #5F6B7D; font-size: 14px">Masuk untuk berkomentar…</a>`;
   h = h.replace(/<a href="\/masuk" style="display: flex; align-items: center; height: 46px; margin-top: 8px;[^"]*">Masuk untuk berkomentar…<\/a>/, form);
-  h = h.replace(/(<section[^>]*>)(\s*<h3[^>]*>(?:(?!<\/h3>)[\s\S])*Komentar \()/, '$1<span id="komentar"></span>$2');
+  h = h.replace(/(<section[^>]*>)(\s*<h3[^>]*>(?:(?!<\/h3>)[\s\S])*Komentar \()/, (_m, sec: string, rest: string) => `${reactionBarWeb(s)}${sec}<span id="komentar"></span>${rest}`);
   return h;
 }
 
 export function bindArticleSocialApp(html: string, s: Social): string {
   let h = html;
-  const kinds = ["bullish", "bearish", "informative", "favorite"];
-  kinds.forEach((k, i) => {
-    h = h.replace(`{{ rx.r${i}.count }}`, String(s.reactions[k] ?? 0)).replace(`onClick="{{ rx.r${i}.pick }}"`, `onClick="{{ rx.r${i}.pick }}" data-art-react="${k}" data-slug="${esc(s.slug)}"`);
+  // Angka reaksi diberi penanda agar enhancer "reader" bisa memperbaruinya tanpa memuat ulang.
+  REACTION_KINDS.forEach((k, i) => {
+    h = h.replace(`">{{ rx.r${i}.count }}<`, `" data-rx-count="${k}">${s.reactions[k] ?? 0}<`).replace(`onClick="{{ rx.r${i}.pick }}"`, `onClick="{{ rx.r${i}.pick }}" ${reactAttrs(k, s)}`);
   });
-  const total = kinds.reduce((a, k) => a + (s.reactions[k] ?? 0), 0);
+  const total = REACTION_KINDS.reduce((a, k) => a + (s.reactions[k] ?? 0), 0);
+  h = h.replace(/(<button aria-pressed=")false(" aria-haspopup="dialog" onClick="\{\{ open_like \}\}")/, `$1${!!s.mine}$2 data-rx-like`);
+  h = h.replace("Suka {{ totalReact }}<", `Suka <span data-rx-total>${total}</span><`);
+  h = h.replace('color: #5F6B7D">{{ totalReact }}</span>', `color: #5F6B7D" data-rx-total>${total}</span>`);
   h = h.split("{{ totalReact }}").join(String(total));
+  // Jumlah komentar di bar bawah.
+  h = h.replace(/(onClick="\{\{ open_comment \}\}"[^>]*>(?:(?!<\/button>)[\s\S])*<\/svg>)\d+(<\/button>)/, `$1${s.comments.length}$2`);
   h = h.replace('href="/tersimpan" aria-label="Simpan"', `href="#" data-art="bookmark" data-slug="${esc(s.slug)}" aria-label="Simpan"`);
   // "Terbaru" di lembar reaksi berisi nama contoh → disembunyikan (reaksi bersifat anonim).
   h = h.replace(/<h3 style="margin: 4px 0 0; font-size: 14px; font-weight: 700">Terbaru<\/h3>\s*<div style="display: flex; flex-direction: column; gap: 12px">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>(\s*<div role="dialog" aria-modal="true" aria-label="Komentar)/, "</div>$1");
@@ -816,7 +842,7 @@ export function bindArticleSocialApp(html: string, s: Social): string {
     h = h.slice(0, commentRows[0]!.start) + built + h.slice(commentRows[commentRows.length - 1]!.end);
   }
   if (s.me) h = h.replace(/(<div style="display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 1px solid #E3EAF4">\s*<span style="flex: none; width: 36px; height: 36px; border-radius: 999px; [^"]*">)[^<]*(<\/span>)/, `$1${esc(initials(s.me.name))}$2`);
-  h = h.replace(/<input type="text" placeholder="Tulis komentar…"/, s.loggedIn ? `<input type="text" data-art="comment" data-slug="${esc(s.slug)}" maxlength="1000" placeholder="Tulis komentar…"` : `<input type="text" data-art="comment" data-login="/masuk?next=${encodeURIComponent(`/berita/${s.slug}`)}" readonly placeholder="Masuk untuk berkomentar…"`);
+  h = h.replace(/<input type="text" placeholder="Tulis komentar…"/, s.loggedIn ? `<input type="text" data-art="comment" data-slug="${esc(s.slug)}" maxlength="1000" placeholder="Tulis komentar…"` : `<input type="text" data-art="comment" data-login="${loginNext(s.slug)}" readonly placeholder="Masuk untuk berkomentar…"`);
   h = h.replace('onClick="{{ f6 }}"', `data-art="comment-send" data-slug="${esc(s.slug)}"`);
   return h;
 }

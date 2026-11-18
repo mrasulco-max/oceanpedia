@@ -68,6 +68,13 @@ export function bindArticleDetail(html: string, a: Article): string {
     const head = h.slice(0, h1End);
     let mid = h.slice(h1End, stop);
     const tail = h.slice(stop);
+    // Kartu grafik "IHSG · hari ini" dari desain berisi data contoh dan tidak terkait isi artikel → dibuang.
+    const chart = mid.indexOf(">IHSG · hari ini<");
+    if (chart >= 0) {
+      const from = mid.lastIndexOf("<a ", chart);
+      const end = mid.indexOf("</a>", chart);
+      if (from >= 0 && end > chart && mid.lastIndexOf("</a>", chart) < from) mid = mid.slice(0, from) + mid.slice(end + 4);
+    }
     const paras = a.locked ? [a.excerpt] : a.body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
     let pi = 0;
     let first = true;

@@ -624,6 +624,25 @@ func (p *PG) React(ctx context.Context, userID, slug, kind string) error {
 	return err
 }
 
+const qUnreact = `DELETE FROM reactions WHERE user_id = $1 AND article_id = (SELECT id FROM articles WHERE slug = $2)`
+
+func (p *PG) Unreact(ctx context.Context, userID, slug string) error {
+	_, err := p.DB.ExecContext(ctx, qUnreact, userID, slug)
+	return err
+}
+
+const qMyReaction = `SELECT r.kind FROM reactions r JOIN articles a ON a.id = r.article_id WHERE r.user_id = $1 AND a.slug = $2`
+
+// MyReaction mengembalikan jenis reaksi pengguna pada artikel ("" bila belum bereaksi).
+func (p *PG) MyReaction(ctx context.Context, userID, slug string) (string, error) {
+	var kind string
+	err := p.DB.QueryRowContext(ctx, qMyReaction, userID, slug).Scan(&kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return kind, err
+}
+
 const qReactions = `
 SELECT k.kind, count(r.user_id)::int
 FROM unnest(ARRAY['bullish', 'bearish', 'informative', 'favorite']) AS k(kind)
@@ -729,7 +748,7 @@ func AllQueries() map[string]string {
 		"consume_refresh": qConsumeRefresh, "revoke_refresh": qRevokeRefresh, "default_watchlist": qDefaultWatchlist,
 		"watchlist": qWatchlist, "add_watch": qAddWatch, "remove_watch": qRemoveWatch, "alerts": qAlerts, "create_alert": qCreateAlert,
 		"delete_alert": qDeleteAlert, "bookmark_on": qBookmarkOn, "bookmark_off": qBookmarkOff, "bookmarks": qBookmarks,
-		"react": qReact, "reactions": qReactions, "comments": qComments, "add_comment": qAddComment, "create_invoice": qCreateInvoice,
+		"react": qReact, "unreact": qUnreact, "my_reaction": qMyReaction, "reactions": qReactions, "comments": qComments, "add_comment": qAddComment, "create_invoice": qCreateInvoice,
 	}
 	out["market_cache_get"], out["market_cache_put"] = qMarketCacheGet, qMarketCachePut
 	for k, v := range profileQueries() {

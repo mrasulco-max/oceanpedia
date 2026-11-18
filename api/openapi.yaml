@@ -122,9 +122,10 @@ paths:
     delete: { summary: "Hapus catatan (milik sendiri)", tags: [Jurnal], security: [{ bearer: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Dihapus }, '404': { description: Tidak ditemukan } } }
   /v1/articles/{slug}/related: { get: { summary: Artikel terkait, tags: [Konten], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
   /v1/articles/{slug}/views: { post: { summary: Catat tayangan, tags: [Konten], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '204': { description: OK } } } }
-  /v1/articles/{slug}/reactions: { get: { summary: Jumlah reaksi, tags: [Interaksi], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /v1/articles/{slug}/reactions: { get: { summary: Jumlah reaksi (+ mine bila masuk), tags: [Interaksi], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
   /v1/articles/{slug}/reaction:
     put: { summary: Beri reaksi, tags: [Interaksi], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], requestBody: { content: { application/json: { schema: { type: object, required: [kind], properties: { kind: { enum: [bullish, bearish, informative, favorite] } } } } } }, responses: { '200': { description: OK } } }
+    delete: { summary: Batalkan reaksi, tags: [Interaksi], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } }
   /v1/articles/{slug}/comments:
     get: { summary: Komentar, tags: [Interaksi], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } }
     post: { summary: Tulis komentar, tags: [Interaksi], security: [{ bearer: [] }], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], requestBody: { content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string, maxLength: 2000 } } } } } }, responses: { '201': { description: Dibuat } } }

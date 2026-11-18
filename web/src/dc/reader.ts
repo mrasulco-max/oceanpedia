@@ -151,6 +151,33 @@ export function reader(host: HTMLElement, { router, ctx }: Env): Cleanup {
       });
     }
     alertDelta();
+    paintRx();
+  };
+
+  // ---------------------------------------------------------------- reaksi artikel
+  // Render ulang desain mengembalikan angka dari server, jadi angka terbaru ditulis ulang setelah setiap render.
+  let mine = ctx.react ?? "";
+  let rxCounts: Record<string, number> | null = null;
+  let rxBusy = false;
+  const readCounts = () => {
+    const out: Record<string, number> = {};
+    for (const el of $$("[data-rx-count]")) out[el.dataset.rxCount!] ??= Number(el.textContent) || 0;
+    return out;
+  };
+  const paintRx = () => {
+    if (rxCounts) {
+      const total = Object.values(rxCounts).reduce((a, b) => a + b, 0);
+      for (const el of $$("[data-rx-count]")) el.textContent = String(rxCounts[el.dataset.rxCount!] ?? 0);
+      for (const el of $$("[data-rx-total]")) el.textContent = String(total);
+      host.querySelector('[role="dialog"][aria-label^="Reaksi"]')?.setAttribute("aria-label", `Reaksi ${total}`);
+    }
+    for (const b of $$("button[data-art-react]")) {
+      const on = b.dataset.artReact === mine;
+      b.setAttribute("aria-pressed", String(on));
+      // Tombol desain (aplikasi) mengatur bingkainya sendiri dari state desain.
+      if (!b.hasAttribute("data-ev-click")) b.style.border = on ? "2px solid #2F74EB" : "1px solid #E3EAF4";
+    }
+    for (const b of $$("[data-rx-like]")) b.setAttribute("aria-pressed", String(!!mine));
   };
 
   // ---------------------------------------------------------------- price alert: selisih target
@@ -466,10 +493,35 @@ export function reader(host: HTMLElement, { router, ctx }: Env): Cleanup {
     }
     const react = el("[data-art-react]");
     if (react) {
-      void run(async () => {
-        const r = await api("PUT", `/api/v1/articles/${encodeURIComponent(react.dataset.slug!)}/reaction`, { kind: react.dataset.artReact });
+      // Tamu & permintaan yang masih berjalan: hentikan juga toggle visual desain.
+      if (react.dataset.login) {
+        stop();
+        router.push(react.dataset.login);
+        return;
+      }
+      if (rxBusy || !react.hasAttribute("data-ev-click")) stop();
+      if (rxBusy) return;
+      const kind = react.dataset.artReact!;
+      const prev = mine;
+      const before = rxCounts ?? readCounts();
+      mine = prev === kind ? "" : kind;
+      rxCounts = { ...before };
+      if (prev) rxCounts[prev] = Math.max(0, (rxCounts[prev] ?? 0) - 1);
+      if (mine) rxCounts[mine] = (rxCounts[mine] ?? 0) + 1;
+      paintRx();
+      rxBusy = true;
+      void api(mine ? "PUT" : "DELETE", `/api/v1/articles/${encodeURIComponent(react.dataset.slug!)}/reaction`, mine ? { kind: mine } : undefined).then((r) => {
+        rxBusy = false;
         if (needLogin(r)) return;
-        if (!r.ok) toast(host, why(r, "Reaksi gagal disimpan."));
+        if (!r.ok) {
+          mine = prev;
+          rxCounts = before;
+          paintRx();
+          return toast(host, why(r, "Reaksi gagal disimpan."));
+        }
+        const list = (r.data as { data?: { kind: string; count: number }[] }).data;
+        if (list) rxCounts = Object.fromEntries(list.map((x) => [x.kind, x.count]));
+        paintRx();
       });
       return;
     }

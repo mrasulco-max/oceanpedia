@@ -643,6 +643,13 @@ func (s *Server) react(w http.ResponseWriter, r *http.Request) error {
 	return s.reactions(w, r)
 }
 
+func (s *Server) unreact(w http.ResponseWriter, r *http.Request) error {
+	if err := s.Store.Unreact(r.Context(), uid(r), r.PathValue("slug")); err != nil {
+		return err
+	}
+	return s.reactions(w, r)
+}
+
 func (s *Server) addComment(w http.ResponseWriter, r *http.Request) error {
 	var in struct {
 		Body     string `json:"body"`

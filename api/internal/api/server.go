@@ -168,6 +168,7 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /v1/me/bookmarks/{slug}", s.bookmarkOn)
 	auth("DELETE /v1/me/bookmarks/{slug}", s.bookmarkOff)
 	auth("PUT /v1/articles/{slug}/reaction", s.react)
+	auth("DELETE /v1/articles/{slug}/reaction", s.unreact)
 	auth("POST /v1/articles/{slug}/comments", s.addComment)
 	auth("POST /v1/checkout", s.checkout)
 	auth("POST /v1/billing/checkout", s.checkout)
