@@ -435,10 +435,16 @@ const COUNTRY: Record<string, [string, string, string]> = {
 };
 const WIBf = (iso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", ...o }).format(new Date(iso));
 const dayOf = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(iso));
-function impactBars(h: string, impact: string, big: boolean): string {
-  const lbl = impact === "high" ? "Dampak tinggi" : impact === "medium" ? "Dampak sedang" : "Dampak rendah";
-  const re = big ? /<span aria-label="Dampak" style="display: flex; gap: 2px; align-items: flex-end">[\s\S]*?<\/span>\s*<\/span>\s*<\/span>\s*<\/span>/ : rx(`<span aria-label="${lbl}" style="display: flex; gap: 2px; align-items: flex-end">[\\s\\S]*?</span>\\s*</span>\\s*</span>\\s*</span>`);
-  return re.exec(h)?.[0] ?? "";
+/**
+ * Blok 3 batang dampak di template (web: aria-label="Dampak"; app: "Dampak tinggi|sedang|rendah").
+ * Pola lama `[\s\S]*?</span>×4` gagal match karena antar-batang ada `<span…>`, bukan `</span>` berurutan —
+ * akibatnya semua baris tetap memakai batang "sedang" dari template.
+ */
+const IMPACT_BARS_RE =
+  /<span aria-label="Dampak(?: tinggi| sedang| rendah)?" style="display: flex; gap: 2px; align-items: flex-end">(?:<span style="width: \d+px; height: \d+px; border-radius: 2px; background: #[0-9A-Fa-f]{6}"><\/span>){3}<\/span>/;
+
+function impactBars(h: string): string {
+  return IMPACT_BARS_RE.exec(h)?.[0] ?? "";
 }
 function bars(impact: string, big: boolean): string {
   const c = impact === "high" ? ["#EF4444", "#EF4444", "#EF4444"] : impact === "medium" ? ["#FB7A3C", "#FB7A3C", "#E3EAF4"] : ["#FACC15", "#E3EAF4", "#E3EAF4"];
@@ -505,7 +511,7 @@ export function bindCalendarApp(html: string, d: CalData & { prevWeek?: string; 
           return tpl
             .replace('<div style="display: flex;', `<div data-cal-row="${e.id}" data-day="${day}" data-country="${esc(e.country)}" data-impact="${e.impact}"${day === d.selected ? ' style="display: flex;' : ' data-disp="flex" style="display: none;'}`)
             .replace(/(<span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: #0B0B0F">)\d\d:\d\d(<\/span>)/, `$1${WIBf(e.scheduled_at, { hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":")}$2`)
-            .replace(impactBars(tpl, tpl.includes('aria-label="Dampak tinggi"') ? "high" : tpl.includes('aria-label="Dampak sedang"') ? "medium" : "low", false) || "@@none@@", bars(e.impact, false))
+            .replace(impactBars(tpl) || "@@none@@", bars(e.impact, false))
             .replace(/(<span style="flex: none; width: 30px; height: 30px; border-radius: 999px; )background: #[0-9A-F]{6}; color: #[0-9A-F]{6}([^"]*">)[^<]*(<\/span>)/, `$1background: ${bg}; color: ${fg}$2${esc(e.country)}$3`)
             .replace(/(<strong style="font-size: 14px; line-height: 1.35; font-weight: 500">)[^<]*(<\/strong>)/, `$1${esc(e.title)}$2`)
             .replace(/(<span style="font-size: 10px; color: #5F6B7D">Aktual<\/span>\s*<span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: )#[0-9A-F]{6}(">)[^<]*(<\/span>)/, `$1${actualColor(e)}$2${esc(val(e.actual))}$3`)
@@ -572,7 +578,7 @@ export function bindCalendarWeb(html: string, d: CalData & { prevWeek: string; n
             .replace(/(<span style="font-family: 'Roboto Mono', monospace; font-size: 14px; font-weight: 500; color: #0B0B0F">)[^<]*(<\/span>)/, `$1${WIBf(e.scheduled_at, { hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":")}$2`)
             .replace(/(<span style="width: 30px; height: 30px; border-radius: 999px; )background: #[0-9A-F]{6}; color: #[0-9A-F]{6}([^"]*">)[^<]*(<\/span>)/, `$1background: ${bg}; color: ${fg}$2${esc(e.country)}$3`)
             .replace(/(<strong style="font-size: 14px; font-weight: 500">)[^<]*(<\/strong>)/, `$1${esc(e.title)}$2`)
-            .replace(/<span aria-label="Dampak" style="display: flex; gap: 2px; align-items: flex-end">[\s\S]*?<\/span>\s*<\/span>\s*<\/span>\s*<\/span>/, bars(e.impact, true))
+            .replace(IMPACT_BARS_RE, bars(e.impact, true))
             .replace(/(<span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: )#[0-9A-F]{6}(">)[^<]*(<\/span>)/, `$1${actualColor(e)}$2${esc(val(e.actual))}$3`)
             .replace(/(<\/span>\s*<span style="display: flex; justify-content: flex-end; align-items: center">\s*<span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: #0B0B0F">)[^<]*(<\/span>)/, `$1${esc(val(e.forecast))}$2`)
             .replace(/(<span style="font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; color: #5F6B7D">)[^<]*(<\/span>)/, `$1${esc(val(e.previous))}$2`)
