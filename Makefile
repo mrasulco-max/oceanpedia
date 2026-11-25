@@ -1,4 +1,4 @@
-.PHONY: dev up down db-migrate db-seed api-test api-run web-dev lint
+.PHONY: dev up down db-migrate db-seed api-test api-run web-dev mobile-run lint
 
 up:            ## Jalankan semua (postgres, api, web) dengan Docker
 	docker compose up --build
@@ -21,6 +21,10 @@ api-run:
 web-dev:
 	cd web && npm install && npm run dev
 
+mobile-run:    ## Jalankan app Flutter (API prod by default)
+	cd mobile && flutter pub get && flutter run
+
 lint:
 	cd api && go vet ./...
 	cd web && npm run lint && npm run typecheck
+	cd mobile && flutter analyze

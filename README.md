@@ -6,6 +6,7 @@ Platform berita & data pasar (fokus saham AS & forex, plus komoditas dan crypto;
 | Lapisan | Teknologi |
 |---|---|
 | Frontend | **Next.js 15** (App Router, React 19, TypeScript strict) |
+| Mobile | **Flutter** (`mobile/`) — UI mode app, API yang sama |
 | Backend | **Go 1.24** (`net/http`, `database/sql` + pgx) — REST `/v1` |
 | Database | **PostgreSQL 16** |
 | Data pasar | Twelve Data (hanya dipanggil dari server) |
@@ -34,6 +35,7 @@ api/                 Backend Go
   migrations/        migrasi SQL (ditanam ke biner)
   openapi.yaml       kontrak API (OpenAPI 3.1)
 web/                 Frontend Next.js
+mobile/              Aplikasi Flutter (mode app native)
 db/seed/             data contoh development
 .github/workflows/   CI: lint, test, integration test, build, smoke test desktop/mobile
 ```
@@ -48,6 +50,13 @@ docker compose --profile seed run --rm seed   # data contoh
 
 Buka http://localhost:3000 (desktop) — atau dari ponsel/DevTools mode perangkat untuk UI app.
 API: http://localhost:8080/v1/home · spesifikasi: `api/openapi.yaml`.
+
+Aplikasi Flutter (API default produksi):
+
+```bash
+cd mobile && flutter pub get && flutter run
+# override API: flutter run --dart-define=API_BASE_URL=http://localhost:8080
+```
 
 Tanpa Docker: `make api-run` (butuh PostgreSQL & `DATABASE_URL`) dan `make web-dev`.
 Pertama kali, jalankan `cd api && go mod tidy` lalu commit `go.sum`, dan `cd web && npm install` lalu commit `package-lock.json`.

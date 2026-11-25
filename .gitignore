@@ -6,6 +6,20 @@ dist/
 bin/
 coverage/
 *.test
+# flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+mobile/.dart_tool/
+mobile/.packages
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/**/Generated.xcconfig
+mobile/**/flutter_export_environment.sh
+mobile/**/ephemeral/
+*.iml
 # env & secrets
 .env
 .env.*
